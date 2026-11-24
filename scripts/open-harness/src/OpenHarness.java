@@ -425,6 +425,35 @@ public final class OpenHarness {
         check("le panneau le dit", textOf("mode gros fichier") != null);
         detail(syntax.tokenCount() + " jetons, fond "
                 + editor.backgroundFillNanos() / 1_000_000L + " ms");
+        // la réouverture du même texte : le document est déjà exact —
+        // le fond ne repart pas, les plans restent cuits (le relevé 15
+        // a payé sept re-remplissages et une trame de 762 ms pour rien)
+        long fillNanos = editor.backgroundFillNanos();
+        long slices = editor.backgroundFillSlices();
+        long bakes = editor.renderCacheBakes();
+        click("50k l.");
+        frame();
+        check("la réouverture du même texte ne relance pas le fond",
+                editor.backgroundFillNanos() == fillNanos
+                        && editor.backgroundFillSlices() == slices
+                        && editor.getSyntaxDocument().lexedLineCount() == 52004);
+        check("les plans cuits restent (aucune recuisson à la réouverture)",
+                editor.renderCacheBakes() == bakes);
+        // un texte édité, lui, repart du document d'origine (le plein
+        // chemin) — et l'historique à défaire repart vide au chargement
+        connection.commitText("z", 1);
+        frame();
+        check("la frappe s'annule avant la réouverture",
+                editor.getUndoStack().canUndo());
+        click("50k l.");
+        frame();
+        check("la réouverture d'un texte édité repart du document d'origine",
+                editor.getSyntaxDocument().lexedLineCount() < 52004);
+        check("le remplissage repart (plein chemin) et achève",
+                editor.awaitBackgroundFill(120_000L)
+                        && editor.getSyntaxDocument().lexedLineCount() == 52004);
+        check("le chargement n'est pas annulable (l'histoire repart vide)",
+                !editor.getUndoStack().canUndo());
     }
 
     /**

@@ -43,6 +43,13 @@ public final class BackgroundFill {
         executor = Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(runnable, "pigma-fill");
             thread.setDaemon(true);
+            // la priorité minimale : le relevé 15 a payé une trame de
+            // 762 ms PENDANT un remplissage de 742 — le fond tenait le
+            // processeur au nez du fil d'interface. Le fond est un
+            // travail invisible (la couleur est déjà là, la fenêtre se
+            // paie au premier dessin) : qu'il ne prenne son tour que
+            // quand l'interface respire
+            thread.setPriority(Thread.MIN_PRIORITY);
             return thread;
         });
     }

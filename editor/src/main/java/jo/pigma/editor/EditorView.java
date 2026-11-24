@@ -97,6 +97,7 @@ public final class EditorView extends View {
     private final float caretWidth;
 
     private SyntaxDocument syntax;
+    private LanguageSyntax language;
     private SyntaxTheme theme = EditorThemes.LIGHT;
     private int themeBackground = EditorThemes.LIGHT_BACKGROUND;
 
@@ -613,6 +614,19 @@ public final class EditorView extends View {
      * @param text     texte de démonstration, jamais {@code null}
      */
     public void setLanguage(LanguageSyntax language, String text) {
+        // le même texte au même langage : le document ouvert EST déjà
+        // exact — le re-ouvrir ne doit ni relancer le fond ni recuire
+        // les plans. Le relevé 15 l'impose : sept réouvertures du même
+        // texte hors normes y ont relancé le lexage à chaque fois
+        // (436-1101 ms de fond, ~50 Mo de jetons à recycler par passe)
+        // — la réouverture ne porte plus que l'état de la vue
+        if (syntax != null && language == this.language
+                && text.length() == buffer.length()
+                && text.contentEquals(buffer)) {
+            reopenSameDocument();
+            return;
+        }
+        this.language = language;
         // le fil de fond s'arrête avant le détachement : sa tranche en
         // cours finit sur l'ancien document, le nouveau partira sien
         backgroundFill.stop();
@@ -650,6 +664,10 @@ public final class EditorView extends View {
         try (TextTransaction transaction = undoStack.newTransaction()) {
             transaction.replace(0, buffer.length(), text);
         }
+        // le chargement n'est pas une édition à défaire : l'histoire
+        // repart vide (les unités de l'ancien texte y désigneraient
+        // des décalages sans sens dans le nouveau)
+        undoStack.clear();
         syntax = SyntaxDocument.open(buffer, language);
         structure = StructureDocument.open(buffer, syntax);
         semantic = SemanticDocument.open(buffer, syntax, structure,
@@ -671,6 +689,30 @@ public final class EditorView extends View {
         // la salve du fond attend la fin de la trame d'ouverture (le
         // ensureFill de onDraw la relance) : le premier dessin du gros
         // fichier ne la paie plus
+        invalidate();
+    }
+
+    /**
+     * La réouverture du même document : le lexage, l'analyse et les
+     * plans cuits restent (le texte n'a pas bougé) — la sélection, la
+     * recherche, la popup, les plis, l'historique à défaire et le
+     * défilement repartent, comme à toute ouverture. Le fond, s'il
+     * court encore, continue : il remplit déjà ce document.
+     */
+    private void reopenSameDocument() {
+        selectionAnchor = -1;
+        selectionDragBound = 0;
+        searchQuery = null;
+        searchMatches = new int[0];
+        searchCurrent = -1;
+        infoPopupText = null;
+        undoStack.clear();
+        folded.clear();
+        rebuildFoldLayout();
+        resetFrameStats();
+        scrollY = 0.0f;
+        clampCaret();
+        ensureCaretVisible();
         invalidate();
     }
 
