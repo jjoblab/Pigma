@@ -16,31 +16,29 @@ import jo.pigma.core.TextBuffer;
 import jo.pigma.core.TextListener;
 import jo.pigma.core.TextTransaction;
 import jo.pigma.core.UndoStack;
+import jo.pigma.syntax.LanguageSyntax;
+import jo.pigma.syntax.Languages;
+import jo.pigma.syntax.SyntaxDocument;
+import jo.pigma.syntax.SyntaxTheme;
 
 /**
- * Vue d'édition minimale : le texte affiché est le tampon du cœur, chaque
- * retour de l'IME est une transaction (une unité d'annulation), le
- * curseur se place au toucher.
+ * Vue d'édition minimale : le texte affiché est le tampon du cœur,
+ * coloré par le moteur de syntaxe (jetons ligne par ligne, une
+ * couleur par portée, thème résolu au dessin), chaque retour de
+ * l'IME est une transaction (une unité d'annulation), le curseur se
+ * place au toucher.
  *
- * <p>Le rendu est volontairement rudimentaire : police à chasse fixe, une
- * ligne visuelle par ligne du tampon, curseur rectangulaire, soulignement
- * de la zone de composition. Le défilement, la sélection et la gouttière
- * viendront avec la vue complète de la bibliothèque.</p>
+ * <p>Le rendu reste volontairement rudimentaire : police à chasse
+ * fixe, une ligne visuelle par ligne du tampon, curseur rectangulaire,
+ * soulignement de la zone de composition. Changer de thème ne
+ * retokenise rien : la résolution des couleurs se fait au dessin. Le
+ * défilement, la sélection et la gouttière viendront avec la vue
+ * complète de la bibliothèque.</p>
  */
 public final class EditorView extends View {
 
-    private static final String INITIAL_TEXT = """
-            package exemple;
+    private static final String INITIAL_TEXT = DemoTexts.JAVA;
 
-            public final class Demo {
-                // Saisie, annulation, rétablissement : le minimum vital.
-                static int somme(int a, int b) {
-                    return a + b;
-                }
-            }
-            """;
-
-    private static final int TEXT_COLOR = 0xFF1B1B1F;
     private static final int CARET_COLOR = 0xFF2962FF;
     private static final int COMPOSE_COLOR = 0xFF7A8199;
 
@@ -53,6 +51,10 @@ public final class EditorView extends View {
     private final float charWidth;
     private final float lineHeight;
     private final float caretWidth;
+
+    private SyntaxDocument syntax;
+    private SyntaxTheme theme = SampleThemes.LIGHT;
+    private int themeBackground = SampleThemes.LIGHT_BACKGROUND;
 
     private int caretOffset;
     private int composingStart = -1;
@@ -71,8 +73,8 @@ public final class EditorView extends View {
         super(context);
         buffer = TextBuffer.create(INITIAL_TEXT);
         undoStack = new UndoStack(buffer);
+        syntax = SyntaxDocument.open(buffer, Languages.JAVA);
         textPaint.setTypeface(Typeface.MONOSPACE);
-        textPaint.setColor(TEXT_COLOR);
         textPaint.setTextSize(14.0f * getResources().getDisplayMetrics().scaledDensity);
         fontMetrics = textPaint.getFontMetrics();
         charWidth = textPaint.measureText("M");
@@ -98,9 +100,49 @@ public final class EditorView extends View {
     }
 
     /**
+     * Document de coloration de la vue : le panneau de diagnostic y
+     * lit ses mesures.
+     *
+     * @return le moteur de coloration, jamais {@code null}
+     */
+    public SyntaxDocument getSyntaxDocument() {
+        return syntax;
+    }
+
+    /**
+     * Change de langage : le texte est remplacé (une transaction, donc
+     * annulable) et un nouveau document de coloration s'ouvre.
+     *
+     * @param language descripteur du langage, jamais {@code null}
+     * @param text     texte de démonstration, jamais {@code null}
+     */
+    public void setLanguage(LanguageSyntax language, String text) {
+        syntax.detach();
+        try (TextTransaction transaction = undoStack.newTransaction()) {
+            transaction.replace(0, buffer.length(), text);
+        }
+        syntax = SyntaxDocument.open(buffer, language);
+        clampCaret();
+        invalidate();
+    }
+
+    /**
+     * Change de thème à chaud : aucune retokenisation, les jetons
+     * portent des portées, la couleur se résout au dessin.
+     *
+     * @param newTheme     thème résolu, jamais {@code null}
+     * @param newBackground couleur ARGB du fond
+     */
+    public void applyTheme(SyntaxTheme newTheme, int newBackground) {
+        theme = newTheme;
+        themeBackground = newBackground;
+        invalidate();
+    }
+
+    /**
      * Pile d'annulation de la vue : les boutons de l'hôte l'appellent.
      *
-     * @return la pile d'annulation, jamais {@code null}
+     * @return la pile, jamais {@code null}
      */
     public UndoStack getUndoStack() {
         return undoStack;
@@ -141,18 +183,39 @@ public final class EditorView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
+        canvas.drawColor(themeBackground);
+        textPaint.setColor(theme.defaultColor());
         for (int line = 0; line < buffer.getLineCount(); line++) {
             int start = buffer.getLineStart(line);
             int end = buffer.getLineEnd(line);
             float baseline = getPaddingTop() - fontMetrics.top + line * lineHeight;
             if (end > start) {
-                canvas.drawText(buffer.getText(start, end), getPaddingLeft(), baseline, textPaint);
+                drawTokens(canvas, line, start, baseline);
             }
             if (composingStart >= 0) {
                 drawComposeUnderline(canvas, line, start, end, baseline);
             }
         }
         drawCaret(canvas);
+    }
+
+    /**
+     * Dessine la ligne jeton par jeton : la couleur se résout au
+     * dessin depuis la portée (le thème peut changer sans retokeniser).
+     */
+    private void drawTokens(Canvas canvas, int line, int start, float baseline) {
+        SyntaxDocument.Token[] tokens = syntax.lineTokens(line).tokens();
+        float left = getPaddingLeft();
+        for (SyntaxDocument.Token token : tokens) {
+            if (token.end() <= token.start()) {
+                continue;
+            }
+            textPaint.setColor(token.scope() == null
+                    ? theme.defaultColor() : theme.colorOf(token.scope()));
+            canvas.drawText(
+                    buffer.getText(start + token.start(), start + token.end()),
+                    left + token.start() * charWidth, baseline, textPaint);
+        }
     }
 
     // ------------------------------------------------------------ interne
