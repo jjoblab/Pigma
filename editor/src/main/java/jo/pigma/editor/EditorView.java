@@ -1033,6 +1033,38 @@ public final class EditorView extends View {
     }
 
     /**
+     * Remplace la popup d'info par une réponse TARDIVE — le survol
+     * asynchrone d'un serveur lent : la question a montré la popup
+     * locale (ou rien), la réponse du serveur y revient à son arrivée.
+     * Le remplacement ne vaut qu'à la MÊME position : une popup
+     * bougée ou rangée n'est pas évincée par une réponse périmée.
+     *
+     * @param text   la réponse tardive
+     * @param line   la ligne d'ancrage de la question
+     * @param column la colonne d'ancrage de la question
+     * @return vrai si la popup vivait encore à cette position
+     */
+    public boolean replaceInfoPopup(String text, int line, int column) {
+        if (infoPopupText == null || infoPopupLine != line
+                || infoPopupColumn != column) {
+            return false;
+        }
+        infoPopupText = text == null || text.isEmpty() ? infoPopupText : text;
+        invalidate();
+        return true;
+    }
+
+    /** La ligne d'ancrage de la popup (-1 : aucune). */
+    public int infoPopupLine() {
+        return infoPopupText == null ? -1 : infoPopupLine;
+    }
+
+    /** La colonne d'ancrage de la popup (-1 : aucune). */
+    public int infoPopupColumn() {
+        return infoPopupText == null ? -1 : infoPopupColumn;
+    }
+
+    /**
      * Le fournisseur d'info de la popup ancrée : l'hôte y branche une
      * source extérieure (un serveur de langage par exemple) — la vue
      * reste au-dessus du protocole, elle ne connaît que la question

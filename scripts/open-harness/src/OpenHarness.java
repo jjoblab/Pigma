@@ -86,6 +86,7 @@ public final class OpenHarness {
         imeTyping();
         keyEvents();
         enterDeleteStress("Kotlin", 28);
+        propagatedStrike();
         bigFileAndStress();
         selectAllAndCopyText();
         doubleTapWord();
@@ -563,6 +564,51 @@ public final class OpenHarness {
         frame();
     }
 
+    /**
+     * La frappe propagée : supprimer la fermeture d'un commentaire
+     * relit la cascade jusqu'à la nouvelle fermeture — la rangée « à
+     * relever » du tableau de mesure vit enfin ses nombres.
+     */
+    private static void propagatedStrike() {
+        begin("frappe propagée : la fermeture du bloc déportée relit la cascade");
+        openLanguage("Java", 10_000L);
+        TextBuffer buffer = editor.getBuffer();
+        String text = buffer.toString();
+        // la fermeture du commentaire de documentation : « */ »
+        int close = text.indexOf("*/");
+        int closeLine = buffer.lineOfOffset(close);
+        editor.caretTo(close + 2);
+        frame();
+        // la première suppression (le « / » de la fermeture) ouvre le
+        // commentaire : la cascade relit jusqu'à la fin du document —
+        // c'est la frappe propagée, la rangée « à relever » du tableau
+        pressKey(KeyEvent.KEYCODE_DEL);
+        frame();
+        jo.pigma.syntax.SyntaxDocument syntax = editor.getSyntaxDocument();
+        int cascadeLines = syntax.lastRelexedLines();
+        double cascadeMillis = syntax.lastEditNanos() / 1_000_000.0;
+        check("la frappe propagée relit au-delà de la ligne",
+                cascadeLines > 1);
+        // la seconde suppression (le « * ») ne change pas l'état : le
+        // commentaire reste ouvert — la paresse tient DANS le bloc, une
+        // seule ligne relue
+        pressKey(KeyEvent.KEYCODE_DEL);
+        frame();
+        check("les deux caractères de la fermeture sont partis",
+                buffer.length() == text.length() - 2);
+        check("la frappe suivante dans le bloc ouvert relit une ligne",
+                syntax.lastRelexedLines() == 1);
+        detail("frappe propagée : " + cascadeMillis + " ms, " + cascadeLines
+                + " ligne(s) relue(s) — la cascade court de la ligne "
+                + (closeLine + 1) + " à la fin du document ; la frappe "
+                + "ordinaire dans le bloc : " + syntax.lastEditNanos() / 1_000_000.0
+                + " ms, " + syntax.lastRelexedLines() + " ligne(s)");
+        click("Annuler");
+        click("Annuler");
+        check("la double annulation rend la fermeture",
+                buffer.toString().equals(text));
+    }
+
     /** La feuille de recherche : chercher, naviguer, remplacer, tout. */
     private static void searchAndReplace() {
         begin("recherche : compter, naviguer, remplacer, tout remplacer");
@@ -901,6 +947,18 @@ public final class OpenHarness {
         check("le survol du serveur prime dans la popup",
                 hover != null && hover.contains("classe"));
         detail("survol : " + hover);
+        // le survol asynchrone : une réponse tardive remplace la popup
+        // À SA POSITION — une position périmée ne l'évince pas (la
+        // popup a bougé, ou s'est rangée)
+        int popupLine = editor.infoPopupLine();
+        int popupColumn = editor.infoPopupColumn();
+        check("le remplacement hors position s'ignore",
+                !editor.replaceInfoPopup("périmé", popupLine + 1, popupColumn));
+        check("la réponse tardive remplace la popup à sa position",
+                editor.replaceInfoPopup("réponse tardive du serveur",
+                        popupLine, popupColumn));
+        check("la popup porte la réponse tardive",
+                "réponse tardive du serveur".equals(editor.infoPopupText()));
         // la complétion du serveur au bandeau : « gr » y porte les
         // mots du document — l'index local n'y indexe pas « graine »
         // (paramètre, pas déclaration), le serveur si : la réponse

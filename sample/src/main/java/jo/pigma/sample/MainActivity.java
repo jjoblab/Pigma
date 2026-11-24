@@ -710,20 +710,32 @@ public final class MainActivity extends Activity {
     private void attachProviders() {
         final String uri = lspUri;
         // le survol du serveur prime : la réponse attend au plus
-        // 200 ms — le serveur de démonstration répond dans le
-        // processus, instantanément ; le serveur réel demandera la
-        // voie asynchrone (la réponse remplace la popup quand elle
-        // arrive — le chantier suivant)
+        // 200 ms ; au-delà, la popup locale tient la place et la
+        // réponse lente la remplacera à son arrivée (le survol
+        // asynchrone — la voie du serveur réel)
         editorView.setInfoProvider((line, column, word) -> {
             if (lspSession == null) {
                 return null;
             }
+            java.util.concurrent.CompletableFuture<String> hover =
+                    lspSession.hover(uri, new LspPosition(line, column));
             try {
-                return lspSession.hover(uri, new LspPosition(line, column))
-                        .get(200, java.util.concurrent.TimeUnit.MILLISECONDS);
+                return hover.get(200, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (java.util.concurrent.TimeoutException late) {
+                // le survol asynchrone : la réponse lente gardera sa
+                // voie — elle remplacera la popup à son arrivée, si la
+                // question vit toujours à la même position (le serveur
+                // réel y met son temps, la démo n'y passe jamais)
+                hover.whenComplete((answer, failure) -> {
+                    if (answer != null && !answer.isEmpty()) {
+                        editorView.post(() -> editorView
+                                .replaceInfoPopup(answer, line, column));
+                    }
+                });
             } catch (Exception noAnswer) {
                 return null;
             }
+            return null;
         });
         // la complétion du serveur au bandeau : la vue tire à chaque
         // trame — le fournisseur cache par préfixe (le même préfixe y
