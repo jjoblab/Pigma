@@ -528,7 +528,8 @@ public final class MainActivity extends Activity {
         SyntaxDocument syntax = editorView.getSyntaxDocument();
         String row = String.format(Locale.ROOT,
                 "| %s | %.1f ms | %.2f ms (%d l.) | %.2f ms (%d l. relues) | "
-                        + "%d/%d | %d | trame %.2f ms (moteur %.2f, pire %.2f) |",
+                        + "%d/%d | %d | trame %.2f ms (moteur %.2f, pire %.2f"
+                        + " ; à la pire : moteur %.2f, Δ mémoire %+.1f Mo) |",
                 event,
                 syntax.firstLexNanos() / 1_000_000.0,
                 syntax.lastRequestNanos() / 1_000_000.0,
@@ -540,7 +541,9 @@ public final class MainActivity extends Activity {
                 syntax.tokenCount(),
                 editorView.lastFrameNanos() / 1_000_000.0,
                 editorView.lastFrameEngineNanos() / 1_000_000.0,
-                editorView.worstFrameNanos() / 1_000_000.0);
+                editorView.worstFrameNanos() / 1_000_000.0,
+                editorView.worstFrameEngineNanos() / 1_000_000.0,
+                editorView.worstFrameMemoryDelta() / 1_048_576.0);
         if (scenarioLog.size() >= LOG_LIMIT) {
             scenarioLog.remove(0);
         }
@@ -601,6 +604,7 @@ public final class MainActivity extends Activity {
                 "coloration : première %.1f ms · demande %.2f ms (%d l.) "
                         + "· dernière frappe %.2f ms (%d ligne(s) relue(s)) · %d/%d lignes lexées "
                         + "· %d jetons · trame %.2f ms (pire %.2f, moteur %.2f)"
+                        + " · à la pire : moteur %.2f, Δ mémoire %+.1f Mo"
                         + " · fond %d ms (%d tr.)"
                         + " · structure : %d/%d lignes, profondeur %d, %d rompu(s)",
                 syntax.firstLexNanos() / 1_000_000.0,
@@ -614,6 +618,8 @@ public final class MainActivity extends Activity {
                 editorView.lastFrameNanos() / 1_000_000.0,
                 editorView.worstFrameNanos() / 1_000_000.0,
                 editorView.lastFrameEngineNanos() / 1_000_000.0,
+                editorView.worstFrameEngineNanos() / 1_000_000.0,
+                editorView.worstFrameMemoryDelta() / 1_048_576.0,
                 editorView.backgroundFillNanos() / 1_000_000L,
                 editorView.backgroundFillSlices(),
                 structure.analyzedLineCount(),

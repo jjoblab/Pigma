@@ -339,6 +339,14 @@ moteur n'y est pour rien (0,01 ms à la dernière) ; le geste y
 concatène le traînement de poignée et la loupe qui l'accompagne,
 sur un document de 624 002 jetons : le chantier 29 ouvre le
 diagnostic (reproduction au harnais, lecture du chemin de trame).
+**Le chantier 29 a livré l'instrument et l'exonération partielle :
+le harnais rejoue le geste complet sur le hors normes (pire du
+traînement 1,86 ms sur trente trames, moyenne 0,13 — le chemin
+algorithmique est propre), et l'odomètre porte désormais
+l'attribution de la pire trame (sa part moteur et la mémoire rendue
+pendant la trame) — la colonne « trame » du relevé 15 dira si le
+coupable est le ramasse-miettes (un Δ mémoire positif), le moteur,
+ou la rastérisation (ni l'un ni l'autre).**
 La feuille de recherche, le bouton LSP et le modèle d'appareil
 restent non portés une quatrième fois.
 

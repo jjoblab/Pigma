@@ -71,6 +71,9 @@ public final class Canvas {
     private int roundRectCount;
     private int mark = 0;
 
+    /** Le crochet du harnais : couru au premier texte dessiné, puis retiré. */
+    private Runnable drawHook;
+
     /** Peint la couleur de fond : se compte. */
     public void drawColor(int color) {
         colorCount++;
@@ -140,7 +143,23 @@ public final class Canvas {
      * @param paint pinceau
      */
     public void drawText(String text, float x, float y, Paint paint) {
+        if (drawHook != null) {
+            Runnable hook = drawHook;
+            drawHook = null;
+            hook.run();
+        }
         textOps.add(new TextOp(text, scaleX * x + translateX, scaleY * y + translateY, scaleX));
+    }
+
+    /**
+     * Pose un crochet qui court au premier texte dessiné (il se retire
+     * seul) — le harnais y provoque un ramasse-miettes AU MILIEU d'une
+     * trame, pour vérifier que l'odomètre l'attribue à la pire.
+     *
+     * @param hook la suite à courir, une fois
+     */
+    public void harnessDrawHook(Runnable hook) {
+        drawHook = hook;
     }
 
     /**

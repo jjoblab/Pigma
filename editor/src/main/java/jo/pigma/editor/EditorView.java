@@ -282,6 +282,16 @@ public final class EditorView extends View {
     /** Pire trame depuis le dernier scénario (l'odomètre du budget). */
     private long worstFrameNanos;
 
+    /** Part moteur de la pire trame (l'odomètre nomme le coupable). */
+    private long worstFrameEngineNanos;
+
+    /**
+     * Mémoire rendue pendant la pire trame (octets, positif si un
+     * ramasse-miettes y a couru) : la pause du collecteur se lit dans
+     * la trame qu'elle a allongée.
+     */
+    private long worstFrameMemoryDelta;
+
     private long frameCount;
 
     private final TextListener modelListener = new TextListener() {
@@ -505,6 +515,27 @@ public final class EditorView extends View {
     }
 
     /**
+     * Part moteur de la pire trame : un moteur haut nomme le moteur
+     * coupable, un moteur bas renvoie vers le rendu ou le collecteur.
+     *
+     * @return la durée moteur en nanosecondes, 0 si la pire n'a pas couru
+     */
+    public long worstFrameEngineNanos() {
+        return worstFrameEngineNanos;
+    }
+
+    /**
+     * Mémoire rendue pendant la pire trame (octets) : un bond positif
+     * signe le passage du ramasse-miettes dans la trame allongée, un
+     * creux négatif n'est que l'allocation du dessin.
+     *
+     * @return le delta en octets, 0 si la pire n'a pas couru
+     */
+    public long worstFrameMemoryDelta() {
+        return worstFrameMemoryDelta;
+    }
+
+    /**
      * Durée de la dernière passe du fil de fond (ouverture à remplissage
      * complet) : la montre du fond.
      *
@@ -525,10 +556,13 @@ public final class EditorView extends View {
 
     /**
      * Remet l'odomètre à zéro : la pire trame repart au changement de
-     * scénario (la vue le fait d'elle-même à chaque langage).
+     * scénario (la vue le fait d'elle-même à chaque langage) — son
+     * attribution (moteur, mémoire) repart avec elle.
      */
     public void resetFrameStats() {
         worstFrameNanos = 0L;
+        worstFrameEngineNanos = 0L;
+        worstFrameMemoryDelta = 0L;
     }
 
     /**
@@ -1267,6 +1301,7 @@ public final class EditorView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         long frameBegin = System.nanoTime();
+        long memoryAtFrameBegin = Runtime.getRuntime().freeMemory();
         lastFrameEngineNanos = 0L;
         super.onDraw(canvas);
         canvas.drawColor(themeBackground);
@@ -1311,7 +1346,14 @@ public final class EditorView extends View {
         // la fenêtre visible est payée : le reste remplit au fil de fond
         ensureFill();
         lastFrameNanos = System.nanoTime() - frameBegin;
-        worstFrameNanos = Math.max(worstFrameNanos, lastFrameNanos);
+        if (lastFrameNanos > worstFrameNanos) {
+            worstFrameNanos = lastFrameNanos;
+            worstFrameEngineNanos = lastFrameEngineNanos;
+            // la mémoire rendue pendant la trame : un ramasse-miettes
+            // qui y court laisse sa signature (un bond de mémoire libre)
+            worstFrameMemoryDelta =
+                    Runtime.getRuntime().freeMemory() - memoryAtFrameBegin;
+        }
         frameCount++;
     }
 

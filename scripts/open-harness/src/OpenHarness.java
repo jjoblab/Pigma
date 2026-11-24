@@ -94,6 +94,7 @@ public final class OpenHarness {
         longPressDrag();
         searchAndReplace();
         hugeFile();
+        hugeFileCopyGesture();
         folds();
         semanticFusion();
         languageServer();
@@ -426,6 +427,90 @@ public final class OpenHarness {
                 + editor.backgroundFillNanos() / 1_000_000L + " ms");
     }
 
+    /**
+     * Le geste de copie complet sur le hors normes : le parcours du
+     * relevé — réouvertures alternées, thème sur le document plein,
+     * un caractère tapé au milieu, double-tap, traînement de poignée
+     * (la loupe vit dedans), trame par trame. Chaque trame du
+     * traînement se chronomètre : la reproduction cherche la trame
+     * qui dépasse le budget.
+     */
+    private static void hugeFileCopyGesture() {
+        begin("hors normes : le geste de copie complet, trame par trame");
+        long worstOpen = 0L;
+        openLanguage("50k l.", 120_000L);
+        worstOpen = Math.max(worstOpen, editor.lastFrameNanos());
+        for (int round = 0; round < 2; round++) {
+            openLanguage("Gros", 30_000L);
+            worstOpen = Math.max(worstOpen, editor.lastFrameNanos());
+            openLanguage("50k l.", 120_000L);
+            worstOpen = Math.max(worstOpen, editor.lastFrameNanos());
+        }
+        click("Sombre");
+        frame();
+        long worstTheme = editor.lastFrameNanos();
+        click("Clair");
+        frame();
+        worstTheme = Math.max(worstTheme, editor.lastFrameNanos());
+        check("le thème sur le document plein tient (JVM)",
+                worstTheme < 16_000_000L);
+        // un caractère tapé au milieu du document (la frappe du relevé)
+        TextBuffer buffer = editor.getBuffer();
+        editor.caretTo(buffer.length() / 2);
+        frame();
+        connection.commitText("z", 1);
+        frame();
+        long strikeFrame = editor.lastFrameNanos();
+        check("la frappe relit une ligne sur 52 004",
+                editor.getSyntaxDocument().lastRelexedLines() == 1);
+        // le double-tap sème la sélection sur le mot visible
+        doubleTapOfWord("graine");
+        frame();
+        long worstTap = editor.lastFrameNanos();
+        // le traînement de poignée : trente déplacements, une trame chacun
+        float[] spot = spotOfWord("graine");
+        float lineMidY = spot[1] + LINE_HEIGHT / 2.0f;
+        int column = (editor.selectionEnd()
+                - buffer.getLineStart(buffer.lineOfOffset(editor.selectionEnd())));
+        float handleX = editor.getPaddingLeft() + column * editor.charWidth();
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_DOWN, handleX, spot[1] + 4.0f));
+        long worstDrag = 0L;
+        long totalDrag = 0L;
+        int steps = 30;
+        for (int step = 1; step <= steps; step++) {
+            float x = editor.getPaddingLeft() + (column + step) * editor.charWidth();
+            editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_MOVE, x, lineMidY));
+            frame();
+            long nanos = editor.lastFrameNanos();
+            worstDrag = Math.max(worstDrag, nanos);
+            totalDrag += nanos;
+        }
+        // la vérification de l'attribution : un ramasse-miettes forcé AU
+        // MILIEU d'une trame de traînement — l'odomètre doit le nommer
+        canvas.harnessDrawHook(System::gc);
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_MOVE,
+                editor.getPaddingLeft() + (column + steps) * editor.charWidth(), lineMidY));
+        frame();
+        check("l'odomètre attribue la mémoire rendue à la pire trame",
+                editor.worstFrameMemoryDelta() > 1_048_576L);
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_UP, editor.getPaddingLeft()
+                        + (column + steps) * editor.charWidth(), lineMidY));
+        frame();
+        worstDrag = Math.max(worstDrag, editor.lastFrameNanos());
+        detail("trame la pire : ouverture " + worstOpen / 1_000_000.0
+                + " ms, thème " + worstTheme / 1_000_000.0
+                + " ms, frappe " + strikeFrame / 1_000_000.0
+                + " ms, double-tap " + worstTap / 1_000_000.0
+                + " ms, traînement (pire de " + steps + ") " + worstDrag / 1_000_000.0
+                + " ms, moyenne " + totalDrag / 1_000_000.0 / steps + " ms"
+                + " ; à la pire : moteur " + editor.worstFrameEngineNanos() / 1_000_000.0
+                + " ms, Δ mémoire " + editor.worstFrameMemoryDelta() / 1_048_576.0 + " Mo");
+        check("aucune trame du traînement ne dépasse le budget (JVM)",
+                worstDrag < 16_000_000L);
+    }
+
     /** Les plis : la gouttière retourne le pli, la ligne se cache. */
     private static void folds() {
         begin("plis : la gouttière cache puis rend");
@@ -492,11 +577,13 @@ public final class OpenHarness {
         check("l'en-tête du relevé s'y trouve",
                 measures.startsWith("Relevés appareil Pigma"));
         check("la ligne de titres s'y trouve", measures.contains("| événement |"));
-        check("la première coloration de la démo y est",
-                measures.contains("première coloration - Java (démo)"));
+        check("une première coloration y est (les plus anciennes tombent à 24 lignes)",
+                measures.contains("première coloration - "));
         check("la fin de remplissage y est", measures.contains("remplissage fini"));
         check("la bascule de thème y est", measures.contains("thème Sombre"));
         check("la copie y est", measures.contains("copie - "));
+        check("la pire du journal porte son attribution",
+                measures.contains("Δ mémoire"));
         System.out.println();
         System.out.println("--- journal du scénario (presse-papiers) ---");
         System.out.println(measures);
