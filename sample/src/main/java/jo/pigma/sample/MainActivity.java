@@ -29,11 +29,12 @@ import jo.pigma.syntax.SyntaxTheme;
  * Écran principal : l'éditeur coloré au-dessus du modèle de texte du
  * cœur et du moteur de coloration.
  *
- * <p>Deux rangées de sélecteurs : le langage (Java, XML, JSON générés,
- * SQL par la famille générique, plus le gros fichier Java de la fenêtre
- * paresseuse — le texte de démonstration change avec) et le thème
- * (clair, sombre — changer ne retokenise rien, la mesure de première
- * coloration ne bouge pas). Le panneau de diagnostic suit les mesures
+ * <p>Deux rangées de sélecteurs : le langage (Java, XML, JSON et
+ * Kotlin générés, SQL par la famille générique — le texte de
+ * démonstration change avec) puis le gros fichier Java de la fenêtre
+ * paresseuse et le thème (clair, sombre — changer ne retokenise rien,
+ * la mesure de première coloration ne bouge pas). Le panneau de
+ * diagnostic suit les mesures
  * du moteur : première coloration (la fenêtre visible, pas le document
  * entier), coût de la dernière demande (un saut lointain s'y lit),
  * coût de la dernière frappe, lignes relues, lignes lexées sur le
@@ -136,9 +137,10 @@ public final class MainActivity extends Activity {
                 languageButton("Java", Languages.JAVA, DemoTexts.JAVA),
                 languageButton("XML", Languages.XML, DemoTexts.XML),
                 languageButton("JSON", Languages.JSON, DemoTexts.JSON),
-                languageButton("SQL", Languages.SQL, DemoTexts.SQL),
-                languageButton("Gros", Languages.JAVA, DemoTexts.bigFile())));
+                languageButton("Kotlin", Languages.KOTLIN, DemoTexts.KOTLIN),
+                languageButton("SQL", Languages.SQL, DemoTexts.SQL)));
         root.addView(row(margin,
+                languageButton("Gros", Languages.JAVA, DemoTexts.bigFile()),
                 themeButton("Clair", SampleThemes.LIGHT, SampleThemes.LIGHT_BACKGROUND),
                 themeButton("Sombre", SampleThemes.DARK, SampleThemes.DARK_BACKGROUND),
                 undoButton, redoButton));

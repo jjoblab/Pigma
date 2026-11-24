@@ -77,6 +77,42 @@ public final class DemoTexts {
             """;
 
     /**
+     * Démonstration Kotlin : gabarits de chaîne (le traversant
+     * multi-lignes compris, pile de contextes à l'appui), chaîne brute,
+     * commentaire imbriqué, formes de nombres.
+     */
+    public static final String KOTLIN = """
+            package exemple
+
+            data class Lot(val graine: Int, val taille: Int = 1) {
+                /* imbriqué : /* interne */ la suite */
+                val poids = if (graine > 0x1F_FF) graine * 0.125e-3 else 0.5f
+
+                fun total(marge: Double = 0.0) = (poids - marge).coerceAtLeast(0.0)
+
+                fun template(n: Int): String {
+                    val simple = "graine $graine sur $taille"
+                    val imbrique = "total ${total()} pour ${"n = $n"} chars"
+                    return "$simple ; $imbrique"
+                }
+
+                fun brut(n: Int): String = \"\"\"
+                    Lot(graine=$graine) {
+                        template = ${template(n).length} chars
+                        ${if (n in 1..9) "petit" else "grand"}
+                    }
+                \"\"\".trimIndent()
+            }
+
+            fun main() {
+                val lot = Lot(graine = 12)
+                println(lot.template(3))
+                println(lot.brut(3))
+            }
+            """;
+
+
+    /**
      * Gros fichier Java de démonstration, généré : environ deux mille
      * lignes, une ligne monstre au milieu (hors plafond moteur de
      * coloration, dessin coupé) — la fenêtre visible seule se paie à
