@@ -130,6 +130,63 @@ public class LazyWindowTest {
         fresh.detach();
     }
 
+    /**
+     * Remplacer tout le tampon reste paresseux : seule la zone
+     * autrefois calculée se relit (une ligne ici), le reste attend la
+     * demande — et les jetons demandés égalent ceux d'un document neuf.
+     *
+     * @throws IOException si le corpus ne se lit pas
+     */
+    @Test
+    public void fullReplaceStaysLazy() throws IOException {
+        String text = corpus();
+        TextBuffer buffer = TextBuffer.create(text);
+        UndoStack undo = new UndoStack(buffer);
+        SyntaxDocument document = SyntaxDocument.open(buffer, Languages.JAVA);
+        document.lineTokens(5);
+        edit(undo, 0, buffer.length(), text.substring(text.indexOf('\n') + 1));
+        assertEquals(1, document.lastRelexedLines());
+        assertTrue("le remplacement complet doit rester paresseux, pas "
+                + document.lexedLineCount() + " lignes",
+                document.lexedLineCount() <= 2);
+        SyntaxDocument fresh = SyntaxDocument.open(
+                TextBuffer.create(buffer.toString()), Languages.JAVA);
+        for (int line : new int[] {0, 1, 40, 400, 1_700}) {
+            assertEquals("ligne " + line,
+                    tokenTexts(document.lineTokens(line).tokens()),
+                    tokenTexts(fresh.lineTokens(line).tokens()));
+        }
+        document.detach();
+        fresh.detach();
+    }
+
+    /**
+     * Un remplacement qui chevauche la fin du préfixe se prolonge
+     * jusqu'à la queue décalée et la rejoint : les jetons restent
+     * justes sans repartir de zéro.
+     *
+     * @throws IOException si le corpus ne se lit pas
+     */
+    @Test
+    public void replaceSpanningPrefixEndStaysCorrect() throws IOException {
+        String text = corpus();
+        TextBuffer buffer = TextBuffer.create(text);
+        UndoStack undo = new UndoStack(buffer);
+        SyntaxDocument document = SyntaxDocument.open(buffer, Languages.JAVA);
+        document.lineTokens(5);
+        int start = buffer.getLineStart(5);
+        edit(undo, start, start + 40, "// ouverture\n/* traversante\nint x = 0;\n*/\n");
+        SyntaxDocument fresh = SyntaxDocument.open(
+                TextBuffer.create(buffer.toString()), Languages.JAVA);
+        for (int line : new int[] {0, 4, 5, 6, 7, 8, 9, 10, 30}) {
+            assertEquals("ligne " + line,
+                    tokenTexts(document.lineTokens(line).tokens()),
+                    tokenTexts(fresh.lineTokens(line).tokens()));
+        }
+        document.detach();
+        fresh.detach();
+    }
+
     private static void edit(UndoStack undo, int start, int end, String replacement) {
         try (var transaction = undo.newTransaction()) {
             transaction.replace(start, end, replacement);

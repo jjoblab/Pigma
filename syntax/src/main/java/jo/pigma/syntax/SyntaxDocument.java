@@ -332,19 +332,29 @@ public final class SyntaxDocument implements TextListener {
         int removeCount = removedBreaks + 1;
         int shiftedBoundary = shiftBoundary(lexedUpto, first, removeCount, insertCount);
         restructure(first, removeCount, insertCount, oldCount);
-        int mustLex = first + insertCount;
+        // la zone remplacée ne se lexe que jusqu'à la queue décalée (si
+        // l'ancien préfixe l'atteint) : au-delà, le contenu n'a jamais
+        // été calculé et reste à la demande — remplacer tout le tampon
+        // ne paie donc que la fenêtre
+        int mustLex = Math.min(first + insertCount, shiftedBoundary);
         int state = first == 0 ? 0 : lines[first - 1].endState();
         int relexed = 0;
         int lastLexed = first - 1;
         int stopLine = -1;
         boolean matched = false;
+        boolean planted = false;
         for (int i = first; i < lines.length; i++) {
             LineTokens old = i == first ? oldFirst : lines[i];
             if (old == null && i >= mustLex) {
-                // jamais calculé au-delà de la zone remplacée : un point
-                // de contrôle porte l'état, la suite se lira à la demande
+                // jamais calculé au-delà de la zone prouvable : un point
+                // de contrôle porte l'état, la queue décalée (que plus
+                // rien ne prouve) redevient à la demande
                 checkpoints.put(i, new Checkpoint(state, revision));
+                for (int j = i; j < lines.length; j++) {
+                    lines[j] = null;
+                }
                 stopLine = i;
+                planted = true;
                 break;
             }
             LineTokens fresh = lexLine(i, state, revision);
@@ -359,7 +369,11 @@ public final class SyntaxDocument implements TextListener {
             state = fresh.endState();
         }
         if (first <= shiftedBoundary) {
-            lexedUpto = Math.max(shiftedBoundary, lastLexed + 1);
+            // en cas de point de contrôle posé, la queue a été libérée :
+            // le préfixe s'arrête à la dernière ligne relue
+            lexedUpto = planted
+                    ? lastLexed + 1
+                    : Math.min(lines.length, Math.max(shiftedBoundary, lastLexed + 1));
         }
         if (matched) {
             // la chaîne d'états s'est rejointe : tous les points de
