@@ -90,8 +90,17 @@ public final class StructureDocument {
     /** Lignes analysées [0..analyzedUpto), au-delà : rien de prouvé. */
     private LineAnalysis[] lines = new LineAnalysis[0];
 
-    /** Portée de la marche d'appariement : au-delà, la paire est trop loin. */
-    private static final int MATCH_WALK_MAX_LINES = 4000;
+    /**
+     * Portée de la marche d'appariement : au-delà, la paire est trop
+     * loin. La borne protège la trame : la marche lit le texte de
+     * CHAQUE ligne traversée — la première exécution (un chemin jamais
+     * parcouru, interprété à froid sur l'appareil) a coûté une trame
+     * de 25 ms sur 1 780 lignes ; à 512, la première marche tient le
+     * budget et couvre les paires qui importent (un corps de méthode,
+     * un bloc) — la bande de portée reste pour l'étendue du bloc
+     * englobant.
+     */
+    private static final int MATCH_WALK_MAX_LINES = 512;
 
     private int analyzedUpto;
 

@@ -343,6 +343,34 @@ public class StructureDocumentTest {
     }
 
     /**
+     * La borne de la marche : une paire au-delà se déclare trop loin
+     * ({@code null}) — la marche lit le texte de chaque ligne
+     * traversée, la trame ne peut pas la payer sans limite. La même
+     * paire rapprochée (la fermante ramenée à portée) s'apparie.
+     */
+    @Test
+    public void pairBeyondWalkBoundIsTooFar() {
+        StringBuilder text = new StringBuilder("class Far {\n");
+        for (int i = 0; i < 700; i++) {
+            text.append("  int field").append(i).append(";\n");
+        }
+        text.append("}\n");
+        TextBuffer buffer = TextBuffer.create(text.toString());
+        SyntaxDocument syntax = SyntaxDocument.open(buffer, Languages.JAVA);
+        StructureDocument structure = StructureDocument.open(buffer, syntax);
+        // l'accolade ouvrante : sa partenaire vit à ~700 lignes, trop
+        // loin pour la marche
+        assertNull("paire au-delà de la borne : trop loin",
+                structure.pairAt(10));
+        // depuis la fermante, l'ouvrant vit tout aussi loin derrière
+        int closeOffset = buffer.getLineStart(buffer.getLineCount() - 1) + 1;
+        assertNull("paire en arrière au-delà de la borne : trop loin",
+                structure.pairAt(closeOffset));
+        structure.detach();
+        syntax.detach();
+    }
+
+    /**
      * La portée du curseur : le bloc le plus interne qui l'englobe —
      * la classe depuis le corps, la méthode depuis le sien, le parent
      * sur la ligne de l'ouvrant AVANT l'accolade, le bloc nouveau
