@@ -95,6 +95,7 @@ public final class OpenHarness {
         searchAndReplace();
         hugeFile();
         hugeFileCopyGesture();
+        replaceAllHugeFile();
         folds();
         semanticFusion();
         languageServer();
@@ -572,6 +573,45 @@ public final class OpenHarness {
                 + " ms, moyenne " + totalDrag / 1_000_000.0 / steps + " ms"
                 + " ; à la pire : moteur " + editor.worstFrameEngineNanos() / 1_000_000.0
                 + " ms, Δ mémoire " + editor.worstFrameMemoryDelta() / 1_048_576.0 + " Mo");
+    }
+
+    /** Le « tout remplacer » du relevé 16 : dix mille correspondances
+     * sur le hors normes gelaient l'application (ANR) — la table de
+     * lignes du tampon se copiait sur elle-même à chaque
+     * remplacement, et le panneau se rafraîchissait autant de fois. */
+    private static void replaceAllHugeFile() {
+        begin("hors normes : tout remplacer sans gel (l'ANR du relevé 16)");
+        openLanguage("50k l.", 120_000L);
+        String before = editor.getBuffer().toString();
+        int total = countOccurrences(before, "graine");
+        check("la démonstration hors normes porte plus de dix mille graines",
+                total > 10_000);
+        click("Rechercher");
+        android.widget.EditText query = findField("chercher…");
+        query.setText("graine");
+        View.harnessDrain(400L);
+        int matches = editor.searchMatchCount();
+        check("la recherche plafonne à dix mille correspondances",
+                matches == 10_000);
+        findField("remplacer par…").setText("GRAINE");
+        long startedAt = System.nanoTime();
+        click("Tout");
+        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L;
+        check("tout remplacer remplace exactement les correspondances portées",
+                countOccurrences(editor.getBuffer().toString(), "graine") == total - matches
+                        && countOccurrences(editor.getBuffer().toString(), "GRAINE") == matches);
+        check("tout remplacer tient la demi-seconde (l'ANR n'a plus de quoi naître)",
+                elapsedMs < 500L);
+        detail("tout remplacer : " + matches + " remplacements en " + elapsedMs + " ms");
+        long undoStartedAt = System.nanoTime();
+        click("Annuler");
+        long undoMs = (System.nanoTime() - undoStartedAt) / 1_000_000L;
+        check("l'annulation rend le texte intact",
+                editor.getBuffer().toString().equals(before));
+        check("l'annulation tient aussi la demi-seconde",
+                undoMs < 500L);
+        detail("annulation : " + undoMs + " ms");
+        click("Rechercher");
     }
 
     /** Les plis : la gouttière retourne le pli, la ligne se cache. */

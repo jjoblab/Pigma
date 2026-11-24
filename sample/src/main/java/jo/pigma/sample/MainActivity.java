@@ -112,11 +112,27 @@ public final class MainActivity extends Activity {
         @Override
         public void textChanged(TextBuffer buffer, int start, int removedLength,
                                 int insertedLength, int revision) {
-            updateStatus();
-            watchDiagnostics();
+            // un orage d'éditions (« tout remplacer » : dix mille
+            // remplacements d'un coup) ne doit pas payer dix mille
+            // rafraîchissements de panneau — chacun y lexait la
+            // fenêtre visible : le rafraîchissement se reprogramme,
+            // la file ne le porte qu'une fois après l'orage ; la
+            // frappe ordinaire ne voit pas la différence (il suit la
+            // trame)
+            editorView.removeCallbacks(statusSync);
+            editorView.post(statusSync);
             scheduleLspSync();
         }
     };
+
+    /** Le rafraîchissement coalescé du panneau (un par salve d'éditions). */
+    private final Runnable statusSync = this::runStatusSync;
+
+    /** Le panneau se rafraîchit : statut, diagnostics, veilleur. */
+    private void runStatusSync() {
+        updateStatus();
+        watchDiagnostics();
+    }
 
     /**
      * Le veilleur du panneau : tant que le fil de fond avance, il

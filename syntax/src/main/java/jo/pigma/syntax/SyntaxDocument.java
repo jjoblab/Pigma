@@ -645,6 +645,15 @@ public final class SyntaxDocument implements TextListener {
      */
     private void restructure(int first, int removeCount, int insertCount,
             int oldCount) {
+        // même nombre de lignes : les indices ne bougent pas — la
+        // recopie du tableau entier (52 004 entrées, un tableau neuf
+        // par édition) ne servirait à rien. Le « tout remplacer » du
+        // relevé 16 en a payé dix mille d'affilée : six secondes de
+        // gel au harnais, l'ANR et la fermeture force sur l'appareil ;
+        // la frappe ordinaire n'y paie plus le tableau non plus
+        if (removeCount == insertCount) {
+            return;
+        }
         int newCount = oldCount - removeCount + insertCount;
         LineTokens[] fresh = new LineTokens[newCount];
         System.arraycopy(lines, 0, fresh, 0, first);

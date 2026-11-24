@@ -413,13 +413,20 @@ public final class TextBuffer implements CharSequence {
         }
         int destination = from + newCount;
         int tailLength = lineCount - to;
-        if (destination < to) {
-            for (int i = 0; i < tailLength; i++) {
-                lineStarts[destination + i] = lineStarts[to + i] + delta;
-            }
-        } else {
-            for (int i = tailLength - 1; i >= 0; i--) {
-                lineStarts[destination + i] = lineStarts[to + i] + delta;
+        // rien à décaler : la queue se recopierait sur elle-même à
+        // l'identique (le « tout remplacer » du relevé 16 : dix mille
+        // remplacements à longueur égale, chacun recopiant la table
+        // entière pour un delta nul — six secondes au harnais, l'ANR
+        // et la fermeture force sur l'appareil)
+        if (destination != to || delta != 0) {
+            if (destination < to) {
+                for (int i = 0; i < tailLength; i++) {
+                    lineStarts[destination + i] = lineStarts[to + i] + delta;
+                }
+            } else {
+                for (int i = tailLength - 1; i >= 0; i--) {
+                    lineStarts[destination + i] = lineStarts[to + i] + delta;
+                }
             }
         }
         int index = from;

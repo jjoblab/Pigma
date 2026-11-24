@@ -676,6 +676,13 @@ public final class StructureDocument {
      */
     private void restructure(int first, int removeCount, int insertCount,
             int oldCount) {
+        // même nombre de lignes : les indices ne bougent pas — la
+        // recopie du tableau entier ne servirait à rien (le jumeau du
+        // garde-fou du document de syntaxe : le « tout remplacer » du
+        // relevé 16 a payé dix mille recopies de la table de structure)
+        if (removeCount == insertCount) {
+            return;
+        }
         int newCount = oldCount - removeCount + insertCount;
         LineAnalysis[] fresh = new LineAnalysis[newCount];
         System.arraycopy(lines, 0, fresh, 0, first);
