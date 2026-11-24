@@ -2348,9 +2348,12 @@ public final class EditorView extends View {
         canvas.clipRect(left, top, left + width, top + height);
         // l'assiette : la couleur de fond du thème remplit la découpe
         canvas.drawColor(themeBackground);
-        canvas.drawBitmap(loupeLine, srcLeft, 0.0f,
-                srcLeft + width / LOUPE_SCALE, lineHeight,
-                left, top + dp(4), left + width, top + height - dp(4), null);
+        android.graphics.Rect source = new android.graphics.Rect(
+                (int) srcLeft, 0,
+                (int) (srcLeft + width / LOUPE_SCALE), (int) lineHeight);
+        android.graphics.RectF target = new android.graphics.RectF(
+                left, top + dp(4), left + width, top + height - dp(4));
+        canvas.drawBitmap(loupeLine, source, target, null);
         // la teinte de sélection par-dessus (directe : la région
         // source, à l'échelle)
         if (hasSelection()) {

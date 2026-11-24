@@ -126,21 +126,14 @@ public final class Canvas {
      * Blitte un bitmap : la région source vers la région destination
      * (la loupe y rend sa ligne rendue une fois, à l'échelle).
      *
-     * @param bitmap  le bitmap
-     * @param srcLeft la source gauche
-     * @param srcTop  la source haute
-     * @param srcRight la source droite
-     * @param srcBottom la source basse
-     * @param dstLeft la destination gauche
-     * @param dstTop  la destination haute
-     * @param dstRight la destination droite
-     * @param dstBottom la destination basse
-     * @param paint   la peinture (null : aucune)
+     * @param bitmap le bitmap
+     * @param src    la région source
+     * @param dst    la région destination
+     * @param paint  la peinture (null : aucune)
      */
-    public void drawBitmap(Bitmap bitmap, float srcLeft, float srcTop,
-            float srcRight, float srcBottom, float dstLeft, float dstTop,
-            float dstRight, float dstBottom, Paint paint) {
-        bitmapOps.add(new BitmapOp(bitmap, srcLeft, srcRight, dstLeft, dstRight));
+    public void drawBitmap(Bitmap bitmap, Rect src, RectF dst, Paint paint) {
+        bitmapOps.add(new BitmapOp(bitmap, src.left, src.right,
+                dst.left, dst.right));
     }
 
     /** Les bitmaps blittés depuis la dernière marque du harnais. */
