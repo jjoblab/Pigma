@@ -120,6 +120,23 @@ public final class EditorView extends View {
     /** Horodatage du dernier rafraîchissement d'analyse (le ralenti). */
     private long lastAnalysisNanos;
 
+    /** Les bâtisseurs de la passe d'analyse en cours (par tranches postées). */
+    private SymbolIndex.Builder indexBuilder;
+
+    private DiagnosticsDocument.Builder diagnosticsBuilder;
+
+    /** La ligne où la passe en cours reprend. */
+    private int analysisPendingLine;
+
+    /** Révision qui a lancé la passe en cours (une édition l'abandonne). */
+    private int analysisBuildRevision;
+
+    /** Horodatage du dernier DÉMARRAGE de passe (le ralenti tient même à froid). */
+    private long lastAnalysisStartNanos = -Long.MAX_VALUE / 2;
+
+    /** La taille d'une tranche d'analyse (lignes avalées par post). */
+    private static final int ANALYSIS_SLICE_LINES = 256;
+
     /** Les candidats du bandeau de complétion (le mot courant). */
     private List<String> suggestions = List.of();
 
@@ -457,12 +474,17 @@ public final class EditorView extends View {
         // l'annotateur s'éteint AVANT le remplacement : l'écouteur du
         // panneau peut lire pendant la transaction (l'ancien annotateur
         // découperait ses anciens jetons dans le nouveau texte — le
-        // harnais l'a épinglé). L'analyse suit : l'index et les
-        // diagnostics de l'ancien document n'y ont plus cours
+        // harnais l'a épinglé). L'analyse suit : l'index, les
+        // diagnostics ET LA PASSE EN COURS de l'ancien document n'y ont
+        // plus de cours (une tranche postée qui revient trouve la
+        // passe close et s'arrête seule)
         semantic = null;
         symbolIndex = null;
         diagnostics = null;
+        indexBuilder = null;
+        diagnosticsBuilder = null;
         analysisRevision = -1;
+        lastAnalysisStartNanos = -Long.MAX_VALUE / 2;
         suggestions = List.of();
         suggestionWordStart = -1;
         try (TextTransaction transaction = undoStack.newTransaction()) {
@@ -1069,20 +1091,80 @@ public final class EditorView extends View {
     /**
      * Ralentit l'analyse (l'index de symboles et les diagnostics) : au
      * plus une passe par tranche de 300 ms — la frappe ne paie jamais
-     * l'index, les trames tiennent leur budget.
+     * l'index, les trames tiennent leur budget. La première
+     * construction non plus : le relevé 8 a mesuré 108 ms de trame —
+     * la passe forçait le lexage du gros fichier entier dans le dessin
+     * d'ouverture (le garde-fou des 300 ms ne couvrait que les
+     * reconstructions). Désormais l'analyse attend que le fond ait
+     * rempli le document, et se construit par tranches POSTÉES —
+     * jamais dans une trame.
      */
     private void refreshAnalysis() {
-        if (symbolIndex != null && buffer.getRevision() == analysisRevision) {
+        if (indexBuilder == null && symbolIndex != null
+                && buffer.getRevision() == analysisRevision) {
+            return;
+        }
+        if (syntax.lexedLineCount() < syntax.lineCount()) {
+            // le fond n'a pas fini : forcer le lexage restant ici
+            // reviendrait à le payer dans la trame
             return;
         }
         long now = System.nanoTime();
-        if (symbolIndex != null && now - lastAnalysisNanos < 300_000_000L) {
+        if (now - lastAnalysisStartNanos < 300_000_000L) {
             return;
         }
-        symbolIndex = SymbolIndex.of(buffer, syntax, structure, new JavaDeclarations());
-        diagnostics = DiagnosticsDocument.of(buffer, syntax, structure);
-        analysisRevision = buffer.getRevision();
-        lastAnalysisNanos = now;
+        if (indexBuilder != null) {
+            // une passe court déjà (ses tranches s'enchaînent seules)
+            return;
+        }
+        indexBuilder = new SymbolIndex.Builder(buffer, syntax, structure,
+                new JavaDeclarations());
+        diagnosticsBuilder = new DiagnosticsDocument.Builder(buffer, syntax, structure);
+        analysisPendingLine = 0;
+        analysisBuildRevision = buffer.getRevision();
+        lastAnalysisStartNanos = now;
+        postAnalysisSlice();
+    }
+
+    /** Une tranche de l'analyse, postée : la trame qui la déclenche ne la paie pas. */
+    private void postAnalysisSlice() {
+        post(() -> {
+            if (indexBuilder == null) {
+                // abandonnée (changement de langage) : rien à avancer
+                return;
+            }
+            int from = analysisPendingLine;
+            int to = Math.min(from + ANALYSIS_SLICE_LINES, syntax.lineCount());
+            indexBuilder.addLines(from, to);
+            diagnosticsBuilder.addLines(from, to);
+            analysisPendingLine = to;
+            if (to < syntax.lineCount()) {
+                postAnalysisSlice();
+            } else if (buffer.getRevision() == analysisBuildRevision) {
+                // la passe est close à la révision qui l'a lancée ; une
+                // édition passée au milieu l'abandonne — le ralenti
+                // reprendra, l'ancien index reste une indication
+                symbolIndex = indexBuilder.build();
+                diagnostics = diagnosticsBuilder.build();
+                analysisRevision = analysisBuildRevision;
+                lastAnalysisNanos = System.nanoTime();
+                indexBuilder = null;
+                diagnosticsBuilder = null;
+                invalidate();
+            } else {
+                indexBuilder = null;
+                diagnosticsBuilder = null;
+            }
+        });
+    }
+
+    /**
+     * Point d'entrée de l'hôte : la même passe ralentie que la trame,
+     * jamais bloquante — le panneau cadence l'arrivée des symboles et
+     * des diagnostics quand l'éditeur ne se redessine pas.
+     */
+    public void ensureAnalysis() {
+        refreshAnalysis();
     }
 
     /**

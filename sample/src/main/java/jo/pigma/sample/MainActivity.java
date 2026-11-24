@@ -291,6 +291,11 @@ public final class MainActivity extends Activity {
      */
     private void watchDiagnostics() {
         updateDiagnostics();
+        // le remplissage vient-il de finir ? C'est le moment de lancer
+        // l'analyse (l'index et les diagnostics partent par tranches
+        // postées, la trame qui suit ne les paie pas) — le dernier tick
+        // avant l'arrêt du veilleur s'en charge
+        editorView.ensureAnalysis();
         editorView.removeCallbacks(diagnosticsWatcher);
         if (editorView.getSyntaxDocument().remainingLines() > 0) {
             editorView.postDelayed(diagnosticsWatcher, DIAGNOSTIC_WATCH_MS);

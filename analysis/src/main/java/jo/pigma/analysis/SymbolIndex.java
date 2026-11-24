@@ -46,9 +46,9 @@ public final class SymbolIndex {
     }
 
     /**
-     * Construit l'index du document entier (force le lexage des
-     * lignes parcourues, comme le dessin — l'ouverture a déjà rempli
-     * le fond, la passe ne paie que les lignes restantes).
+     * Construit l'index du document entier (force le lexage des lignes
+     * parcourues, comme le dessin — l'ouverture a déjà rempli le fond,
+     * la passe ne paie que les lignes restantes).
      *
      * @param buffer    le tampon (positions absolues)
      * @param syntax    le moteur (jetons de L1)
@@ -59,35 +59,86 @@ public final class SymbolIndex {
      */
     public static SymbolIndex of(TextBuffer buffer, SyntaxDocument syntax,
             StructureDocument structure, SemanticAnnotator annotator) {
-        Objects.requireNonNull(structure);
-        Objects.requireNonNull(annotator);
-        List<Symbol> symbols = new ArrayList<>();
-        Map<String, int[]> words = new HashMap<>();
-        int lexed = syntax.lineCount();
-        for (int line = 0; line < lexed; line++) {
-            SyntaxDocument.LineTokens entry = syntax.lineTokens(line);
-            int lineStart = buffer.getLineStart(line);
-            CharSequence text = buffer.getText(lineStart, buffer.getLineEnd(line));
-            int depthIn = line == 0 ? 0 : structure.structureOf(line - 1).depthOut();
-            for (SemanticAnnotation note : annotator.annotateLine(line, depthIn,
-                    entry, text, lineStart)) {
-                String name = text.subSequence(
-                        note.start() - lineStart, note.end() - lineStart).toString();
-                symbols.add(new Symbol(name, note.nature(), note.start(), line));
-                bump(words, name, note.nature());
-            }
-            for (SyntaxDocument.Token token : entry.tokens()) {
-                if (token.scope() != null || token.end() - token.start() < 2) {
-                    continue;
+        Builder builder = new Builder(buffer, syntax, structure, annotator);
+        builder.addLines(0, syntax.lineCount());
+        return builder.build();
+    }
+
+    /**
+     * Le bâtisseur par tranches : la vue nourrit l'analyse ligne par
+     * ligne, postée entre les trames — la première construction d'un
+     * gros fichier ne peut plus forcer le lexage entier dans une seule
+     * trame (le relevé 8 l'a mesuré : 108 ms). Chaque ligne porte sa
+     * profondeur depuis les points de contrôle de L2 — les tranches se
+     * suivent sans état à transporter.
+     */
+    public static final class Builder {
+
+        private final TextBuffer buffer;
+        private final SyntaxDocument syntax;
+        private final StructureDocument structure;
+        private final SemanticAnnotator annotator;
+        private final List<Symbol> symbols = new ArrayList<>();
+        private final Map<String, int[]> words = new HashMap<>();
+
+        /**
+         * Le bâtisseur d'un document.
+         *
+         * @param buffer    le tampon (positions absolues)
+         * @param syntax    le moteur (jetons de L1)
+         * @param structure l'analyseur (points de contrôle de L2)
+         * @param annotator le producteur (les déclarations comptent double)
+         */
+        public Builder(TextBuffer buffer, SyntaxDocument syntax,
+                StructureDocument structure, SemanticAnnotator annotator) {
+            this.buffer = Objects.requireNonNull(buffer);
+            this.syntax = Objects.requireNonNull(syntax);
+            this.structure = Objects.requireNonNull(structure);
+            this.annotator = Objects.requireNonNull(annotator);
+        }
+
+        /**
+         * Avale une tranche de lignes (les tranches se suivent, les
+         * bornes hors document se bornent).
+         *
+         * @param from        première ligne, incluse
+         * @param toExclusive première ligne exclue
+         */
+        public void addLines(int from, int toExclusive) {
+            for (int line = Math.max(0, from); line < toExclusive
+                    && line < syntax.lineCount(); line++) {
+                SyntaxDocument.LineTokens entry = syntax.lineTokens(line);
+                int lineStart = buffer.getLineStart(line);
+                CharSequence text = buffer.getText(lineStart, buffer.getLineEnd(line));
+                int depthIn = line == 0 ? 0 : structure.structureOf(line - 1).depthOut();
+                for (SemanticAnnotation note : annotator.annotateLine(line, depthIn,
+                        entry, text, lineStart)) {
+                    String name = text.subSequence(
+                            note.start() - lineStart, note.end() - lineStart).toString();
+                    symbols.add(new Symbol(name, note.nature(), note.start(), line));
+                    bump(words, name, note.nature());
                 }
-                String word = text.subSequence(token.start(), token.end()).toString();
-                if (!isWord(word)) {
-                    continue;
+                for (SyntaxDocument.Token token : entry.tokens()) {
+                    if (token.scope() != null || token.end() - token.start() < 2) {
+                        continue;
+                    }
+                    String word = text.subSequence(token.start(), token.end()).toString();
+                    if (!isWord(word)) {
+                        continue;
+                    }
+                    bump(words, word, "mot");
                 }
-                bump(words, word, "mot");
             }
         }
-        return new SymbolIndex(symbols, words);
+
+        /**
+         * L'index construit des tranches avalées.
+         *
+         * @return l'index, jamais {@code null}
+         */
+        public SymbolIndex build() {
+            return new SymbolIndex(new ArrayList<>(symbols), new HashMap<>(words));
+        }
     }
 
     /**

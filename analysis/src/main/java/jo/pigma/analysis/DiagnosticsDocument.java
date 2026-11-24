@@ -49,49 +49,101 @@ public final class DiagnosticsDocument {
      */
     public static DiagnosticsDocument of(TextBuffer buffer, SyntaxDocument syntax,
             StructureDocument structure) {
-        Objects.requireNonNull(buffer);
-        Objects.requireNonNull(syntax);
-        Objects.requireNonNull(structure);
-        List<Diagnostic> found = new ArrayList<>();
+        Builder builder = new Builder(buffer, syntax, structure);
+        builder.addLines(0, syntax.lineCount());
+        return builder.build();
+    }
+
+    /**
+     * Le bâtisseur par tranches : la pile des ouvrants voyage entre
+     * les tranches, la profondeur relit les points de contrôle de L2 à
+     * chaque ligne — la vue nourrit la passe postée entre les trames,
+     * la première construction ne force plus le document dans une
+     * seule trame.
+     */
+    public static final class Builder {
+
+        private final TextBuffer buffer;
+        private final SyntaxDocument syntax;
+        private final StructureDocument structure;
+        private final List<Diagnostic> found = new ArrayList<>();
         // la pile des ouvrants en cours (ligne, colonne) : ce qui
         // reste dessus à la fin n'est pas refermé
-        List<int[]> openers = new ArrayList<>();
-        int count = syntax.lineCount();
-        for (int line = 0; line < count; line++) {
-            int depth = line == 0 ? 0 : structure.structureOf(line - 1).depthOut();
-            SyntaxDocument.Token[] tokens = syntax.lineTokens(line).tokens();
-            int lineStart = buffer.getLineStart(line);
-            CharSequence text = buffer.getText(lineStart, buffer.getLineEnd(line));
-            for (SyntaxDocument.Token token : tokens) {
-                char c = singleSign(token, text);
-                if (c == 0) {
-                    continue;
-                }
-                int at = lineStart + token.start();
-                if (c == '(' || c == '{' || c == '[') {
-                    openers.add(new int[] {line, token.start()});
-                    depth++;
-                } else if (depth == 0) {
-                    // la profondeur tolérante refuse de passer sous
-                    // zéro : ce fermant n'a pas d'ouvrant
-                    found.add(new Diagnostic(at, at + 1,
-                            "fermant orphelin : « " + c + " » sans ouvrant"));
-                } else {
-                    depth--;
-                    if (!openers.isEmpty()) {
-                        openers.remove(openers.size() - 1);
+        private final List<int[]> openers = new ArrayList<>();
+        private int nextLine;
+
+        /**
+         * Le bâtisseur d'un document.
+         *
+         * @param buffer    le tampon (positions absolues)
+         * @param syntax    le moteur (jetons de L1)
+         * @param structure l'analyseur (points de contrôle de L2)
+         */
+        public Builder(TextBuffer buffer, SyntaxDocument syntax,
+                StructureDocument structure) {
+            this.buffer = Objects.requireNonNull(buffer);
+            this.syntax = Objects.requireNonNull(syntax);
+            this.structure = Objects.requireNonNull(structure);
+        }
+
+        /**
+         * Avale une tranche de lignes (les tranches se suivent).
+         *
+         * @param from        première ligne, incluse
+         * @param toExclusive première ligne exclue
+         */
+        public void addLines(int from, int toExclusive) {
+            for (int line = Math.max(nextLine, from); line < toExclusive
+                    && line < syntax.lineCount(); line++) {
+                int depth = line == 0 ? 0 : structure.structureOf(line - 1).depthOut();
+                SyntaxDocument.Token[] tokens = syntax.lineTokens(line).tokens();
+                int lineStart = buffer.getLineStart(line);
+                CharSequence text = buffer.getText(lineStart, buffer.getLineEnd(line));
+                for (SyntaxDocument.Token token : tokens) {
+                    char c = singleSign(token, text);
+                    if (c == 0) {
+                        continue;
+                    }
+                    int at = lineStart + token.start();
+                    if (c == '(' || c == '{' || c == '[') {
+                        openers.add(new int[] {line, token.start()});
+                        depth++;
+                    } else if (depth == 0) {
+                        // la profondeur tolérante refuse de passer sous
+                        // zéro : ce fermant n'a pas d'ouvrant
+                        found.add(new Diagnostic(at, at + 1,
+                                "fermant orphelin : « " + c + " » sans ouvrant"));
+                    } else {
+                        depth--;
+                        if (!openers.isEmpty()) {
+                            openers.remove(openers.size() - 1);
+                        }
                     }
                 }
+                nextLine = line + 1;
             }
         }
-        if (structure.mismatchCount() > 0) {
-            for (int[] opener : openers) {
-                int at = buffer.getLineStart(opener[0]) + opener[1];
-                found.add(new Diagnostic(at, at + 1,
-                        "ouvrant non fermé : la pile ne se referme pas"));
+
+        /**
+         * Les diagnostics construits des tranches avalées. La pile
+         * restante ne se rapporte que si TOUT le document est parcouru
+         * : sur un préfixe, la queue ouvrirait peut-être encore — un
+         * ouvrant non refermé sur une passe partielle serait un faux
+         * diagnostic.
+         *
+         * @return les diagnostics, jamais {@code null}
+         */
+        public DiagnosticsDocument build() {
+            List<Diagnostic> all = new ArrayList<>(found);
+            if (nextLine >= syntax.lineCount() && structure.mismatchCount() > 0) {
+                for (int[] opener : openers) {
+                    int at = buffer.getLineStart(opener[0]) + opener[1];
+                    all.add(new Diagnostic(at, at + 1,
+                            "ouvrant non fermé : la pile ne se referme pas"));
+                }
             }
+            return new DiagnosticsDocument(buffer, all);
         }
-        return new DiagnosticsDocument(buffer, found);
     }
 
     /**

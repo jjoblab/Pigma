@@ -91,4 +91,62 @@ public class SymbolsAndDiagnosticsTest {
         structure.detach();
         syntax.detach();
     }
+
+    /**
+     * Le bâtisseur par tranches rend exactement la construction d'un
+     * coup : symboles, mots et requêtes — la vue nourrit l'analyse
+     * postée entre les trames, le résultat ne doit pas dépendre du
+     * découpage.
+     */
+    @Test
+    public void builderBySlicesMatchesFullConstruction() {
+        TextBuffer buffer = TextBuffer.create(DEMO);
+        SyntaxDocument syntax = SyntaxDocument.open(buffer, Languages.JAVA);
+        StructureDocument structure = StructureDocument.open(buffer, syntax);
+        SymbolIndex full = SymbolIndex.of(buffer, syntax, structure,
+                new JavaDeclarations());
+        SymbolIndex.Builder builder = new SymbolIndex.Builder(buffer, syntax,
+                structure, new JavaDeclarations());
+        builder.addLines(0, 2);
+        builder.addLines(2, 7);
+        SymbolIndex sliced = builder.build();
+        assertEquals(full.symbols(), sliced.symbols());
+        assertEquals(full.query("c", 5), sliced.query("c", 5));
+        assertEquals(full.query("Dem", 5), sliced.query("Dem", 5));
+        assertEquals(full.query("zzzz", 5), sliced.query("zzzz", 5));
+        structure.detach();
+        syntax.detach();
+    }
+
+    /**
+     * Les diagnostics aussi se bâtissent par tranches — et une passe
+     * PARTIELLE ne rapporte pas l'ouvrant non fermé : la queue
+     * ouvrirait peut-être encore, ce serait un faux diagnostic.
+     */
+    @Test
+    public void diagnosticsBuilderBySlicesMatchesAndPartialStaysQuiet() {
+        TextBuffer buffer = TextBuffer.create(
+                "class A {\n  int x;\n}\n)\nclass B {\n");
+        SyntaxDocument syntax = SyntaxDocument.open(buffer, Languages.JAVA);
+        StructureDocument structure = StructureDocument.open(buffer, syntax);
+        DiagnosticsDocument full = DiagnosticsDocument.of(
+                buffer, syntax, structure);
+        DiagnosticsDocument.Builder builder = new DiagnosticsDocument.Builder(
+                buffer, syntax, structure);
+        // une tranche d'abord (l'orpheline y vit, l'ouvrant de class B
+        // pas encore) : la pile ne se rapporte pas sur une passe
+        // partielle — la ligne suivante pourrait la refermer
+        builder.addLines(0, 4);
+        DiagnosticsDocument partial = builder.build();
+        assertEquals(1, partial.diagnostics().size());
+        assertTrue(partial.diagnostics().get(0).message()
+                .startsWith("fermant orphelin"));
+        // puis le reste : la construction d'un coup, au diagnostic près
+        builder.addLines(4, 6);
+        DiagnosticsDocument complete = builder.build();
+        assertEquals(full.diagnostics(), complete.diagnostics());
+        assertEquals(2, complete.diagnostics().size());
+        structure.detach();
+        syntax.detach();
+    }
 }
