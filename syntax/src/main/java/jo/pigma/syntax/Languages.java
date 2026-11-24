@@ -9,14 +9,15 @@ import jo.pigma.syntax.generic.GenericLexer;
 import jo.pigma.syntax.generic.LexerProfile;
 import jo.pigma.syntax.lexer.FlexLexerAdapter;
 import jo.pigma.syntax.lexer.KotlinLexerAdapter;
+import jo.pigma.syntax.lexer.LuaLexerAdapter;
 import jo.pigma.syntax.lexers.generated.JavaLexer;
 import jo.pigma.syntax.lexers.generated.JsonLexer;
 import jo.pigma.syntax.lexers.generated.XmlLexer;
 
 /**
- * Registre des langages livrés avec le moteur : les quatre lexeurs
- * générés (Java, XML, JSON, Kotlin) et la famille générique armée d'un
- * profil SQL. Un hôte ajoute ses langages par ses propres
+ * Registre des langages livrés avec le moteur : les cinq lexeurs
+ * générés (Java, XML, JSON, Kotlin, Lua) et la famille générique armée
+ * d'un profil SQL. Un hôte ajoute ses langages par ses propres
  * descripteurs ; ce registre ne sert que de point de départ cohérent.
  */
 public final class Languages {
@@ -97,6 +98,26 @@ public final class Languages {
             },
             LanguageSyntax.initialStateOnly());
 
+    /** Langage Lua (lexeur généré, longues constructions à niveaux). */
+    public static final LanguageSyntax LUA = new LanguageSyntax(
+            "Lua", List.of("lua"),
+            LuaLexerAdapter::new,
+            new Scope[] {
+                    null,
+                    Scope.of("keyword"),
+                    null,
+                    Scope.of("number"),
+                    Scope.of("string"),
+                    Scope.of("string.raw"),
+                    Scope.of("string.escape"),
+                    Scope.of("comment"),
+                    Scope.of("comment"),
+                    Scope.of("operator"),
+                    Scope.of("punct"),
+                    null
+            },
+            LanguageSyntax.initialStateOnly());
+
     /** Profil SQL de la famille générique. */
     public static final LexerProfile SQL_PROFILE = new LexerProfile(
             "SQL",
@@ -151,7 +172,7 @@ public final class Languages {
         int dot = name.lastIndexOf('.');
         String extension = dot < 0 ? name : name.substring(dot + 1);
         for (LanguageSyntax candidate
-                : new LanguageSyntax[] {JAVA, XML, JSON, KOTLIN, SQL}) {
+                : new LanguageSyntax[] {JAVA, XML, JSON, KOTLIN, LUA, SQL}) {
             if (candidate.servesExtension(extension)) {
                 return candidate;
             }

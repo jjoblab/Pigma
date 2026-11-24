@@ -244,6 +244,7 @@ public final class MainActivity extends Activity {
                 languageButton("XML", Languages.XML, DemoTexts.XML),
                 languageButton("JSON", Languages.JSON, DemoTexts.JSON),
                 languageButton("Kotlin", Languages.KOTLIN, DemoTexts.KOTLIN),
+                languageButton("Lua", Languages.LUA, DemoTexts.LUA),
                 languageButton("SQL", Languages.SQL, DemoTexts.SQL)));
         root.addView(row(margin,
                 languageButton("Gros", Languages.JAVA, DemoTexts.bigFile()),
@@ -339,7 +340,7 @@ public final class MainActivity extends Activity {
     }
 
     /** La consolidation : le cycle des langages du hors normes. */
-    private static final String[] HUGE_CYCLE = {"XML", "JSON", "KOTLIN", "SQL", "JAVA"};
+    private static final String[] HUGE_CYCLE = {"XML", "JSON", "KOTLIN", "LUA", "SQL", "JAVA"};
 
     /** La position dans le cycle du hors normes par langage. */
     private int hugeCycleAt;
@@ -380,6 +381,8 @@ public final class MainActivity extends Activity {
                 return Languages.JSON;
             case "KOTLIN":
                 return Languages.KOTLIN;
+            case "LUA":
+                return Languages.LUA;
             case "SQL":
                 return Languages.SQL;
             default:

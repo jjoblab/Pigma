@@ -113,6 +113,51 @@ public final class DemoTexts {
 
 
     /**
+     * Démonstration Lua : mots-clés, chaînes des deux guillemets,
+     * longue chaîne et longue commentaire à niveaux, nombres hexa et
+     * flottants, bit à bit et division entière — le texte de travail
+     * du serveur LSP Lua du sample.
+     */
+    public static final String LUA = """
+            -- Compteur de caisse : démonstration Lua.
+            local caisse = {}
+            local seuil = 1e3
+            local marge = 3.5e-2
+            local hexa = 0x1p4
+
+            --[==[ Longue commentaire à niveau 2 :
+            ]] et ]=] n'y ferment rien. ]==]
+
+            function caisse.ajouter(valeur)
+              caisse.total = (caisse.total or 0) + valeur
+              if caisse.total > seuil then
+                caisse.total = seuil
+              end
+              return caisse.total
+            end
+
+            local notice = [[
+            Première ligne de la notice.
+            Deuxième ligne : les échappes n'y vivent pas.]]
+
+            for i = 1, 10 do
+              local pair = i // 2
+              local bas = i & 0x3
+              if i % 2 ~= 0 then
+                goto continue
+              end
+              print('pair ' .. tostring(pair), "bas " .. tostring(bas))
+              ::continue::
+            end
+
+            return setmetatable(caisse, {
+              __index = function(table, cle)
+                return "manquant : " .. tostring(cle)
+              end,
+            })
+            """;
+
+    /**
      * Gros fichier Java de démonstration, généré : environ deux mille
      * lignes, une ligne monstre au milieu (hors plafond moteur de
      * coloration, dessin coupé) — la fenêtre visible seule se paie à
@@ -166,7 +211,7 @@ public final class DemoTexts {
      * chacun. Chaque texte se génère au premier appel puis se cache.
      *
      * @param language la clef du langage : "JAVA", "XML", "JSON",
-     *                 "KOTLIN" ou "SQL"
+     *                 "KOTLIN", "LUA" ou "SQL"
      * @return le texte de 52 000 lignes environ
      */
     public static synchronized String hugeFile(String language) {
@@ -177,6 +222,26 @@ public final class DemoTexts {
         String block;
         String header;
         switch (language) {
+            case "LUA":
+                header = "-- Fichier hors normes : 52 000 lignes, mode gros fichier.\n\n";
+                block = "--[==[ Bloc 0 : longue commentaire a niveau 2. ]==]\n"
+                        + "local bloc_0 = {\n"
+                        + "  seuil = 0.125e-3,\n"
+                        + "  max = 0x1FFF,\n"
+                        + "  graine = 12,\n"
+                        + "  taille = 24,\n"
+                        + "}\n\n"
+                        + "function bloc_0.total()\n"
+                        + "  local calcule = bloc_0.graine * bloc_0.taille\n"
+                        + "  if calcule > bloc_0.max then\n"
+                        + "    calcule = calcule // 2\n"
+                        + "  end\n"
+                        + "  return calcule\n"
+                        + "end\n\n"
+                        + "local notice_0 = [[\n"
+                        + "Longue chaine du bloc 0 : elle traverse les lignes.\n"
+                        +"]]\n\n";
+                break;
             case "XML":
                 header = "<!-- Fichier hors normes : 52 000 lignes, mode gros fichier. -->\n\n";
                 block = "<!-- Bloc 0. -->\n"
@@ -251,6 +316,7 @@ public final class DemoTexts {
             text.append(block.replace("Bloc 0", "Bloc " + at)
                     .replace("G0", "G" + at)
                     .replace("bloc_0", "bloc_" + at)
+                    .replace("notice_0", "notice_" + at)
                     .replace("numero=\"0\"", "numero=\"" + at + "\"")
                     .replace("\"bloc\": 0", "\"bloc\": " + at));
         }

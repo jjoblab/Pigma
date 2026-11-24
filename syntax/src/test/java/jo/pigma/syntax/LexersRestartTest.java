@@ -71,6 +71,19 @@ public class LexersRestartTest {
         checkRestart(Languages.JSON, "data/json-reference.json");
     }
 
+    /**
+     * Redémarrage et couverture du lexeur Lua sur les deux corpus —
+     * les longues constructions (chaînes et commentaires à niveaux)
+     * traversent les fenêtres par l'entier d'état.
+     *
+     * @throws IOException si un corpus ne se lit pas
+     */
+    @Test
+    public void luaRestartsFromInitialLines() throws IOException {
+        checkRestart(Languages.LUA, "data/lua-2000.lua");
+        checkRestart(Languages.LUA, "data/lua-reference.lua");
+    }
+
     private void checkRestart(LanguageSyntax language, String corpusName)
             throws IOException {
         String text = Files.readString(LexersGoldenTest.resource(corpusName),

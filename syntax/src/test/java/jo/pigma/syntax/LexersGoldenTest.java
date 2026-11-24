@@ -71,6 +71,16 @@ public class LexersGoldenTest {
         checkGolden(Languages.JSON, "json-reference.json", "json-golden.txt");
     }
 
+    /**
+     * Le doré Lua se reproduit à l'identique.
+     *
+     * @throws IOException si un fichier ne se lit pas
+     */
+    @Test
+    public void luaGoldenMatches() throws IOException {
+        checkGolden(Languages.LUA, "lua-reference.lua", "lua-golden.txt");
+    }
+
     private void checkGolden(LanguageSyntax language, String referenceName,
             String goldenName) throws IOException {
         String text = Files.readString(resource("data/" + referenceName),
