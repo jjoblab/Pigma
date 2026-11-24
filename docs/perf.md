@@ -47,23 +47,39 @@ Changer de thème ne retokenise rien : les jetons portent des portées,
 la couleur se résout au dessin (le panneau le montre : la mesure de
 première coloration ne bouge pas quand on bascule clair/sombre).
 
-## Appareil (à relever par le propriétaire)
+## Appareil (premier relevé du propriétaire, 2026-11-24)
 
 Le bac à sable n'a pas d'appareil : les lignes suivantes se remplissent
-depuis le panneau de diagnostic (`adb install
-sample/build/outputs/apk/debug/sample-debug.apk`, ouvrir l'application,
-taper, lire le panneau) — chaque langue, le gros fichier et chaque
-thème y passent.
+depuis le panneau de diagnostic et le bouton « Copier les mesures »
+(journal du scénario au presse-papiers, tableau prêt à coller). Premier
+relevé reçu ; l'appareil n'est pas précisé (modèle et version
+d'Android à compléter au prochain relevé — la ligne du tableau copié
+les demande).
 
 | Mesure | Méthode | Valeur |
 | --- | --- | --- |
-| Première coloration, texte de démonstration | ouvrir l'application, lire le panneau | à relever |
-| Première coloration, gros fichier (bouton « Gros ») | appuyer, lire le panneau : seule la fenêtre visible se paie | à relever |
-| Frappe ordinaire (recoloration d'une ligne) | taper, lire « dernière frappe » | à relever |
-| Frappe propagée (commentaire ouvert) | supprimer un `*/`, lire les lignes relues | à relever |
-| Remplissage du gros fichier | lire « lignes lexées » monter après l'ouverture (pompe par tranches) | à relever |
-| Bascule de thème | basculer : la première coloration ne doit pas bouger | à relever |
-| Budget par image (tracé d'une trame) | à instrumenter avec la vue complète | à relever |
+| Première coloration, texte de démonstration | ouvrir l'application, lire le panneau | Java **0,5 ms** · XML 0,5 · JSON 0,1 · Kotlin 0,2 · SQL 0,1 (première demande : la fenêtre visible seule, jamais le document) |
+| Première coloration, gros fichier (bouton « Gros ») | appuyer, lire le panneau : seule la fenêtre visible se paie | **0,3 ms** (première demande) ; 1 322/1 780 lignes déjà lexées au premier tick du panneau (0,2 s) — la pompe seule, la couleur est déjà là |
+| Frappe ordinaire (recoloration d'une ligne) | taper, lire « dernière frappe » | à relever : taper puis « Copier les mesures », la ligne « copie » porte la dernière frappe |
+| Frappe propagée (commentaire ouvert) | supprimer un `*/`, lire les lignes relues | à relever : idem, dans la démo Java (supprimer un `*/` du bloc) |
+| Remplissage du gros fichier | lire « lignes lexées » monter après l'ouverture (pompe par tranches) | **1 780/1 780 lignes, 18 095 jetons** |
+| Bascule de thème | basculer : la première coloration ne doit pas bouger | **première inchangée (0,3 ms), jetons identiques (18 095) : zéro retokenisation constaté sur appareil** |
+| Budget par image (tracé d'une trame) | à instrumenter avec la vue complète | à relever (mesure de trame au panneau : chantier en cours) |
+
+Deux lectures de ce relevé. D'abord, ne pas comparer la colonne
+appareil aux nombres JVM du haut sans précaution : le test JVM paie
+une fenêtre de 40 lignes d'un coup (1,91 ms), le panneau appareil
+mesure la première demande (une à deux lignes) — la paresse se voit
+précisément en ce que la première couleur ne paie pas le document.
+
+Ensuite, le relevé porte le coût interprété de la famille générique :
+une ligne relue paie moins de 0,2 ms pour les quatre lexeurs générés
+(Java 0,18, XML 0,07, JSON 0,04, Kotlin 0,04) mais **0,78 ms pour le
+profil SQL** — chaque fenêtre réinterprète son profil, exactement le
+poids que l'étude de faisabilité voyait sur le démarrage. C'est la
+longueur délibérée de la traîne : les langages de tête restent
+générés, la famille générique sert les langages rares ; pour un gros
+fichier SQL, il faudra soit l'accepter, soit générer le profil.
 
 Les plafonds du plan sont codés (E3) : ligne de plus de 20 000 colonnes
 non colorée (état reporté, voisines intactes), dessin limité à 10 000
