@@ -10,6 +10,9 @@ import android.view.View;
  */
 public class PopupWindow {
 
+    /** Le clavier se montre pour le champ de la popup (mode requis). */
+    public static final int INPUT_METHOD_NEEDED = 0;
+
     /**
      * L'écoute de fermeture (la recherche se range avec la popup).
      */
@@ -27,6 +30,8 @@ public class PopupWindow {
     private OnDismissListener dismissListener;
     private boolean showing;
     private int gravity;
+    private float elevation;
+    private int inputMethodMode;
 
     /** La dernière fenêtre ouverte (le harnais y lit la barre portée). */
     private static PopupWindow lastShown;
@@ -54,6 +59,25 @@ public class PopupWindow {
      */
     public void setWidth(int newWidth) {
         this.width = newWidth;
+    }
+
+    /**
+     * Pose l'élévation (l'ombre de la carte flottante).
+     *
+     * @param elevation l'élévation en pixels
+     */
+    public void setElevation(float elevation) {
+        this.elevation = elevation;
+    }
+
+    /**
+     * Pose le mode de méthode de saisie (le clavier se montre pour
+     * le champ de la popup).
+     *
+     * @param mode le mode (INPUT_METHOD_NEEDED…)
+     */
+    public void setInputMethodMode(int mode) {
+        this.inputMethodMode = mode;
     }
 
     /**

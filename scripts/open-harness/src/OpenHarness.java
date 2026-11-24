@@ -1,6 +1,7 @@
 package jo.pigma.sample;
 
 import android.graphics.Canvas;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -616,9 +617,11 @@ public final class OpenHarness {
         begin("recherche : compter, naviguer, remplacer, tout remplacer");
         click("Rechercher");
         PopupWindow popup = PopupWindow.harnessLast();
-        check("la popup flottante s'ouvre (focusable, l'appui dehors range)",
+        check("la carte flotte en haut à droite, comme l'atelier",
                 popup != null && popup.isShowing() && popup.harnessFocusable()
-                        && popup.harnessOutsideTouchable());
+                        && popup.harnessOutsideTouchable()
+                        && popup.harnessGravity() == (Gravity.TOP | Gravity.END)
+                        && popup.harnessWidth() < editor.getWidth());
         View bar = popup.harnessContent();
         String text = editor.getBuffer().toString();
         int expected = countOccurrences(text, "graine");
@@ -637,25 +640,39 @@ public final class OpenHarness {
         View.harnessDrain(400L);
         check("le compte exact des correspondances est arrivé à la frappe finale",
                 editor.searchMatchCount() == expected);
-        check("la barre porte le compte",
-                textOf(bar, "correspondance") != null);
+        check("la barre porte le compte « i/n »",
+                textOf(bar, "/" + expected) != null);
+        // le remplacement se replie sous la recherche : le rabat à
+        // deux chevrons le montre, comme le Ctrl+R de l'atelier
+        check("le remplacement se replie au départ",
+                findField(bar, "remplacer par…").harnessParent().getVisibility()
+                        == View.GONE);
+        clickIcon(bar, "montrer ou cacher le remplacement");
+        check("le rabat montre le remplacement",
+                findField(bar, "remplacer par…").harnessParent().getVisibility()
+                        == View.VISIBLE);
         // la recherche incrémentale a navigué en tapant (la
         // correspondance la plus proche du curseur) : l'index de départ
         // n'est plus zéro — l'avance et le recul se vérifient relatifs
         int beforeNext = editor.searchCurrentIndex();
-        clickIn(bar, "›");
+        clickIcon(bar, "correspondance suivante");
         check("la navigation avance", editor.searchCurrentIndex() == beforeNext + 1);
-        clickIn(bar, "‹");
+        clickIcon(bar, "correspondance précédente");
         check("la navigation recule", editor.searchCurrentIndex() == beforeNext);
         findField(bar, "remplacer par…").setText("GRAINE");
-        clickIn(bar, "Remplacer");
+        clickIcon(bar, "remplacer la correspondance courante");
         check("un remplacement a eu lieu",
                 countOccurrences(editor.getBuffer().toString(), "graine") == expected - 1);
         click("Annuler");
         check("l'annulation rend le texte",
                 editor.getBuffer().toString().equals(text));
-        clickIn(bar, "Chercher");
-        clickIn(bar, "Tout");
+        // la recherche revient à la frappe (l'annulation a rendu le
+        // texte) — le champ garde « graine », la frappe le retape
+        query.setText("graine");
+        View.harnessDrain(400L);
+        check("la recherche revenue compte les correspondances",
+                editor.searchMatchCount() == expected);
+        clickIcon(bar, "remplacer toutes les correspondances");
         check("tout remplacer vide les correspondances",
                 countOccurrences(editor.getBuffer().toString(), "graine") == 0);
         boolean toasted = false;
@@ -666,46 +683,51 @@ public final class OpenHarness {
         click("Annuler");
         check("l'annulation rend le texte après le tout",
                 editor.getBuffer().toString().equals(text));
-        clickIn(bar, "✕");
-        check("la popup se ferme et la recherche se range",
+        clickIcon(bar, "fermer la recherche");
+        check("la carte se ferme et la recherche se range",
                 !popup.isShowing() && editor.searchMatchCount() == 0);
         detail(expected + " correspondances de « graine »");
     }
 
     /**
      * La popup aller-à-la-ligne : le numéro se borne au fichier, le
-     * curseur s'y pose, la touche d'action du clavier vaut le bouton.
+     * curseur s'y pose, la touche d'action du clavier vaut la
+     * validation, la croix range la carte.
      */
     private static void gotoLine() {
-        begin("aller à la ligne : borne, pose, touche d'action, fermeture");
+        begin("aller à la ligne : invite, borne, touche d'action, fermeture");
         click("Aller à");
         PopupWindow popup = PopupWindow.harnessLast();
-        check("la popup aller-à s'ouvre (focusable, l'appui dehors range)",
+        check("la carte se centre en haut, comme l'atelier",
                 popup != null && popup.isShowing() && popup.harnessFocusable()
-                        && popup.harnessOutsideTouchable());
+                        && popup.harnessOutsideTouchable()
+                        && popup.harnessGravity()
+                        == (Gravity.TOP | Gravity.CENTER_HORIZONTAL));
         View bar = popup.harnessContent();
-        EditText line = findField(bar, "numéro de ligne…");
+        check("la carte porte l'invite « Aller à la ligne : »",
+                textOf(bar, "Aller à la ligne") != null);
+        EditText line = findField(bar, "numéro");
         check("le champ ne prend que des chiffres",
                 line.getInputType() == android.text.InputType.TYPE_CLASS_NUMBER);
         check("l'ouverture compte le fichier",
                 textOf(bar, "ligne(s)") != null);
         int last = editor.getBuffer().getLineCount();
         line.setText("999999");
-        clickIn(bar, "Aller");
+        line.harnessEditorAction();
         check("le numéro au-delà va à la dernière ligne",
                 editor.selectionStart() == editor.getBuffer().getLineStart(last - 1));
         line.setText("1");
-        clickIn(bar, "Aller");
+        line.harnessEditorAction();
         check("la première ligne se pose",
                 editor.selectionStart() == 0);
         line.setText("3");
         line.harnessEditorAction();
-        check("la touche « Aller » du clavier vaut le bouton",
+        check("la touche « Aller » du clavier valide",
                 editor.selectionStart() == editor.getBuffer().getLineStart(2));
         check("le retour dit la ligne où le curseur est tombé",
                 textOf(bar, "ligne 3") != null);
-        clickIn(bar, "✕");
-        check("la popup se ferme", !popup.isShowing());
+        clickIcon(bar, "fermer la barre");
+        check("la carte se ferme", !popup.isShowing());
     }
 
     /** Le fichier hors normes : 52 004 lignes, 624 002 jetons. */
@@ -875,7 +897,7 @@ public final class OpenHarness {
                 matches == 10_000);
         findField(bar, "remplacer par…").setText("GRAINE");
         long startedAt = System.nanoTime();
-        clickIn(bar, "Tout");
+        clickIcon(bar, "remplacer toutes les correspondances");
         long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L;
         check("tout remplacer remplace exactement les correspondances portées",
                 countOccurrences(editor.getBuffer().toString(), "graine") == total - matches
@@ -1178,6 +1200,49 @@ public final class OpenHarness {
             }
         }
         return null;
+    }
+
+    /**
+     * Cherche un bouton d'icône par sa description de rôle exacte
+     * (les boutons d'icône des barres flottantes n'ont pas de
+     * libellé — le glyphe se dessine, la description porte le sens).
+     *
+     * @param view        la vue visitée
+     * @param description la description exacte
+     * @return le bouton, ou null
+     */
+    private static Button findIconButton(View view, String description) {
+        if (view instanceof Button
+                && description.contentEquals(view.getContentDescription())) {
+            return (Button) view;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int at = 0; at < group.getChildCount(); at++) {
+                Button found = findIconButton(group.getChildAt(at), description);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Déclenche le clic d'un bouton d'icône par sa description de
+     * rôle, dans une racine donnée (la barre d'une popup flottante).
+     *
+     * @param root        la racine visitée
+     * @param description la description exacte
+     */
+    private static void clickIcon(View root, String description) {
+        Button button = findIconButton(root, description);
+        if (button == null) {
+            failures++;
+            System.out.printf("    [ÉCHEC] icône introuvable : %s%n", description);
+            return;
+        }
+        button.performClick();
     }
 
     /**

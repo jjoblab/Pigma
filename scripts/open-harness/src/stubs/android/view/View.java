@@ -328,6 +328,57 @@ public class View {
         return false;
     }
 
+    /** Le fond posé (la carte des barres flottantes). */
+    private android.graphics.drawable.Drawable background;
+
+    /** La largeur minimale demandée. */
+    private int minWidth;
+
+    /** La hauteur minimale demandée. */
+    private int minHeight;
+
+    /**
+     * Pose le fond de la vue (la carte arrondie des barres).
+     *
+     * @param background le fond, null pour aucun
+     */
+    public void setBackground(android.graphics.drawable.Drawable background) {
+        this.background = background;
+    }
+
+    /** Le fond posé (le harnais le lit). */
+    public android.graphics.drawable.Drawable getBackground() {
+        return background;
+    }
+
+    /**
+     * Pose la largeur minimale (les boutons d'icône se resserrent).
+     *
+     * @param minWidth la largeur en pixels
+     */
+    public void setMinWidth(int minWidth) {
+        this.minWidth = minWidth;
+    }
+
+    /** La largeur minimale posée (le harnais la lit). */
+    public int getMinWidth() {
+        return minWidth;
+    }
+
+    /**
+     * Pose la hauteur minimale.
+     *
+     * @param minHeight la hauteur en pixels
+     */
+    public void setMinHeight(int minHeight) {
+        this.minHeight = minHeight;
+    }
+
+    /** La hauteur minimale posée (le harnais la lit). */
+    public int getMinHeight() {
+        return minHeight;
+    }
+
     /** La description du rôle de la vue (la lecture d'écran la dit). */
     private CharSequence contentDescription;
 

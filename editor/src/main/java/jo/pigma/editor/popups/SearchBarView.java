@@ -1,10 +1,10 @@
 package jo.pigma.editor.popups;
 
 import android.content.Context;
+import android.graphics.drawable.GradientDrawable;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.View;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -15,22 +15,19 @@ import java.util.Locale;
 import jo.pigma.editor.EditorView;
 
 /**
- * La barre de recherche et remplacement — un VRAI View du paquet
- * popups (l'ancienne voie : la feuille bricolée par l'hôte, collée à
- * son layout). La barre se bâtit en code (la bibliothèque ne connaît
- * pas de XML) : la question, le remplacement, la navigation et le
- * compte des correspondances.
+ * La barre de recherche et remplacement, à la façon d'Android
+ * Studio : une carte compacte flottant en haut à droite de
+ * l'éditeur (EditorView la porte en PopupWindow), le champ suivi
+ * du compte « i/n » — rouge quand rien ne correspond —, la
+ * navigation par chevrons, la fermeture par croix. Le
+ * remplacement se replie sous la recherche : le rabat à deux
+ * chevrons le montre, comme le Ctrl+R de l'atelier.
  *
- * <p>L'hôte ne pilote que l'ouverture : EditorView la porte en
- * PopupWindow flottante (toggleSearchPopup), tout le reste vit ici —
- * la recherche incrémentale amortie de 150 ms (les frappes rapides
- * n'envoient que la dernière), le remplacement de l'occurrence
- * courante, le remplacement total (une unité d'annulation, de la fin
- * vers le début — les positions antérieures restent valides).</p>
- *
- * <p>Le compteur se lit comme la feuille d'origine :
- * « n correspondance(s) · courante i/n », ou « aucune
- * correspondance ».</p>
+ * <p>La recherche est incrémentale (amortie de 150 ms — les frappes
+ * rapides n'envoient que la dernière) ; remplacer la correspondance
+ * courante fait une unité d'annulation, tout remplacer une seule
+ * (les remplacements vont de la fin vers le début — les positions
+ * antérieures restent valides).</p>
  */
 public final class SearchBarView extends LinearLayout {
 
@@ -39,7 +36,13 @@ public final class SearchBarView extends LinearLayout {
 
     private final EditText queryField;
     private final EditText replacementField;
+
+    /** Le compte « i/n » — rouge quand rien ne correspond. */
     private final TextView matchView;
+
+    /** La rangée du remplacement, repliée au départ (le rabat la montre). */
+    private final LinearLayout replaceRow;
+
     private final Runnable searchSync = this::runIncrementalSearch;
 
     private EditorView editor;
@@ -47,14 +50,14 @@ public final class SearchBarView extends LinearLayout {
     public SearchBarView(Context context) {
         super(context);
         setOrientation(VERTICAL);
-        int margin = dp(8);
+        setBackground(card());
+        setPadding(dp(8), dp(4), dp(4), dp(6));
 
         queryField = new EditText(context);
         queryField.setHint("chercher…");
         // la recherche est incrémentale : chaque frappe du champ
         // relance la recherche (amortie — les frappes rapides
-        // n'envoient que la dernière), le bouton « Chercher » garde
-        // sa voie explicite
+        // n'envoient que la dernière)
         queryField.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
@@ -72,19 +75,43 @@ public final class SearchBarView extends LinearLayout {
         replacementField = new EditText(context);
         replacementField.setHint("remplacer par…");
         matchView = new TextView(context);
+        matchView.setText("0/0");
+        matchView.setTextSize(12.0f);
+        matchView.setTextColor(0xFF5F6368);
 
-        addView(row(margin, queryField,
-                button("Chercher", "lancer la recherche", this::doSearch),
-                button("‹", "correspondance précédente", this::previous),
-                button("›", "correspondance suivante", this::next),
-                button("✕", "fermer la recherche", this::close)));
-        addView(row(margin, replacementField,
-                button("Remplacer", "remplacer la correspondance courante", this::replaceOne),
-                button("Tout", "remplacer toutes les correspondances", this::replaceAll)));
+        // la rangée de recherche : le rabat, le champ, le compte,
+        // la navigation, la fermeture
+        LinearLayout searchRow = new LinearLayout(context);
+        searchRow.setOrientation(HORIZONTAL);
+        searchRow.addView(new IconButton(context, IconButton.Icon.TOGGLE,
+                "montrer ou cacher le remplacement", this::toggleReplace));
+        LayoutParams queryParams =
+                new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1.0f);
+        searchRow.addView(queryField, queryParams);
         LayoutParams matchParams =
-                new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        matchParams.setMargins(dp(16), 0, margin, 0);
-        addView(matchView, matchParams);
+                new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        matchParams.setMargins(0, dp(10), 0, 0);
+        searchRow.addView(matchView, matchParams);
+        searchRow.addView(new IconButton(context, IconButton.Icon.CHEVRON_UP,
+                "correspondance précédente", this::previous));
+        searchRow.addView(new IconButton(context, IconButton.Icon.CHEVRON_DOWN,
+                "correspondance suivante", this::next));
+        searchRow.addView(new IconButton(context, IconButton.Icon.CLOSE,
+                "fermer la recherche", this::close));
+        addView(searchRow);
+
+        // la rangée du remplacement : le champ, remplacer, tout
+        replaceRow = new LinearLayout(context);
+        replaceRow.setOrientation(HORIZONTAL);
+        LayoutParams replaceParams =
+                new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1.0f);
+        replaceRow.addView(replacementField, replaceParams);
+        replaceRow.addView(new IconButton(context, IconButton.Icon.REPLACE,
+                "remplacer la correspondance courante", this::replaceOne));
+        replaceRow.addView(new IconButton(context, IconButton.Icon.REPLACE_ALL,
+                "remplacer toutes les correspondances", this::replaceAll));
+        replaceRow.setVisibility(GONE);
+        addView(replaceRow);
     }
 
     /**
@@ -110,9 +137,10 @@ public final class SearchBarView extends LinearLayout {
         }
     }
 
-    private void doSearch(View button) {
-        editor.search(queryField.getText().toString());
-        updateCount();
+    /** Le rabat : la rangée du remplacement se montre ou se replie. */
+    private void toggleReplace(View button) {
+        replaceRow.setVisibility(
+                replaceRow.getVisibility() == VISIBLE ? GONE : VISIBLE);
     }
 
     private void previous(View button) {
@@ -177,45 +205,27 @@ public final class SearchBarView extends LinearLayout {
         updateCount();
     }
 
-    /** Le compte des correspondances, à la façon de la feuille d'origine. */
+    /** Le compte « i/n », rouge quand rien ne correspond. */
     private void updateCount() {
         if (editor == null) {
             return;
         }
         int total = editor.searchMatchCount();
-        if (total == 0) {
-            matchView.setText("aucune correspondance");
-        } else {
-            matchView.setText(String.format(Locale.ROOT,
-                    "%d correspondance(s) · courante %d/%d",
-                    total, editor.searchCurrentIndex() + 1, total));
-        }
+        int current = total == 0 ? 0 : editor.searchCurrentIndex() + 1;
+        matchView.setText(String.format(Locale.ROOT, "%d/%d", current, total));
+        matchView.setTextColor(total == 0 ? 0xFFC62828 : 0xFF5F6368);
     }
 
     /**
-     * La rangée mixte (un champ de saisie parmi les boutons) : le
-     * champ pèse le double d'un bouton, la saisie garde la place.
+     * La carte flottante : coins arrondis, fond clair, liseré gris —
+     * la façon de l'atelier.
      */
-    private LinearLayout row(int margin, View... views) {
-        LinearLayout row = new LinearLayout(getContext());
-        row.setOrientation(HORIZONTAL);
-        for (View view : views) {
-            float weight = view instanceof EditText ? 2.0f : 1.0f;
-            LayoutParams params =
-                    new LayoutParams(0, LayoutParams.WRAP_CONTENT, weight);
-            params.setMargins(0, 0, margin / 2, 0);
-            row.addView(view, params);
-        }
-        return row;
-    }
-
-    private Button button(String label, String description,
-                          View.OnClickListener listener) {
-        Button button = new Button(getContext());
-        button.setText(label);
-        button.setContentDescription(description);
-        button.setOnClickListener(listener);
-        return button;
+    private GradientDrawable card() {
+        GradientDrawable card = new GradientDrawable();
+        card.setCornerRadius(dp(10));
+        card.setColor(0xFFF3F3F3);
+        card.setStroke(dp(1), 0xFFB5B5B5);
+        return card;
     }
 
     private int dp(int value) {

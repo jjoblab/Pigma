@@ -1036,13 +1036,14 @@ public final class EditorView extends View {
     }
 
     /**
-     * La barre de recherche en popup flottante — un VRAI View du
-     * paquet popups (l'hôte n'y bricole plus sa feuille dans son
-     * layout). La barre couvre le haut de la vue et prend le focus :
-     * le champ, le clavier et la recherche incrémentale amortie lui
-     * reviennent ; l'appui hors d'elle la range et la recherche se
-     * range avec. Un nouvel appel la range aussi — le bouton
-     * « Rechercher » de l'hôte fait bascule.
+     * La barre de recherche en popup flottante, à la façon d'Android
+     * Studio — un VRAI View du paquet popups (l'hôte n'y bricole
+     * plus sa feuille dans son layout). La carte flotte en haut à
+     * DROITE de l'éditeur et prend le focus : le champ, le clavier
+     * et la recherche incrémentale amortie lui reviennent ; l'appui
+     * hors d'elle la range et la recherche se range avec. Un nouvel
+     * appel la range aussi — le bouton « Rechercher » de l'hôte fait
+     * bascule.
      */
     public void toggleSearchPopup() {
         if (searchPopup != null && searchPopup.isShowing()) {
@@ -1054,22 +1055,25 @@ public final class EditorView extends View {
             searchBar.bind(this);
         }
         if (searchPopup == null) {
-            searchPopup = new PopupWindow(searchBar, getWidth(),
+            searchPopup = new PopupWindow(searchBar, dp(360),
                     ViewGroup.LayoutParams.WRAP_CONTENT, true);
             searchPopup.setOutsideTouchable(true);
+            // la carte jette son ombre, le clavier se montre au champ
+            searchPopup.setElevation(dp(4));
+            searchPopup.setInputMethodMode(PopupWindow.INPUT_METHOD_NEEDED);
             searchPopup.setOnDismissListener(() -> {
                 clearSearch();
                 searchBar.closed();
             });
         }
-        searchPopup.setWidth(getWidth());
+        searchPopup.setWidth(Math.min(getWidth() - dp(16), dp(360)));
         searchBar.opened();
-        searchPopup.showAtLocation(this, Gravity.TOP, 0, 0);
+        searchPopup.showAtLocation(this, Gravity.TOP | Gravity.END, dp(8), dp(8));
     }
 
     /**
-     * Range la barre de recherche (le bouton « ✕ », la bascule,
-     * l'appui hors d'elle — la recherche se range avec).
+     * Range la barre de recherche (la croix, la bascule, l'appui
+     * hors d'elle — la recherche se range avec).
      */
     public void dismissSearchPopup() {
         if (searchPopup != null && searchPopup.isShowing()) {
@@ -1078,10 +1082,12 @@ public final class EditorView extends View {
     }
 
     /**
-     * La barre « aller à la ligne » en popup flottante : le champ ne
-     * prend que des chiffres, la touche « Aller » du clavier vaut le
-     * bouton, le numéro se borne au fichier. La même bascule, le
-     * même rangement que la barre de recherche.
+     * La barre « aller à la ligne » en popup flottante, à la façon
+     * d'Android Studio (le Ctrl+G de l'atelier) : la carte se
+     * CENTRE en haut de l'éditeur, l'invite « Aller à la ligne : »
+     * précède le champ — la touche « Aller » du clavier vaut la
+     * validation, le numéro se borne au fichier. La même bascule,
+     * le même rangement que la barre de recherche.
      */
     public void toggleGotoPopup() {
         if (gotoPopup != null && gotoPopup.isShowing()) {
@@ -1093,13 +1099,16 @@ public final class EditorView extends View {
             gotoBar.bind(this);
         }
         if (gotoPopup == null) {
-            gotoPopup = new PopupWindow(gotoBar, getWidth(),
+            gotoPopup = new PopupWindow(gotoBar, dp(300),
                     ViewGroup.LayoutParams.WRAP_CONTENT, true);
             gotoPopup.setOutsideTouchable(true);
+            gotoPopup.setElevation(dp(4));
+            gotoPopup.setInputMethodMode(PopupWindow.INPUT_METHOD_NEEDED);
         }
-        gotoPopup.setWidth(getWidth());
+        gotoPopup.setWidth(Math.min(getWidth() - dp(16), dp(300)));
         gotoBar.opened();
-        gotoPopup.showAtLocation(this, Gravity.TOP, 0, 0);
+        gotoPopup.showAtLocation(this, Gravity.TOP | Gravity.CENTER_HORIZONTAL,
+                0, dp(8));
     }
 
     /** Range la barre « aller à la ligne ». */
