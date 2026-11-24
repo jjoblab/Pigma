@@ -32,6 +32,25 @@ de politique de langue et de commentaires (`scripts/check-code-policy`), le
 contrôle des références interdites (`scripts/check-forbidden-refs`) et le
 contrôle d'à-jour des lexeurs générés (`scripts/check-lexers-fresh`).
 
+## Harnais d'ouverture
+
+Le harnais JVM (`scripts/open-harness/`) éprouve l'application de
+démonstration sans appareil : il compile le dépôt contre des stubs
+Android minimaux (horloge virtuelle pour les différés, canevas qui
+enregistre les dessins au lieu de peindre) et déroule les scénarios —
+ouverture, remplissage du fond, langages, thème, frappe et clavier
+par événements, sélection et poignées, appui long, recherche et
+remplacement, fichier hors normes, plis, fusion sémantique, serveur
+de langage, copie des mesures :
+
+    bash scripts/open-harness/run.sh
+
+Prérequis : un JDK et les jars du client LSP dans un cache Gradle
+(`GRADLE_USER_HOME`, `~/.gradle` ou `$TOOLS/gradle-home` — un
+`./gradlew check` préalable les y dépose). Le code de sortie est non
+nul si un scénario échoue ; la décision 007 consigne pourquoi le
+harnais vit dans le dépôt.
+
 ## Lexeurs générés
 
 Les descriptions de lexeurs vivent dans `syntax/src/main/lexers/`
