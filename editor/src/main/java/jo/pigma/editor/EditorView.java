@@ -1036,6 +1036,39 @@ public final class EditorView extends View {
 
     private InfoPopupProvider infoProvider;
 
+    /**
+     * Le fournisseur de complétion : le bandeau peut s'y nourrir
+     * d'une source extérieure (un serveur de langage) plutôt que de
+     * l'index local. La vue tire à chaque trame — le fournisseur
+     * d'aplomb y cache sa réponse (la sienne revient asynchrone :
+     * qu'il serve la dernière reçue et invalide la vue quand la
+     * neuve arrive, la trame suivante la porte).
+     */
+    public interface SuggestionProvider {
+
+        /**
+         * Les complétions du préfixe demandé.
+         *
+         * @param prefix le préfixe tapé (du début du mot au curseur)
+         * @param line   la ligne du curseur
+         * @param column la colonne du curseur
+         * @return les candidats, jamais null (vide : bandeau vide)
+         */
+        List<String> completionsFor(String prefix, int line, int column);
+    }
+
+    /**
+     * Branche un fournisseur de complétion (null débranche : l'index
+     * local reprend le bandeau).
+     *
+     * @param provider le fournisseur, ou null
+     */
+    public void setSuggestionProvider(SuggestionProvider provider) {
+        suggestionProvider = provider;
+    }
+
+    private SuggestionProvider suggestionProvider;
+
     /** Masque la popup d'info. */
     public void dismissInfoPopup() {
         if (infoPopupText != null) {
@@ -1973,9 +2006,17 @@ public final class EditorView extends View {
             return;
         }
         String prefix = buffer.getText(wordStart, caret).toString();
+        suggestionWordStart = wordStart;
+        if (suggestionProvider != null) {
+            // la source extérieure tire à la trame : elle cache sa
+            // réponse asynchrone (le contrat y est documenté)
+            int line = buffer.lineOfOffset(caret);
+            suggestions = suggestionProvider.completionsFor(prefix,
+                    line, caret - buffer.getLineStart(line));
+            return;
+        }
         suggestions = symbolIndex == null
                 ? List.of() : symbolIndex.query(prefix, 8);
-        suggestionWordStart = wordStart;
     }
 
     /**

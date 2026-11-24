@@ -803,9 +803,29 @@ public final class OpenHarness {
         check("le survol du serveur prime dans la popup",
                 hover != null && hover.contains("classe"));
         detail("survol : " + hover);
+        // la complétion du serveur au bandeau : « gr » y porte les
+        // mots du document — l'index local n'y indexe pas « graine »
+        // (paramètre, pas déclaration), le serveur si : la réponse
+        // revient asynchrone sur le fil du lecteur (temps réel —
+        // l'attente y est réelle, comme les diagnostics)
+        editor.caretTo(0);
+        frame();
+        connection.commitText("gr", 1);
+        frame();
+        for (int wait = 0; wait < 100
+                && !editor.suggestions().contains("graine"); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            frame();
+        }
+        java.util.List<String> band = editor.suggestions();
+        check("la complétion du serveur arrive au bandeau",
+                band.contains("graine"));
+        detail("complétions : " + band);
         click("Annuler");
         click("Annuler");
-        check("la double annulation rend le texte",
+        click("Annuler");
+        check("la triple annulation rend le texte",
                 editor.getBuffer().toString().equals(original));
         click("LSP ✔");
         check("le débranchement rend le bouton",

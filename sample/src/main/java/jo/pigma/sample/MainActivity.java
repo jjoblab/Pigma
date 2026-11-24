@@ -88,6 +88,13 @@ public final class MainActivity extends Activity {
     /** Les diagnostics du dernier avis du serveur (le panneau les lit). */
     private volatile int lspDiagnosticCount = -1;
 
+    /** Le préfixe du dernier envoi de complétion (la clef du cache). */
+    private volatile String completionPrefix;
+
+    /** Les libellés reçus du serveur pour ce préfixe (le fil du lecteur y écrit). */
+    private final java.util.List<String> completionCache =
+            java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
     /** Le report du changement de document vers le serveur (la synchronisation intégrale se amortit). */
     private final Runnable lspSync = this::pushDocumentToServer;
 
@@ -545,9 +552,12 @@ public final class MainActivity extends Activity {
     private void onLspToggleClicked(View button) {
         if (lspSession != null) {
             editorView.setInfoProvider(null);
+            editorView.setSuggestionProvider(null);
             lspSession.shutdown();
             lspSession = null;
             lspDiagnosticCount = -1;
+            completionPrefix = null;
+            completionCache.clear();
             lspButton.setText("LSP");
             updateDiagnostics();
             return;
@@ -588,6 +598,31 @@ public final class MainActivity extends Activity {
                 return null;
             }
         });
+        // la complétion du serveur au bandeau : la vue tire à chaque
+        // trame — le fournisseur cache par préfixe (le même préfixe y
+        // rend la même liste, O(1)), la réponse revient asynchrone sur
+        // le fil du lecteur : la neuve évince l'ancienne si le préfixe
+        // n'a pas bougé, et la vue s'invalide — la trame suivante la
+        // porte
+        editorView.setSuggestionProvider((prefix, line, column) -> {
+            if (lspSession == null || prefix.isEmpty()) {
+                return java.util.List.of();
+            }
+            if (!prefix.equals(completionPrefix)) {
+                completionPrefix = prefix;
+                completionCache.clear();
+                final String asked = prefix;
+                lspSession.completion(DOC_URI, new LspPosition(line, column))
+                        .whenComplete((words, failure) -> {
+                            if (asked.equals(completionPrefix) && words != null) {
+                                completionCache.clear();
+                                completionCache.addAll(words);
+                                editorView.post(editorView::invalidate);
+                            }
+                        });
+            }
+            return java.util.List.copyOf(completionCache);
+        });
         lspButton.setText("LSP ✔");
         updateDiagnostics();
     }
@@ -601,6 +636,13 @@ public final class MainActivity extends Activity {
     private void pushDocumentToServer() {
         if (lspSession != null) {
             lspSession.didChange(DOC_URI, editorView.getBuffer().toString());
+            // le document a changé côté serveur : les complétions reçues
+            // décrivent l'ancien texte — le cache se range et la trame
+            // suivante redemande (l'ordre du canal porte le didChange
+            // avant la demande neuve)
+            completionPrefix = null;
+            completionCache.clear();
+            editorView.invalidate();
         }
     }
 

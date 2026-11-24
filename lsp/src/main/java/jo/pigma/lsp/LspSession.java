@@ -16,8 +16,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.eclipse.lsp4j.ClientCapabilities;
 import org.eclipse.lsp4j.ClientInfo;
+import org.eclipse.lsp4j.CompletionItem;
+import org.eclipse.lsp4j.CompletionList;
+import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
+import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.InitializeParams;
@@ -332,6 +336,50 @@ public final class LspSession {
                 new TextDocumentIdentifier(uri), position.toLsp());
         return launcher.getRemoteProxy().getTextDocumentService()
                 .hover(params).thenApply(LspSession::hoverText);
+    }
+
+    /**
+     * Demande les complétions à une position : la réponse porte les
+     * libellés des candidats du serveur (les deux formes du protocole
+     * — la liste nue ou l'enveloppe — y rentrent).
+     *
+     * @param uri      le document interrogé
+     * @param position la position du curseur
+     * @return le futur des libellés, jamais null (vide : aucun)
+     */
+    public CompletableFuture<List<String>> completion(String uri, LspPosition position) {
+        CompletionParams params = new CompletionParams(
+                new TextDocumentIdentifier(uri), position.toLsp());
+        return launcher.getRemoteProxy().getTextDocumentService()
+                .completion(params).thenApply(LspSession::completionLabels);
+    }
+
+    /**
+     * Les libellés de la réponse de complétion.
+     *
+     * @param answer la réponse du serveur (liste nue ou enveloppe)
+     * @return les libellés, vide si rien
+     */
+    private static List<String> completionLabels(
+            Either<List<CompletionItem>, CompletionList> answer) {
+        List<CompletionItem> items = null;
+        if (answer != null) {
+            if (answer.getLeft() != null) {
+                items = answer.getLeft();
+            } else if (answer.getRight() != null) {
+                items = answer.getRight().getItems();
+            }
+        }
+        if (items == null) {
+            return List.of();
+        }
+        List<String> labels = new ArrayList<>(items.size());
+        for (CompletionItem item : items) {
+            if (item != null && item.getLabel() != null) {
+                labels.add(item.getLabel());
+            }
+        }
+        return labels;
     }
 
     /**

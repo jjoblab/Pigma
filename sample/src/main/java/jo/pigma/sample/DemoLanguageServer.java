@@ -1,8 +1,14 @@
 package jo.pigma.sample;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 
+import org.eclipse.lsp4j.CompletionItem;
+import org.eclipse.lsp4j.CompletionList;
+import org.eclipse.lsp4j.CompletionOptions;
+import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.eclipse.lsp4j.DidChangeConfigurationParams;
@@ -11,6 +17,7 @@ import org.eclipse.lsp4j.DidChangeWatchedFilesParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.DidSaveTextDocumentParams;
+import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
 import org.eclipse.lsp4j.Hover;
@@ -77,6 +84,7 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
     public CompletableFuture<InitializeResult> initialize(InitializeParams params) {
         ServerCapabilities capabilities = new ServerCapabilities();
         capabilities.setHoverProvider(true);
+        capabilities.setCompletionProvider(new CompletionOptions());
         capabilities.setTextDocumentSync(TextDocumentSyncKind.Full);
         return CompletableFuture.completedFuture(new InitializeResult(capabilities));
     }
@@ -191,6 +199,61 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
         }
         return CompletableFuture.completedFuture(
                 new Hover(new MarkupContent("plaintext", value)));
+    }
+
+    @Override
+    public CompletableFuture<Either<List<CompletionItem>, CompletionList>> completion(
+            CompletionParams params) {
+        String prefix = prefixAt(params.getPosition().getLine(),
+                params.getPosition().getCharacter());
+        // le vocabulaire du document : les mots distincts qui
+        // poursuivent le préfixe, huit au plus, dans l'ordre du texte
+        TreeSet<String> matches = new TreeSet<>();
+        int at = 0;
+        while (at < text.length() && matches.size() < 8) {
+            while (at < text.length() && wordBreak(text.charAt(at))) {
+                at++;
+            }
+            int start = at;
+            while (at < text.length() && !wordBreak(text.charAt(at))) {
+                at++;
+            }
+            if (at > start) {
+                String word = text.substring(start, at);
+                if (word.startsWith(prefix) && word.length() > prefix.length()) {
+                    matches.add(word);
+                }
+            }
+        }
+        List<CompletionItem> items = new ArrayList<>(matches.size());
+        for (String word : matches) {
+            items.add(new CompletionItem(word));
+        }
+        return CompletableFuture.completedFuture(Either.forLeft(items));
+    }
+
+    /**
+     * Le préfixe tapé à une position : les caractères du mot avant la
+     * colonne.
+     */
+    private String prefixAt(int line, int column) {
+        int start = 0;
+        for (int at = 0; at < text.length() && line > 0; at++) {
+            if (text.charAt(at) == '\n') {
+                line--;
+                start = at + 1;
+            }
+        }
+        int end = text.indexOf('\n', start);
+        if (end < 0) {
+            end = text.length();
+        }
+        int caret = start + Math.min(column, end - start);
+        int wordStart = caret;
+        while (wordStart > start && !wordBreak(text.charAt(wordStart - 1))) {
+            wordStart--;
+        }
+        return text.substring(wordStart, caret);
     }
 
     /** Les diagnostics du texte courant : les parenthèses non appariées. */
