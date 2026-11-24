@@ -1,5 +1,10 @@
 package jo.pigma.editor;
 
+import jo.pigma.editor.popups.InfoPopup;
+import jo.pigma.editor.render.RenderCache;
+import jo.pigma.editor.popups.PopupMetrics;
+import jo.pigma.editor.popups.SuggestionBand;
+
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -117,14 +122,8 @@ public final class EditorView extends View {
     /** L'index de la correspondance courante (-1 : aucune). */
     private int searchCurrent = -1;
 
-    /** Le texte de la popup d'info ancrée (null : masquée). */
-    private String infoPopupText;
-
-    /** La ligne d'ancrage de la popup d'info. */
-    private int infoPopupLine;
-
-    /** La colonne d'ancrage de la popup d'info. */
-    private int infoPopupColumn;
+    /** La popup d'info ancrée — état et dessin au paquet des popups. */
+    private InfoPopup infoPopup;
 
     /** L'horodatage de l'appui courant (l'appui long sélectionne le mot). */
     private long touchDownNanos;
@@ -225,14 +224,11 @@ public final class EditorView extends View {
     /** La taille d'une tranche d'analyse (lignes avalées par post). */
     private static final int ANALYSIS_SLICE_LINES = 256;
 
-    /** Les candidats du bandeau de complétion (le mot courant). */
-    private List<String> suggestions = List.of();
+    /** Le bandeau de complétion — état et dessin au paquet des popups. */
+    private SuggestionBand suggestionBand;
 
     /** La borne de début du mot courant (l'insertion remplace le préfixe). */
     private int suggestionWordStart = -1;
-
-    /** Les abscisses des candidats dessinés (le toucher s'y teste). */
-    private float[] suggestionXs = new float[0];
 
     /** La paire d'appariement du curseur (L2), null si rien n'adjace. */
     private StructureDocument.BracketPair bracketPair;
@@ -291,23 +287,8 @@ public final class EditorView extends View {
     /** La teinte de la correspondance courante (plus dense). */
     private final Paint searchCurrentPaint = new Paint();
 
-    /** Le texte de la popup d'info ancrée. */
-    private final Paint infoPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-
-    /** Le fond de la popup d'info. */
-    private final Paint infoBackground = new Paint(Paint.ANTI_ALIAS_FLAG);
-
-    /** Le bord de la popup d'info. */
-    private final Paint infoBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
-
     /** Le souligné des diagnostics d'appariement. */
     private final Paint diagnosticPaint = new Paint();
-
-    /** Le texte des candidats de complétion (bandeau). */
-    private final Paint suggestionPaint = new Paint();
-
-    /** Le fond du bandeau de complétion. */
-    private final Paint suggestionBackground = new Paint();
 
     private final RenderCache<LinePlan> renderCache = new RenderCache<>(SHARED_PLANS);
 
@@ -393,20 +374,11 @@ public final class EditorView extends View {
         searchPaint.setColor(0x38FFC107);
         searchCurrentPaint.setStyle(Paint.Style.FILL);
         searchCurrentPaint.setColor(0x80FFC107);
-        infoPaint.setColor(0xFF1B1B1F);
-        infoPaint.setTextSize(dp(12));
-        infoBackground.setStyle(Paint.Style.FILL);
-        infoBackground.setColor(0xF2FFFFFF);
-        infoBorder.setStyle(Paint.Style.STROKE);
-        infoBorder.setStrokeWidth(dp(1));
-        infoBorder.setColor(0xFF1B6FE0);
+        infoPopup = new InfoPopup(dp(1));
         diagnosticPaint.setStyle(Paint.Style.STROKE);
         diagnosticPaint.setStrokeWidth(dp(2));
         diagnosticPaint.setColor(0xFFFF3B30);
-        suggestionPaint.setColor(0xFF1B1B1F);
-        suggestionPaint.setTextSize(dp(13));
-        suggestionBackground.setStyle(Paint.Style.FILL);
-        suggestionBackground.setColor(0x11000000);
+        suggestionBand = new SuggestionBand(dp(1));
         trackedLineCount = buffer.getLineCount();
         buffer.addListener(modelListener);
         int padding = dp(12);
@@ -689,7 +661,7 @@ public final class EditorView extends View {
         diagnosticsBuilder = null;
         analysisRevision = -1;
         lastAnalysisStartNanos = -Long.MAX_VALUE / 2;
-        suggestions = List.of();
+        suggestionBand.set(List.of());
         suggestionWordStart = -1;
         // autre document : la sélection n'y désigne plus rien, la
         // recherche et la popup d'info non plus
@@ -697,7 +669,7 @@ public final class EditorView extends View {
         searchQuery = null;
         searchMatches = new int[0];
         searchCurrent = -1;
-        infoPopupText = null;
+        infoPopup.dismiss();
         try (TextTransaction transaction = undoStack.newTransaction()) {
             transaction.replace(0, buffer.length(), text);
         }
@@ -742,7 +714,7 @@ public final class EditorView extends View {
         searchQuery = null;
         searchMatches = new int[0];
         searchCurrent = -1;
-        infoPopupText = null;
+        infoPopup.dismiss();
         undoStack.clear();
         folded.clear();
         rebuildFoldLayout();
@@ -1026,9 +998,7 @@ public final class EditorView extends View {
      * @param column la colonne d'ancrage
      */
     public void showInfoPopup(String text, int line, int column) {
-        infoPopupText = text == null || text.isEmpty() ? null : text;
-        infoPopupLine = line;
-        infoPopupColumn = column;
+        infoPopup.show(text, line, column);
         invalidate();
     }
 
@@ -1045,23 +1015,21 @@ public final class EditorView extends View {
      * @return vrai si la popup vivait encore à cette position
      */
     public boolean replaceInfoPopup(String text, int line, int column) {
-        if (infoPopupText == null || infoPopupLine != line
-                || infoPopupColumn != column) {
+        if (!infoPopup.replace(text, line, column)) {
             return false;
         }
-        infoPopupText = text == null || text.isEmpty() ? infoPopupText : text;
         invalidate();
         return true;
     }
 
     /** La ligne d'ancrage de la popup (-1 : aucune). */
     public int infoPopupLine() {
-        return infoPopupText == null ? -1 : infoPopupLine;
+        return infoPopup.line();
     }
 
     /** La colonne d'ancrage de la popup (-1 : aucune). */
     public int infoPopupColumn() {
-        return infoPopupText == null ? -1 : infoPopupColumn;
+        return infoPopup.column();
     }
 
     /**
@@ -1131,15 +1099,15 @@ public final class EditorView extends View {
 
     /** Masque la popup d'info. */
     public void dismissInfoPopup() {
-        if (infoPopupText != null) {
-            infoPopupText = null;
+        if (infoPopup.text() != null) {
+            infoPopup.dismiss();
             invalidate();
         }
     }
 
     /** La popup d'info est-elle visible ? */
     public boolean isInfoPopupVisible() {
-        return infoPopupText != null;
+        return infoPopup.text() != null;
     }
 
     /**
@@ -1149,7 +1117,7 @@ public final class EditorView extends View {
      * @return le texte affiché, null si masquée
      */
     public String infoPopupText() {
-        return infoPopupText;
+        return infoPopup.text();
     }
 
     private void gotoSearchMatch(int index) {
@@ -1332,7 +1300,7 @@ public final class EditorView extends View {
                     toggleFoldAt(lineOfVisibleIndex(
                             (int) ((event.getY() - getPaddingTop() + scrollY) / lineHeight)));
                     clearComposing();
-                } else if (!suggestions.isEmpty() && event.getY() > getHeight()
+                } else if (!suggestionBand.words().isEmpty() && event.getY() > getHeight()
                         - dp(28) - getPaddingBottom()) {
                     // le bandeau de complétion : le candidat désigné
                     // complète le mot courant
@@ -1670,38 +1638,22 @@ public final class EditorView extends View {
      * dernier, par-dessus le bandeau.
      */
     private void drawInfoPopup(Canvas canvas) {
-        if (infoPopupText == null) {
+        if (infoPopup.text() == null) {
             return;
         }
-        float textWidth = infoPaint.measureText(infoPopupText);
-        float padding = dp(8);
-        float boxWidth = Math.min(textWidth + 2 * padding,
-                getWidth() - getPaddingLeft() - getPaddingRight());
-        float boxHeight = -infoPaint.getFontMetrics().top + dp(2) + padding;
-        float anchorTop = getPaddingTop() + visibleIndexOf(infoPopupLine) * lineHeight
-                - scrollY;
-        float left = Math.min(
-                Math.max(getPaddingLeft(),
-                        getPaddingLeft() + infoPopupColumn * charWidth - padding),
-                getWidth() - getPaddingRight() - boxWidth);
-        float top;
-        if (anchorTop - boxHeight - dp(4) >= getPaddingTop()) {
-            top = anchorTop - boxHeight - dp(4);
-        } else {
-            top = Math.min(anchorTop + lineHeight + dp(4),
-                    getHeight() - boxHeight);
-        }
-        canvas.drawRoundRect(left, top, left + boxWidth, top + boxHeight,
-                dp(4), dp(4), infoBackground);
-        canvas.drawRoundRect(left, top, left + boxWidth, top + boxHeight,
-                dp(4), dp(4), infoBorder);
-        // le texte coupé à la place disponible (les mots longs se
-        // tronquent, la popup reste dans la vue)
-        float maxChars = Math.max(1.0f, (boxWidth - 2 * padding) / charWidth);
-        String shown = infoPopupText.length() > maxChars
-                ? infoPopupText.substring(0, (int) maxChars) : infoPopupText;
-        canvas.drawText(shown, left + padding,
-                top - infoPaint.getFontMetrics().top, infoPaint);
+        float anchorTop = getPaddingTop()
+                + visibleIndexOf(infoPopup.line()) * lineHeight - scrollY;
+        infoPopup.draw(canvas, anchorTop, popupMetrics());
+    }
+
+    /**
+     * La géométrie de la vue au dessin des popups : le paquet des
+     * popups n'en connaît que ces nombres.
+     */
+    private PopupMetrics popupMetrics() {
+        return new PopupMetrics(getPaddingLeft(), getPaddingTop(),
+                getPaddingRight(), getPaddingBottom(), getWidth(), getHeight(),
+                lineHeight, charWidth, dp(1));
     }
 
     /**
@@ -2074,7 +2026,7 @@ public final class EditorView extends View {
         int caret = Math.min(caretOffset, buffer.length());
         int wordStart = wordStartAt(caret);
         if (wordStart < 0) {
-            suggestions = List.of();
+            suggestionBand.set(List.of());
             suggestionWordStart = -1;
             return;
         }
@@ -2084,12 +2036,12 @@ public final class EditorView extends View {
             // la source extérieure tire à la trame : elle cache sa
             // réponse asynchrone (le contrat y est documenté)
             int line = buffer.lineOfOffset(caret);
-            suggestions = suggestionProvider.completionsFor(prefix,
-                    line, caret - buffer.getLineStart(line));
+            suggestionBand.set(suggestionProvider.completionsFor(prefix,
+                    line, caret - buffer.getLineStart(line)));
             return;
         }
-        suggestions = symbolIndex == null
-                ? List.of() : symbolIndex.query(prefix, 8);
+        suggestionBand.set(symbolIndex == null
+                ? List.of() : symbolIndex.query(prefix, 8));
     }
 
     /**
@@ -2226,33 +2178,7 @@ public final class EditorView extends View {
      * côte, en bas de la vue — les abscisses se gardent pour le toucher.
      */
     private void drawSuggestions(Canvas canvas) {
-        if (suggestions.isEmpty()) {
-            suggestionXs = new float[0];
-            return;
-        }
-        float height = dp(28);
-        float top = getHeight() - height - getPaddingBottom();
-        if (top < 0.0f) {
-            suggestionXs = new float[0];
-            return;
-        }
-        canvas.drawRect(0.0f, top, getWidth(), top + height, suggestionBackground);
-        float x = getPaddingLeft();
-        float limit = getWidth() - getPaddingRight();
-        float[] xs = new float[suggestions.size()];
-        int drawn = 0;
-        for (String candidate : suggestions) {
-            float width = suggestionPaint.measureText(candidate) + dp(16);
-            if (x + width > limit) {
-                break;
-            }
-            xs[drawn] = x;
-            canvas.drawText(candidate, x + dp(8),
-                    top + height / 2.0f + dp(4), suggestionPaint);
-            x += width;
-            drawn++;
-        }
-        suggestionXs = drawn == xs.length ? xs : java.util.Arrays.copyOf(xs, drawn);
+        suggestionBand.draw(canvas, popupMetrics());
     }
 
     /**
@@ -2262,12 +2188,12 @@ public final class EditorView extends View {
      * @param x l'abscisse du toucher
      */
     private void insertSuggestion(float x) {
-        for (int at = 0; at < suggestionXs.length; at++) {
-            float next = at + 1 < suggestionXs.length
-                    ? suggestionXs[at + 1] : getWidth();
-            if (x >= suggestionXs[at] && x < next) {
+        for (int at = 0; at < suggestionBand.drawnCount(); at++) {
+            float next = at + 1 < suggestionBand.drawnCount()
+                    ? suggestionBand.xAt(at + 1) : getWidth();
+            if (x >= suggestionBand.xAt(at) && x < next) {
                 applyEdit(suggestionWordStart, Math.min(caretOffset, buffer.length()),
-                        suggestions.get(at));
+                        suggestionBand.words().get(at));
                 return;
             }
         }
@@ -2280,7 +2206,7 @@ public final class EditorView extends View {
      * @return les candidats du mot courant, jamais {@code null}
      */
     public List<String> suggestions() {
-        return suggestions;
+        return suggestionBand.words();
     }
 
     /**
