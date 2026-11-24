@@ -33,12 +33,20 @@ import jo.pigma.syntax.SyntaxTheme;
  * lignes visibles — c'est la fenêtre paresseuse du moteur qui s'y
  * paie, le remplissage du reste suit par tranches (la pompe interne,
  * après chaque trame). Changer de thème ne retokenise rien : la
- * résolution des couleurs se fait au dessin. Le dessin d'une ligne
- * s'arrête à {@value #MAX_DRAWN_COLUMNS} colonnes, une ligne monstre
- * (hors plafond moteur) s'affiche en texte brut. La sélection et la
- * gouttière viendront avec la vue complète de la bibliothèque.</p>
+ * résolution des couleurs se fait à la cuisson du plan. Le dessin
+ * d'une ligne s'arrête à {@value #MAX_DRAWN_COLUMNS} colonnes, une
+ * ligne monstre (hors plafond moteur) s'affiche en texte brut. Les
+ * plans de rendu passent par un cache (validité par identité d'entrée,
+ * partage par contenu pour les lignes identiques) et la durée de la
+ * dernière trame s'y lit — le budget par image du panneau. La
+ * sélection et la gouttière viendront avec la vue complète de la
+ * bibliothèque.</p>
  */
 public final class EditorView extends View {
+
+    /** Plan de rendu d'une ligne : textes tranchés, couleurs résolues, abscisses. */
+    record LinePlan(String[] texts, int[] colors, float[] xs) {
+    }
 
     private static final String INITIAL_TEXT = DemoTexts.JAVA;
 
@@ -53,6 +61,9 @@ public final class EditorView extends View {
 
     /** Délai entre deux tranches : environ une trame. */
     private static final long LEX_SLICE_DELAY_MS = 16L;
+
+    /** Plans partagés par contenu, au-delà le plus ancien s'évince. */
+    private static final int SHARED_PLANS = 256;
 
     private final TextBuffer buffer;
     private final UndoStack undoStack;
@@ -78,6 +89,13 @@ public final class EditorView extends View {
     private boolean dragging;
 
     private boolean pumping;
+
+    private final RenderCache<LinePlan> renderCache = new RenderCache<>(SHARED_PLANS);
+
+    /** Durée de la dernière trame (budget par image, diagnostic). */
+    private long lastFrameNanos;
+
+    private long frameCount;
 
     /**
      * La pompe de remplissage : après la fenêtre visible, elle lexte le
@@ -148,6 +166,55 @@ public final class EditorView extends View {
     }
 
     /**
+     * Durée de la dernière trame dessinée — le budget par image du
+     * panneau de diagnostic.
+     *
+     * @return la durée en nanosecondes, 0 avant le premier dessin
+     */
+    public long lastFrameNanos() {
+        return lastFrameNanos;
+    }
+
+    /**
+     * Nombre de trames dessinées depuis la construction (diagnostic).
+     *
+     * @return le nombre de dessins
+     */
+    public long frameCount() {
+        return frameCount;
+    }
+
+    /**
+     * Cuissons de plans de rendu depuis la dernière invalidation :
+     * après quelques trames, le cache travaille et ce compte stagne.
+     *
+     * @return le nombre de cuissons
+     */
+    public long renderCacheBakes() {
+        return renderCache.bakes();
+    }
+
+    /**
+     * Reprises par contenu depuis la dernière invalidation : les lignes
+     * identiques partagent leur rendu.
+     *
+     * @return le nombre de reprises
+     */
+    public long renderCacheKeyHits() {
+        return renderCache.keyHits();
+    }
+
+    /**
+     * Passages par le chemin rapide (identité d'entrée, aucune lecture
+     * de texte par trame).
+     *
+     * @return le nombre de passages
+     */
+    public long renderCacheSlotHits() {
+        return renderCache.slotHits();
+    }
+
+    /**
      * Change de langage : le texte est remplacé (une transaction, donc
      * annulable) et un nouveau document de coloration s'ouvre — le
      * haut du document s'affiche, le remplissage repart.
@@ -161,6 +228,9 @@ public final class EditorView extends View {
             transaction.replace(0, buffer.length(), text);
         }
         syntax = SyntaxDocument.open(buffer, language);
+        // autre langage : les plans portent des couleurs résolues, tout
+        // recuit (sans retokeniser — le nouveau document lexe à la demande)
+        renderCache.invalidate();
         scrollY = 0.0f;
         clampCaret();
         ensureCaretVisible();
@@ -178,6 +248,9 @@ public final class EditorView extends View {
     public void applyTheme(SyntaxTheme newTheme, int newBackground) {
         theme = newTheme;
         themeBackground = newBackground;
+        // les plans portent des couleurs résolues : re-rendu, jamais
+        // retokenisation (la première coloration du panneau ne bouge pas)
+        renderCache.invalidate();
         invalidate();
     }
 
@@ -249,6 +322,7 @@ public final class EditorView extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
+        long frameBegin = System.nanoTime();
         super.onDraw(canvas);
         canvas.drawColor(themeBackground);
         int count = buffer.getLineCount();
@@ -269,27 +343,60 @@ public final class EditorView extends View {
         drawCaret(canvas);
         // la fenêtre visible est payée : le reste suit par tranches
         ensureLexPump();
+        lastFrameNanos = System.nanoTime() - frameBegin;
+        frameCount++;
     }
 
     /**
-     * Dessine la ligne jeton par jeton : la couleur se résout au
-     * dessin depuis la portée (le thème peut changer sans retokeniser).
-     * Une ligne sans jeton (ligne monstre, hors plafond moteur) se
-     * dessine en texte brut ; toute ligne s'arrête au plafond de
-     * dessin.
+     * Dessine la ligne depuis son plan de rendu : le plan se valide par
+     * identité d'entrée (aucune lecture de texte sur le chemin rapide),
+     * se partage par contenu (les lignes identiques ne cuisent qu'une
+     * fois) et porte les couleurs résolues.
      */
     private void drawTokens(Canvas canvas, int line, int start, float baseline) {
+        SyntaxDocument.LineTokens entry = syntax.lineTokens(line);
+        int lineEnd = buffer.getLineEnd(line);
+        LinePlan plan = renderCache.frame(line, entry,
+                () -> buffer.getText(start, lineEnd), this::bakeLine);
+        String[] texts = plan.texts();
+        int[] colors = plan.colors();
+        float[] xs = plan.xs();
         float left = getPaddingLeft();
-        SyntaxDocument.Token[] tokens = syntax.lineTokens(line).tokens();
-        if (tokens.length == 0) {
-            int drawn = Math.min(MAX_DRAWN_COLUMNS, buffer.getLineEnd(line) - start);
-            if (drawn > 0) {
-                textPaint.setColor(theme.defaultColor());
-                canvas.drawText(buffer.getText(start, start + drawn),
-                        left, baseline, textPaint);
-            }
-            return;
+        for (int at = 0; at < texts.length; at++) {
+            textPaint.setColor(colors[at]);
+            canvas.drawText(texts[at], left + xs[at], baseline, textPaint);
         }
+    }
+
+    /**
+     * Cuit le plan d'une ligne : textes tranchés jusqu'au plafond de
+     * dessin, couleurs résolues depuis les portées, abscisses en
+     * colonnes (la marge s'ajoute au dessin). Une ligne sans jeton
+     * (ligne monstre, hors plafond moteur) se cuit en texte brut.
+     */
+    private LinePlan bakeLine(int line, Object stamp, CharSequence content) {
+        SyntaxDocument.Token[] tokens = ((SyntaxDocument.LineTokens) stamp).tokens();
+        if (tokens.length == 0) {
+            int drawn = Math.min(content.length(), MAX_DRAWN_COLUMNS);
+            return new LinePlan(
+                    new String[] {content.subSequence(0, drawn).toString()},
+                    new int[] {theme.defaultColor()},
+                    new float[] {0.0f});
+        }
+        int kept = 0;
+        for (SyntaxDocument.Token token : tokens) {
+            if (token.end() <= token.start()) {
+                continue;
+            }
+            if (token.start() >= MAX_DRAWN_COLUMNS) {
+                break;
+            }
+            kept++;
+        }
+        String[] texts = new String[kept];
+        int[] colors = new int[kept];
+        float[] xs = new float[kept];
+        int at = 0;
         for (SyntaxDocument.Token token : tokens) {
             if (token.end() <= token.start()) {
                 continue;
@@ -298,12 +405,13 @@ public final class EditorView extends View {
                 break;
             }
             int endColumn = Math.min(token.end(), MAX_DRAWN_COLUMNS);
-            textPaint.setColor(token.scope() == null
-                    ? theme.defaultColor() : theme.colorOf(token.scope()));
-            canvas.drawText(
-                    buffer.getText(start + token.start(), start + endColumn),
-                    left + token.start() * charWidth, baseline, textPaint);
+            texts[at] = content.subSequence(token.start(), endColumn).toString();
+            colors[at] = token.scope() == null
+                    ? theme.defaultColor() : theme.colorOf(token.scope());
+            xs[at] = token.start() * charWidth;
+            at++;
         }
+        return new LinePlan(texts, colors, xs);
     }
 
     // ------------------------------------------------------------ interne

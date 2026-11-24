@@ -41,7 +41,8 @@ lignes / 73 155 caractères, meilleure passe rechauffée) : **0,95 ms**,
 (Java), 7 804 (XML), 7 420 (JSON), **21 512 (Kotlin** — la pile de
 contextes est dans ce prix) — l'APK de démonstration complet (moteur,
 quatre lexeurs générés, famille générique, interface du sample avec
-défilement, pompe et copie des mesures) tient en 82 Ko.
+défilement, pompe, copie des mesures et cache de rendu) tient
+sous 82 Ko (79,6 Ko en construction propre après le chantier 6).
 
 Changer de thème ne retokenise rien : les jetons portent des portées,
 la couleur se résout au dessin (le panneau le montre : la mesure de
@@ -64,7 +65,7 @@ les demande).
 | Frappe propagée (commentaire ouvert) | supprimer un `*/`, lire les lignes relues | à relever : idem, dans la démo Java (supprimer un `*/` du bloc) |
 | Remplissage du gros fichier | lire « lignes lexées » monter après l'ouverture (pompe par tranches) | **1 780/1 780 lignes, 18 095 jetons** |
 | Bascule de thème | basculer : la première coloration ne doit pas bouger | **première inchangée (0,3 ms), jetons identiques (18 095) : zéro retokenisation constaté sur appareil** |
-| Budget par image (tracé d'une trame) | à instrumenter avec la vue complète | à relever (mesure de trame au panneau : chantier en cours) |
+| Budget par image (tracé d'une trame) | lire « trame » au panneau (mesure du dessin, cache de rendu actif) ; la colonne « trame » du journal copié l'emporte | à relever |
 
 Deux lectures de ce relevé. D'abord, ne pas comparer la colonne
 appareil aux nombres JVM du haut sans précaution : le test JVM paie

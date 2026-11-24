@@ -225,7 +225,8 @@ public final class MainActivity extends Activity {
     private void logScenario(String event) {
         SyntaxDocument syntax = editorView.getSyntaxDocument();
         String row = String.format(Locale.ROOT,
-                "| %s | %.1f ms | %.2f ms (%d l.) | %.2f ms (%d l. relues) | %d/%d | %d |",
+                "| %s | %.1f ms | %.2f ms (%d l.) | %.2f ms (%d l. relues) | "
+                        + "%d/%d | %d | trame %.2f ms |",
                 event,
                 syntax.firstLexNanos() / 1_000_000.0,
                 syntax.lastRequestNanos() / 1_000_000.0,
@@ -234,7 +235,8 @@ public final class MainActivity extends Activity {
                 syntax.lastRelexedLines(),
                 syntax.lexedLineCount(),
                 syntax.lineCount(),
-                syntax.tokenCount());
+                syntax.tokenCount(),
+                editorView.lastFrameNanos() / 1_000_000.0);
         if (scenarioLog.size() >= LOG_LIMIT) {
             scenarioLog.remove(0);
         }
@@ -250,8 +252,8 @@ public final class MainActivity extends Activity {
         StringBuilder text = new StringBuilder();
         text.append("Relevés appareil Pigma (à coller dans docs/perf.md ou à renvoyer tel quel)\n");
         text.append("appareil : à compléter (modèle, version d'Android)\n\n");
-        text.append("| événement | première | demande | frappe | lignes lexées | jetons |\n");
-        text.append("| --- | --- | --- | --- | --- | --- |\n");
+        text.append("| événement | première | demande | frappe | lignes lexées | jetons | trame |\n");
+        text.append("| --- | --- | --- | --- | --- | --- | --- |\n");
         for (String row : scenarioLog) {
             text.append(row).append('\n');
         }
@@ -286,7 +288,7 @@ public final class MainActivity extends Activity {
         String text = String.format(
                 "coloration : première %.1f ms · demande %.2f ms (%d l.) "
                         + "· dernière frappe %.2f ms (%d ligne(s) relue(s)) · %d/%d lignes lexées "
-                        + "· %d jetons",
+                        + "· %d jetons · trame %.2f ms",
                 syntax.firstLexNanos() / 1_000_000.0,
                 syntax.lastRequestNanos() / 1_000_000.0,
                 syntax.lastRequestLines(),
@@ -294,7 +296,8 @@ public final class MainActivity extends Activity {
                 syntax.lastRelexedLines(),
                 syntax.lexedLineCount(),
                 syntax.lineCount(),
-                syntax.tokenCount());
+                syntax.tokenCount(),
+                editorView.lastFrameNanos() / 1_000_000.0);
         if (syntax.inBigFileMode()) {
             text += " · mode gros fichier";
         }
