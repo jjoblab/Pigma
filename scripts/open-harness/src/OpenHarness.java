@@ -90,6 +90,7 @@ public final class OpenHarness {
         selectAllAndCopyText();
         doubleTapWord();
         handleDrag();
+        loupe();
         longPressDrag();
         searchAndReplace();
         hugeFile();
@@ -309,9 +310,51 @@ public final class OpenHarness {
         detail("sélection " + editor.selectionStart() + " → " + editor.selectionEnd());
     }
 
+    /** La loupe de précision : la borne traînée se lit agrandie. */
+    private static void loupe() {
+        begin("loupe : le texte de la borne se dessine agrandi");
+        doubleTapOfWord("graine");
+        TextBuffer buffer = editor.getBuffer();
+        int end = editor.selectionEnd();
+        int line = buffer.lineOfOffset(end);
+        int column = end - buffer.getLineStart(line);
+        float handleX = editor.getPaddingLeft() + column * editor.charWidth();
+        float handleY = lineTop(line) + LINE_HEIGHT + 5.0f * DENSITY;
+        float lineMidY = lineTop(line) + LINE_HEIGHT / 2.0f;
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN, handleX, handleY));
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_MOVE, handleX, lineMidY));
+        frame();
+        String magnifiedText = null;
+        for (Canvas.TextOp op : canvas.harnessTextsSinceMark()) {
+            if (op.scaleX > 1.5f) {
+                magnifiedText = op.text;
+            }
+        }
+        check("le texte de la ligne de la borne se dessine agrandi",
+                magnifiedText != null);
+        boolean bounded = false;
+        for (Canvas.ClipOp op : canvas.harnessClipsSinceMark()) {
+            if (op.right - op.left < VIEW_WIDTH / 2.0f) {
+                bounded = true;
+            }
+        }
+        check("la loupe découpe une fenêtre bornée", bounded);
+        check("le cadre arrondi se dessine", canvas.harnessRoundRectCount() >= 1);
+        detail(magnifiedText == null
+                ? "aucun texte agrandi" : "agrandi : « " + magnifiedText + " »");
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP, handleX, lineMidY));
+        frame();
+        boolean closed = true;
+        for (Canvas.TextOp op : canvas.harnessTextsSinceMark()) {
+            if (op.scaleX > 1.5f) {
+                closed = false;
+            }
+        }
+        check("la loupe se ferme au lâcher", closed);
+    }
+
     /** L'appui long qui glisse : la sélection naît du mot sous l'appui. */
-    private static void longPressDrag() throws InterruptedException {
-        begin("appui long qui glisse : le mot se sème, la borne suit");
+    private static void longPressDrag() throws InterruptedException {        begin("appui long qui glisse : le mot se sème, la borne suit");
         tap(400.0f, 80.0f);
         check("la sélection se range avant l'appui long", !editor.hasSelection());
         float[] spot = spotOfWord("SEUIL");

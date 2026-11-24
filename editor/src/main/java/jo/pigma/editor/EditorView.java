@@ -70,6 +70,9 @@ public final class EditorView extends View {
     /** Colonnes au-delà desquelles le dessin d'une ligne s'arrête. */
     private static final int MAX_DRAWN_COLUMNS = 10_000;
 
+    /** L'agrandissement de la loupe (la colonne exacte se lit au doigt). */
+    private static final float LOUPE_SCALE = 2.0f;
+
     /** Colonnes par niveau d'indentation (les guides de L2). */
     private static final int GUIDE_COLUMNS = 4;
 
@@ -238,6 +241,12 @@ public final class EditorView extends View {
     /** Le cœur blanc d'une poignée (le point de visibilité). */
     private final Paint handleCorePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
+    /** Le cadre arrondi de la loupe de précision. */
+    private final Paint loupeBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** L'ordonnée du doigt pendant le traînement d'une poignée (la loupe la fuit). */
+    private float dragFingerY;
+
     /** La teinte des correspondances de recherche. */
     private final Paint searchPaint = new Paint();
 
@@ -329,6 +338,9 @@ public final class EditorView extends View {
         handlePaint.setColor(0xE62979FF);
         handleCorePaint.setStyle(Paint.Style.FILL);
         handleCorePaint.setColor(0xFFFFFFFF);
+        loupeBorder.setStyle(Paint.Style.STROKE);
+        loupeBorder.setStrokeWidth(dp(1));
+        loupeBorder.setColor(0xFF1B6FE0);
         searchPaint.setStyle(Paint.Style.FILL);
         searchPaint.setColor(0x38FFC107);
         searchCurrentPaint.setStyle(Paint.Style.FILL);
@@ -1193,6 +1205,7 @@ public final class EditorView extends View {
         clearComposing();
         selectionDragBound = toStart <= toEnd ? 1 : 2;
         dragFixedBound = selectionDragBound == 1 ? selectionEnd() : selectionStart();
+        dragFingerY = y;
     }
 
     /**
@@ -1206,6 +1219,7 @@ public final class EditorView extends View {
         selectionDragBound = distanceTo(x, y, start[0], start[1])
                 <= distanceTo(x, y, end[0], end[1]) ? 1 : 2;
         dragFixedBound = selectionDragBound == 1 ? selectionEnd() : selectionStart();
+        dragFingerY = y;
     }
 
     /**
@@ -1216,6 +1230,7 @@ public final class EditorView extends View {
      */
     private void dragSelectionBound(float x, float y) {
         autoScrollNearEdges(y);
+        dragFingerY = y;
         int offset = offsetNearest(x, y);
         if (selectionDragBound == 1) {
             caretOffset = Math.min(offset, dragFixedBound);
@@ -1283,6 +1298,7 @@ public final class EditorView extends View {
         drawStructure(canvas, first, last, count);
         drawCaret(canvas);
         drawSelectionHandles(canvas);
+        drawLoupe(canvas);
         // les candidats AVANT leur dessin (un déplacement de curseur
         // rend ses candidats dans la même trame), les soulignés de
         // diagnostic par-dessus le texte, le bandeau par-dessus tout,
@@ -2090,6 +2106,58 @@ public final class EditorView extends View {
         float[] center = handleCenter(offset);
         canvas.drawCircle(center[0], center[1], dp(7), handlePaint);
         canvas.drawCircle(center[0], center[1], dp(3), handleCorePaint);
+    }
+
+    /**
+     * La loupe de précision : pendant le traînement d'une poignée, la
+     * ligne de la borne traînée se redessine agrandie au-dessus du
+     * doigt — la colonne exacte de la borne se lit, le doigt ne la
+     * cache pas. Le contenu se peint sous homothétie dans une fenêtre
+     * découpée (la teinte de sélection, les jetons, le curseur — la
+     * borne traînée EST le curseur), le cadre arrondi la borne
+     * par-dessus ; la loupe ne vit que le temps du traînement.
+     */
+    private void drawLoupe(Canvas canvas) {
+        if (selectionDragBound == 0) {
+            return;
+        }
+        int offset = Math.min(caretOffset, buffer.length());
+        int line = buffer.lineOfOffset(offset);
+        if (isHidden(line)) {
+            return;
+        }
+        int lineStart = buffer.getLineStart(line);
+        int column = offset - lineStart;
+        // la loupe se centre sur la borne (le contenu suit), fuit le
+        // doigt en hauteur (le doigt cache la ligne, jamais la loupe)
+        float centerX = getPaddingLeft() + column * charWidth;
+        float lineTop = getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
+        float lineCenterY = lineTop + lineHeight / 2.0f;
+        float width = Math.min(getWidth() - getPaddingLeft() - getPaddingRight(),
+                dp(160));
+        float height = lineHeight * LOUPE_SCALE + dp(8);
+        float left = clampToRange(centerX - width / 2.0f, getPaddingLeft(),
+                Math.max(getPaddingLeft(), getWidth() - getPaddingRight() - width));
+        float top = dragFingerY - dp(12) - height;
+        if (top < getPaddingTop()) {
+            top = Math.min(dragFingerY + dp(12),
+                    Math.max(getPaddingTop(), getHeight() - getPaddingBottom() - height));
+        }
+        canvas.save();
+        canvas.clipRect(left, top, left + width, top + height);
+        canvas.translate(left + width / 2.0f, top + height / 2.0f);
+        canvas.scale(LOUPE_SCALE, LOUPE_SCALE);
+        canvas.translate(-centerX, -lineCenterY);
+        // l'assiette : la couleur de fond du thème remplit la découpe
+        canvas.drawColor(themeBackground);
+        drawSelection(canvas, line, line, buffer.getLineCount());
+        if (buffer.getLineEnd(line) > lineStart) {
+            drawTokens(canvas, line, lineStart, lineBaseline(line));
+        }
+        drawCaret(canvas);
+        canvas.restore();
+        canvas.drawRoundRect(left, top, left + width, top + height,
+                dp(6), dp(6), loupeBorder);
     }
 
     private void placeCaretAt(float x, float y) {

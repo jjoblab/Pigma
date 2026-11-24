@@ -318,7 +318,10 @@ lexées — la fenêtre visible paie, jamais le document ; Kotlin :
 Ko debug, aucune fermeture signalée). Ce que le relevé ne porte
 toujours pas, une troisième fois : la feuille de recherche, le
 bouton LSP, le hors normes, le saut lointain — et le modèle
-d'appareil reste « à compléter » dans le tableau copié.
+d'appareil reste « à compléter » dans le tableau copié. Le chantier
+28 (la loupe de précision, le compagnon du traînement de poignée)
+n'est pas dans ce relevé : le scénario de copie l'exercera au
+prochain.
 
 Les plafonds du plan sont codés (E3) : ligne de plus de 20 000 colonnes
 non colorée (état reporté, voisines intactes), dessin limité à 10 000
