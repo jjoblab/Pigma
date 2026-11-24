@@ -28,8 +28,26 @@ Installer l'APK sur un appareil ou un émulateur :
     ./gradlew check     # tests + style + politique de langue + références interdites
 
 `check` exécute les tests, Checkstyle (configuration minimale), le contrôle
-de politique de langue et de commentaires (`scripts/check-code-policy`) et
-le contrôle des références interdites (`scripts/check-forbidden-refs`).
+de politique de langue et de commentaires (`scripts/check-code-policy`), le
+contrôle des références interdites (`scripts/check-forbidden-refs`) et le
+contrôle d'à-jour des lexeurs générés (`scripts/check-lexers-fresh`).
+
+## Lexeurs générés
+
+Les descriptions de lexeurs vivent dans `syntax/src/main/lexers/`
+(commentaires en français) ; le **code généré est versionné** dans
+`syntax/src/main/java/jo/pigma/syntax/lexers/generated/` (décision 005 :
+le build sur téléphone ne télécharge aucun outil). Retoucher une
+description exige de régénérer :
+
+    java -cp jflex.jar:java-cup-runtime-11b-20160615-3.jar jflex.Main \
+        --nobak -d syntax/src/main/java/jo/pigma/syntax/lexers/generated \
+        syntax/src/main/lexers/<langage>.flex
+
+`check` compare ensuite code généré et descriptions **si JFlex est
+trouvable** (variable `JFLEX_CP`, ou `TOOLS` pointant un répertoire avec
+`jflex.jar` et son jar cup) ; sans lui, le contrôle s'ignore en le
+disant — les machines d'outillage le gardent actif.
 
 ## Banc d'essai
 
