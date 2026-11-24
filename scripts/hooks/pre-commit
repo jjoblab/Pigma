@@ -1,0 +1,6 @@
+#!/bin/sh
+# Crochet pre-commit : les deux contrôles de politique doivent être verts
+# avant tout commit. Installation : cp scripts/hooks/pre-commit .git/hooks/
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+python3 "$ROOT/scripts/check-code-policy" || exit 1
+python3 "$ROOT/scripts/check-forbidden-refs" || exit 1

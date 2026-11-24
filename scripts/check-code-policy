@@ -1,0 +1,255 @@
+#!/usr/bin/env python3
+"""Contrôle de la politique de langue et de commentaires du dépôt.
+
+Vérifie, sur tous les fichiers Java des sources (le code généré et les
+fixtures de contrôle sont exclus) :
+  1. les identifiants sont en ASCII : aucun caractère non ASCII hors
+     commentaires et littéraux de chaîne ;
+  2. les commentaires et Javadoc ne contiennent aucun motif interdit
+     (numéros de suivi, jalons, dates, mentions de pilotage, historique,
+     dépôt d'origine) ;
+  3. aucun identifiant ne contient de mot français courant (liste
+     scripts/french-words.txt) ;
+  4. tout type public (classe, interface, énumération, enregistrement)
+     est précédé d'une Javadoc.
+
+Mode autonome : « scripts/check-code-policy --selftest » vérifie le script
+contre scripts/policy-fixtures/Violations.java, qui doit produire au moins
+une violation de chaque catégorie — un banc qui échoue révèle un contrôle
+cassé, pas un code correct.
+"""
+
+import re
+import sys
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT = SCRIPT_DIR.parent
+WORDS_FILE = SCRIPT_DIR / "french-words.txt"
+FIXTURES_DIR = SCRIPT_DIR / "policy-fixtures"
+
+# Répertoires exclus du balayage : sorties de build, caches, code généré
+# (exclu par principe : il n'est pas écrit à la main), fixtures de contrôle.
+EXCLUDED_PARTS = {".git", ".gradle", "build", "generated", "policy-fixtures"}
+
+# Motifs interdits dans les commentaires (insensible à la casse).
+FORBIDDEN_COMMENT_PATTERNS = [
+    (r"\bADR\b", "numéro de décision"),
+    (r"\bPIEGE\b", "code de suivi"),
+    (r"\bH[- ]\d+\b", "code de suivi"),
+    (r"\bM\d+(?:\.\d+)?\b", "jalon"),
+    (r"\b\d{4}-\d{2}-\d{2}\b", "date"),
+    (r"\bpropri[eé]t(?:aire|aires)\b", "mention de pilotage"),
+    (r"\baudits?\b", "mention d'audit"),
+    (r"\brevue\b", "mention de revue"),
+    (r"\bchantiers?\b", "mention de chantier"),
+    (r"\bsessions?\b", "mention de session"),
+    (r"\b[eé]tapes?\b", "mention d'étape"),
+    (r"\bceleris\b", "dépôt d'origine"),
+    (r"\bportages?\b", "mention de portage"),
+    (r"\bd[eé]p[oô]ts? de d[eé]parts?\b", "dépôt de départ"),
+    (r"\banciennes? codes?\b", "historique"),
+    (r"\bcorrig[eé]s? dans\b", "historique"),
+    (r"\bavant,? on\b", "historique"),
+]
+
+KIND_NON_ASCII = "non-ascii"
+KIND_FORBIDDEN = "forbidden-comment"
+KIND_FRENCH_WORD = "french-word"
+KIND_MISSING_JAVADOC = "missing-javadoc"
+
+
+def lex_ranges(text):
+    """Découpe le texte en plages de commentaires et de littéraux.
+
+    Renvoie (commentaires, littéraux) : listes de couples (début, fin) en
+    indices absolus. Le balayage est séquentiel : une chaîne contenant des
+    marqueurs de commentaire est consommée comme chaîne, et réciproquement.
+    """
+    comments = []
+    literals = []
+    i = 0
+    n = len(text)
+    while i < n:
+        pair = text[i:i + 2]
+        if pair == "//":
+            end = text.find("\n", i)
+            end = n if end == -1 else end
+            comments.append((i, end))
+            i = end
+        elif pair == "/*":
+            end = text.find("*/", i + 2)
+            end = n if end == -1 else end + 2
+            comments.append((i, end))
+            i = end
+        elif text[i:i + 3] == '"""':
+            j = i + 3
+            while j < n and text[j:j + 3] != '"""':
+                j += 1
+            end = min(j + 3, n)
+            literals.append((i, end))
+            i = end
+        elif text[i] == '"':
+            j = i + 1
+            while j < n and text[j] not in ('"', "\n"):
+                j += 2 if text[j] == "\\" else 1
+            end = min(j + 1, n)
+            literals.append((i, end))
+            i = end
+        elif text[i] == "'":
+            j = i + 1
+            while j < n and text[j] not in ("'", "\n"):
+                j += 2 if text[j] == "\\" else 1
+            end = min(j + 1, n)
+            literals.append((i, end))
+            i = end
+        else:
+            i += 1
+    return comments, literals
+
+
+def line_number(text, position):
+    """Numéro de ligne (à partir de 1) de la position donnée."""
+    return text.count("\n", 0, position) + 1
+
+
+def mask_ranges(text, ranges):
+    """Remplace les plages par des espaces en conservant les retours à la ligne."""
+    chars = list(text)
+    for start, end in ranges:
+        for k in range(start, end):
+            if chars[k] != "\n":
+                chars[k] = " "
+    return "".join(chars)
+
+
+def load_french_words():
+    """Charge la liste des mots français interdits dans les identifiants."""
+    words = set()
+    if WORDS_FILE.is_file():
+        for line in WORDS_FILE.read_text(encoding="utf-8").splitlines():
+            word = line.strip().lower()
+            if word and not word.startswith("#"):
+                words.add(word)
+    return words
+
+
+def split_identifier(identifier):
+    """Découpe un identifiant camelCase ou souligné en mots."""
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", identifier)
+    spaced = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", spaced)
+    return [part.lower() for part in re.split(r"[_$0-9\s]+", spaced) if part]
+
+
+def has_javadoc_before(lines, declaration_index):
+    """Remonte depuis la déclaration en ignorant annotations et lignes vides.
+
+    La première ligne non ignorée rencontrée doit fermer un bloc de
+    commentaire ouvert par « /** ».
+    """
+    index = declaration_index - 1
+    while index >= 0:
+        stripped = lines[index].strip()
+        if stripped == "" or stripped.startswith("@") or stripped.startswith("//"):
+            index -= 1
+            continue
+        if stripped.startswith("/*"):
+            return stripped.startswith("/**")
+        if stripped.startswith("*/") or stripped.endswith("*/"):
+            opener = index
+            while opener >= 0 and "/*" not in lines[opener]:
+                opener -= 1
+            return opener >= 0 and lines[opener].strip().startswith("/**")
+        return False
+    return False
+
+
+def check_public_types(path, text):
+    """Vérifie que chaque type public est précédé d'une Javadoc."""
+    violations = []
+    lines = text.split("\n")
+    declaration = re.compile(
+        r"^\s*public\s+(?:static\s+|final\s+|abstract\s+|sealed\s+|non-sealed\s+)*"
+        r"(?:class|interface|enum|record)\s+\w+")
+    for index, content in enumerate(lines):
+        if declaration.match(content) and not has_javadoc_before(lines, index):
+            violations.append((KIND_MISSING_JAVADOC, path, index + 1,
+                               "type public sans Javadoc : " + content.strip()))
+    return violations
+
+
+def check_java_file(path, french_words):
+    """Applique les quatre contrôles à un fichier Java ; renvoie les violations."""
+    violations = []
+    text = path.read_text(encoding="utf-8")
+    comments, literals = lex_ranges(text)
+    masked = mask_ranges(text, comments + literals)
+
+    for match in re.finditer(r"[^\x00-\x7f]", masked):
+        line = line_number(text, match.start())
+        violations.append((KIND_NON_ASCII, path, line,
+                           "caractère non ASCII dans le code (identifiant)"))
+
+    for start, end in comments:
+        comment_text = text[start:end]
+        line = line_number(text, start)
+        for pattern, label in FORBIDDEN_COMMENT_PATTERNS:
+            if re.search(pattern, comment_text, re.IGNORECASE):
+                violations.append((KIND_FORBIDDEN, path, line,
+                                   "motif interdit dans un commentaire : " + label))
+
+    for match in re.finditer(r"[A-Za-z_$][A-Za-z0-9_$]*", masked):
+        for word in split_identifier(match.group()):
+            if word in french_words:
+                line = line_number(text, match.start())
+                violations.append((KIND_FRENCH_WORD, path, line,
+                                   "mot français dans un identifiant : " + word))
+
+    violations.extend(check_public_types(path, text))
+    return violations
+
+
+def java_files(base):
+    """Fichiers Java à contrôler sous base, hors exclusions."""
+    return [path for path in sorted(base.rglob("*.java"))
+            if EXCLUDED_PARTS.isdisjoint(path.relative_to(base).parts)]
+
+
+def run_selftest():
+    """Banc autonome : les fixtures doivent violer chaque catégorie."""
+    violations = []
+    for path in sorted(FIXTURES_DIR.glob("*.java")):
+        violations.extend(check_java_file(path, load_french_words()))
+    found = {kind for kind, _, _, _ in violations}
+    expected = {KIND_NON_ASCII, KIND_FORBIDDEN, KIND_FRENCH_WORD, KIND_MISSING_JAVADOC}
+    missing = expected - found
+    if missing:
+        print("check-code-policy --selftest ÉCHEC ; catégories non détectées : "
+              + ", ".join(sorted(missing)))
+        return 1
+    print("check-code-policy --selftest OK : "
+          + str(len(violations)) + " violation(s) détectée(s) sur les fixtures, "
+          + "toutes catégories couvertes")
+    return 0
+
+
+def main():
+    if "--selftest" in sys.argv[1:]:
+        return run_selftest()
+    words = load_french_words()
+    files = java_files(ROOT)
+    violations = []
+    for path in files:
+        violations.extend(check_java_file(path, words))
+    if violations:
+        for kind, path, line, message in violations:
+            print("[" + kind + "] " + str(path) + ":" + str(line) + " : " + message)
+        kinds = ", ".join(sorted({kind for kind, _, _, _ in violations}))
+        print("check-code-policy : " + str(len(violations)) + " violation(s) (" + kinds + ")")
+        return 1
+    print("check-code-policy : OK (" + str(len(files)) + " fichier(s) Java contrôlé(s))")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
