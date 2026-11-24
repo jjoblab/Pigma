@@ -1,6 +1,11 @@
 package jo.pigma.editor;
 
+import jo.pigma.editor.folding.FoldModel;
 import jo.pigma.editor.gutter.Gutter;
+import jo.pigma.editor.input.EditorContract;
+import jo.pigma.editor.input.EditorInputConnection;
+import jo.pigma.editor.selection.SelectionRenderer;
+
 import jo.pigma.editor.popups.InfoPopup;
 import jo.pigma.editor.render.RenderCache;
 import jo.pigma.editor.popups.PopupMetrics;
@@ -244,17 +249,38 @@ public final class EditorView extends View {
 
     private int pairRevision = -1;
 
-    /** En-têtes de plis repliés (indices de lignes). */
-    private final TreeSet<Integer> folded = new TreeSet<>();
+    /** Les plis — l'état et ses caches au paquet folding/. */
+    private final FoldModel folds = new FoldModel();
 
-    /** Lignes cachées par les plis, null quand rien n'est replié. */
-    private boolean[] hiddenByFold;
+    /** Le rendu de la sélection — pinceau et dessin au paquet selection/. */
+    private final SelectionRenderer selectionRenderer = new SelectionRenderer();
 
-    /** Lignes visibles strictement avant chaque ligne (les plis compactent). */
-    private int[] visibleBefore;
+    /** Le texte vu du paquet selection (contrat interne, hors API). */
+    private final SelectionRenderer.Lines selectionLines =
+            new SelectionRenderer.Lines() {
+                @Override
+                public int lineStart(int line) {
+                    return buffer.getLineStart(line);
+                }
 
-    /** Lignes cachées en cours (le panneau le lit). */
-    private int hiddenLineCount;
+                @Override
+                public int lineEnd(int line) {
+                    return buffer.getLineEnd(line);
+                }
+
+                @Override
+                public boolean isHidden(int line) {
+                    return folds.isHidden(line);
+                }
+
+                @Override
+                public int visibleIndexOf(int line) {
+                    return EditorView.this.visibleIndexOf(line);
+                }
+            };
+
+    /** Le pont du clavier (contrat interne du paquet input, hors API). */
+    private EditorContract inputContract;
 
     /** Nombre de lignes au dernier avis du tampon (décale les plis à l'édition). */
     private int trackedLineCount;
@@ -268,7 +294,6 @@ public final class EditorView extends View {
     /** La bande de fond de la portée du curseur. */
     private final Paint scopePaint = new Paint();
 
-    private final Paint selectionPaint = new Paint();
 
     /** Le corps d'une poignée de sélection (le cercle sous la borne). */
     private final Paint handlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -365,8 +390,6 @@ public final class EditorView extends View {
         guidePaint.setColor(0x33808080);
         scopePaint.setStyle(Paint.Style.FILL);
         scopePaint.setColor(0x0D2962FF);
-        selectionPaint.setStyle(Paint.Style.FILL);
-        selectionPaint.setColor(0x332979FF);
         handlePaint.setStyle(Paint.Style.FILL);
         handlePaint.setColor(0xE62979FF);
         handleCorePaint.setStyle(Paint.Style.FILL);
@@ -384,6 +407,7 @@ public final class EditorView extends View {
         diagnosticPaint.setColor(0xFFFF3B30);
         suggestionBand = new SuggestionBand(dp(1));
         gutter = new Gutter(dp(1));
+        inputContract = createInputContract();
         trackedLineCount = buffer.getLineCount();
         buffer.addListener(modelListener);
         int padding = dp(12);
@@ -691,7 +715,7 @@ public final class EditorView extends View {
         // suspension se referme, l'analyse repartira sur la demande
         analysisSuspended = false;
         // autre document : les plis de l'ancien n'y ont plus de sens
-        folded.clear();
+        folds.clear();
         rebuildFoldLayout();
         resetFrameStats();
         // autre langage : les plans portent des couleurs résolues, tout
@@ -721,7 +745,7 @@ public final class EditorView extends View {
         searchCurrent = -1;
         infoPopup.dismiss();
         undoStack.clear();
-        folded.clear();
+        folds.clear();
         rebuildFoldLayout();
         resetFrameStats();
         scrollY = 0.0f;
@@ -1188,7 +1212,92 @@ public final class EditorView extends View {
     public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
         outAttrs.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE;
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN;
-        return new EditorInputConnection(this);
+        return new EditorInputConnection(this, inputContract);
+    }
+
+    /**
+     * Le pont du clavier vers l'éditeur : le contrat interne du paquet
+     * input — la classe anonyme lit les membres privés de la vue, rien
+     * ne se publie (l'API publique reste petite).
+     */
+    private EditorContract createInputContract() {
+        return new EditorContract() {
+            @Override
+            public int caret() {
+                return caretOffset;
+            }
+
+            @Override
+            public int composingStart() {
+                return composingStart;
+            }
+
+            @Override
+            public int composingEnd() {
+                return composingEnd;
+            }
+
+            @Override
+            public void setComposing(int start, int end) {
+                composingStart = start;
+                composingEnd = end;
+            }
+
+            @Override
+            public boolean hasSelection() {
+                return EditorView.this.hasSelection();
+            }
+
+            @Override
+            public int selectionStart() {
+                return EditorView.this.selectionStart();
+            }
+
+            @Override
+            public int selectionEnd() {
+                return EditorView.this.selectionEnd();
+            }
+
+            @Override
+            public CharSequence selectedText() {
+                return EditorView.this.selectedText();
+            }
+
+            @Override
+            public int length() {
+                return buffer.length();
+            }
+
+            @Override
+            public void applyEdit(int start, int end, CharSequence text) {
+                EditorView.this.applyEdit(start, end, text);
+            }
+
+            @Override
+            public void clearComposing() {
+                EditorView.this.clearComposing();
+            }
+
+            @Override
+            public void deleteAround(int left, int right) {
+                EditorView.this.deleteAround(left, right);
+            }
+
+            @Override
+            public void moveCaret(int delta) {
+                EditorView.this.moveCaret(delta);
+            }
+
+            @Override
+            public void moveCaretVertically(int delta) {
+                EditorView.this.moveCaretVertically(delta);
+            }
+
+            @Override
+            public void setSelection(int start, int end) {
+                EditorView.this.setSelection(start, end);
+            }
+        };
     }
 
     @Override
@@ -1583,24 +1692,10 @@ public final class EditorView extends View {
         if (!hasSelection()) {
             return;
         }
-        int from = selectionStart();
-        int to = selectionEnd();
-        for (int line = first; line <= last && line < count; line++) {
-            if (isHidden(line)) {
-                continue;
-            }
-            int lineStart = buffer.getLineStart(line);
-            int lineEnd = buffer.getLineEnd(line);
-            int start = Math.max(from, lineStart);
-            int end = Math.min(to, lineEnd);
-            if (end <= start) {
-                continue;
-            }
-            float left = getPaddingLeft() + (start - lineStart) * charWidth;
-            float right = getPaddingLeft() + (end - lineStart) * charWidth;
-            float top = getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
-            canvas.drawRect(left, top, right, top + lineHeight, selectionPaint);
-        }
+        selectionRenderer.draw(canvas, selectionLines, selectionStart(),
+                selectionEnd(), first, last, count,
+                new SelectionRenderer.Geometry(getPaddingLeft(), getPaddingTop(),
+                        lineHeight, charWidth, scrollY));
     }
 
     /**
@@ -1695,7 +1790,7 @@ public final class EditorView extends View {
             }
             boolean opens = structure.foldStartsAt(line);
             if (opens) {
-                drawFoldMarker(canvas, line, folded.contains(line));
+                drawFoldMarker(canvas, line, folds.isFolded(line));
             }
             // le niveau ne guide que s'il couvre TOUTE la ligne : le fil
             // s'arrête UNE LIGNE AVANT le fermant, et ne commence
@@ -1769,10 +1864,10 @@ public final class EditorView extends View {
         if (structure == null || !structure.foldStartsAt(line)) {
             return;
         }
-        if (folded.contains(line)) {
-            folded.remove(line);
+        if (folds.isFolded(line)) {
+            folds.unfold(line);
         } else {
-            folded.add(line);
+            folds.fold(line);
             // le curseur dans la région repliée : il remonte à la fin de
             // l'en-tête (juste après l'ouvrant, la paire s'y encadre)
             int end = structure.foldEndLine(line);
@@ -1793,7 +1888,7 @@ public final class EditorView extends View {
      * @return le nombre de lignes invisibles
      */
     public int hiddenLineCount() {
-        return hiddenLineCount;
+        return folds.hiddenLineCount();
     }
 
     /**
@@ -1802,7 +1897,7 @@ public final class EditorView extends View {
      * @return le nombre d'en-têtes repliés
      */
     public int foldedCount() {
-        return folded.size();
+        return folds.count();
     }
 
     /**
@@ -1812,21 +1907,13 @@ public final class EditorView extends View {
      * dissout à la reconstruction.
      */
     private void shiftFolds(int start) {
-        if (folded.isEmpty()) {
+        if (!folds.hasFolds()) {
             trackedLineCount = buffer.getLineCount();
             return;
         }
         int line = buffer.lineOfOffset(start);
         int delta = buffer.getLineCount() - trackedLineCount;
-        TreeSet<Integer> shifted = new TreeSet<>();
-        for (int header : folded) {
-            int moved = header < line ? header : header + delta;
-            if (moved >= 0 && moved < buffer.getLineCount()) {
-                shifted.add(moved);
-            }
-        }
-        folded.clear();
-        folded.addAll(shifted);
+        folds.shift(line, delta, buffer.getLineCount());
         rebuildFoldLayout();
         revealCaret();
     }
@@ -1836,24 +1923,18 @@ public final class EditorView extends View {
      * interne qui le cache s'ouvre (l'édition y arrive).
      */
     private void revealCaret() {
-        if (hiddenByFold == null) {
+        if (!folds.hasFolds()) {
             return;
         }
         int line = buffer.lineOfOffset(Math.min(caretOffset, buffer.length()));
-        // la reconstruction peut annuler le tableau (dernier pli ouvert) :
+        // la reconstruction peut annuler les plis (dernier ouvert) :
         // la garde se relit à chaque tour
-        while (hiddenByFold != null && line < hiddenByFold.length
-                && hiddenByFold[line]) {
-            int container = -1;
-            for (int header : folded) {
-                if (header < line && line <= structure.foldEndLine(header)) {
-                    container = header;
-                }
-            }
+        while (folds.isHidden(line)) {
+            int container = folds.headerHiding(line, structure);
             if (container < 0) {
                 return;
             }
-            folded.remove(container);
+            folds.unfold(container);
             rebuildFoldLayout();
         }
     }
@@ -1864,51 +1945,23 @@ public final class EditorView extends View {
      * éditions — jamais par trame).
      */
     private void rebuildFoldLayout() {
-        int count = buffer.getLineCount();
-        trackedLineCount = count;
-        if (folded.isEmpty()) {
-            hiddenByFold = null;
-            visibleBefore = null;
-            hiddenLineCount = 0;
-            return;
-        }
-        boolean[] hidden = new boolean[count];
-        for (int header : folded) {
-            if (header < 0 || header >= count || !structure.foldStartsAt(header)) {
-                continue; // l'édition a déplacé la structure : plus d'ouvrant
-            }
-            int end = structure.foldEndLine(header);
-            for (int line = header + 1; line <= end && line < count; line++) {
-                hidden[line] = true;
-            }
-        }
-        int[] before = new int[count];
-        int visible = 0;
-        for (int line = 0; line < count; line++) {
-            before[line] = visible;
-            if (!hidden[line]) {
-                visible++;
-            }
-        }
-        hiddenByFold = hidden;
-        visibleBefore = before;
-        hiddenLineCount = count - visible;
+        trackedLineCount = buffer.getLineCount();
+        folds.rebuild(structure, trackedLineCount);
     }
 
     /** La ligne est-elle cachée par un pli. */
     private boolean isHidden(int line) {
-        return hiddenByFold != null && line < hiddenByFold.length
-                && hiddenByFold[line];
+        return folds.isHidden(line);
     }
 
     /** L'indice visible d'une ligne (les plis compactent la hauteur). */
     private int visibleIndexOf(int line) {
-        return visibleBefore == null ? line : visibleBefore[line];
+        return folds.visibleIndexOf(line);
     }
 
     /** Nombre de lignes visibles (le document moins les cachées). */
     private int visibleLineCount() {
-        return buffer.getLineCount() - hiddenLineCount;
+        return buffer.getLineCount() - folds.hiddenLineCount();
     }
 
     /**
@@ -1917,29 +1970,12 @@ public final class EditorView extends View {
      * l'indice de la visible qui les suit).
      */
     private int lineOfVisibleIndex(int index) {
-        int count = buffer.getLineCount();
-        if (visibleBefore == null) {
-            return clampToRange(index, 0, Math.max(0, count - 1));
-        }
-        if (index >= visibleLineCount()) {
-            index = visibleLineCount() - 1;
-        }
-        int low = 0;
-        int high = count - 1;
-        while (low < high) {
-            int mid = (low + high + 1) / 2;
-            if (visibleBefore[mid] <= index) {
-                low = mid;
-            } else {
-                high = mid - 1;
-            }
-        }
-        return low;
+        return folds.lineOfVisibleIndex(index, buffer.getLineCount());
     }
 
     /** Ligne de base d'une ligne VISIBLE (le mapping des plis s'applique). */
     private float lineBaseline(int line) {
-        int visible = visibleBefore == null ? line : visibleBefore[line];
+        int visible = folds.visibleIndexOf(line);
         return getPaddingTop() - fontMetrics.top + visible * lineHeight - scrollY;
     }
 
@@ -2383,7 +2419,7 @@ public final class EditorView extends View {
                 float tintRight = left + (getPaddingLeft()
                         + (selEnd - lineStart) * charWidth - srcLeft) * LOUPE_SCALE;
                 canvas.drawRect(tintLeft, top + dp(4), tintRight,
-                        top + height - dp(4), selectionPaint);
+                        top + height - dp(4), selectionRenderer.paint());
             }
         }
         // la borne au centre (la loupe s'y centre par construction) :
@@ -2424,7 +2460,7 @@ public final class EditorView extends View {
         float top = Math.min(dragFingerY + dp(10),
                 Math.max(getPaddingTop(), getHeight() - getPaddingBottom() - chipHeight));
         canvas.drawRoundRect(left, top, left + chipWidth, top + chipHeight,
-                dp(6), dp(6), selectionPaint);
+                dp(6), dp(6), selectionRenderer.paint());
         // le texte de la pastille : la couleur par défaut du thème (le
         // pinceau est partagé, ses drapeaux se posent avant l'usage)
         textPaint.setColor(theme.defaultColor());
@@ -2825,121 +2861,4 @@ public final class EditorView extends View {
         return (int) (value * getResources().getDisplayMetrics().density);
     }
 
-    /**
-     * Connexion IME : chaque retour du clavier est une transaction, donc
-     * une unité d'annulation. La zone de composition est remplacée à chaque
-     * mise à jour de l'IME puis validée telle quelle au commit.
-     */
-    private static final class EditorInputConnection extends BaseInputConnection {
-
-        private final EditorView editor;
-
-        EditorInputConnection(EditorView target) {
-            super(target, false);
-            editor = target;
-        }
-
-        @Override
-        public boolean commitText(CharSequence text, int newCursorPosition) {
-            int start = editor.composingStart >= 0 ? editor.composingStart
-                    : editor.hasSelection() ? editor.selectionStart() : editor.caretOffset;
-            int end = editor.composingStart >= 0 ? editor.composingEnd
-                    : editor.hasSelection() ? editor.selectionEnd() : editor.caretOffset;
-            editor.applyEdit(start, end, text);
-            editor.clearComposing();
-            return true;
-        }
-
-        @Override
-        public boolean setComposingText(CharSequence text, int newCursorPosition) {
-            int start = editor.composingStart >= 0 ? editor.composingStart : editor.caretOffset;
-            int end = editor.composingStart >= 0 ? editor.composingEnd : editor.caretOffset;
-            editor.applyEdit(start, end, text);
-            editor.composingStart = start;
-            editor.composingEnd = Math.min(start + text.length(), editor.buffer.length());
-            return true;
-        }
-
-        @Override
-        public boolean deleteSurroundingText(int leftLength, int rightLength) {
-            editor.deleteAround(leftLength, rightLength);
-            return true;
-        }
-
-        @Override
-        public boolean finishComposingText() {
-            editor.clearComposing();
-            return true;
-        }
-
-        /**
-         * Les claviers qui passent par les événements (Suppr, Entrée,
-         * flèches) : le mode factice de la classe de base les perdrait —
-         * la connexion traduit, le clavier ne peut pas être muet.
-         */
-        @Override
-        public boolean sendKeyEvent(KeyEvent event) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                switch (event.getKeyCode()) {
-                    case KeyEvent.KEYCODE_DEL:
-                        editor.deleteAround(1, 0);
-                        return true;
-                    case KeyEvent.KEYCODE_FORWARD_DEL:
-                        editor.deleteAround(0, 1);
-                        return true;
-                    case KeyEvent.KEYCODE_ENTER:
-                    case KeyEvent.KEYCODE_NUMPAD_ENTER:
-                        editor.applyEdit(editor.caretOffset, editor.caretOffset, "\n");
-                        return true;
-                    case KeyEvent.KEYCODE_DPAD_LEFT:
-                        editor.moveCaret(-1);
-                        return true;
-                    case KeyEvent.KEYCODE_DPAD_RIGHT:
-                        editor.moveCaret(1);
-                        return true;
-                    case KeyEvent.KEYCODE_DPAD_UP:
-                        editor.moveCaretVertically(-1);
-                        return true;
-                    case KeyEvent.KEYCODE_DPAD_DOWN:
-                        editor.moveCaretVertically(1);
-                        return true;
-                    default:
-                        break;
-                }
-            }
-            return super.sendKeyEvent(event);
-        }
-
-        /**
-         * La touche action du clavier (Entrée) : un saut de ligne —
-         * l'éditeur ne déclare pas d'action spéciale.
-         */
-        @Override
-        public boolean performEditorAction(int actionCode) {
-            editor.applyEdit(editor.hasSelection()
-                    ? editor.selectionStart() : editor.caretOffset,
-                    editor.hasSelection() ? editor.selectionEnd() : editor.caretOffset,
-                    "\n");
-            return true;
-        }
-
-        /**
-         * Le clavier déplace la sélection (le champ de recherche du
-         * clavier, la poignée du texte sélectionné) : l'ancre et le
-         * curseur suivent, la sélection vient.
-         */
-        @Override
-        public boolean setSelection(int start, int end) {
-            editor.setSelection(start, end);
-            return true;
-        }
-
-        /**
-         * Le texte sélectionné (le copier du clavier le demande).
-         */
-        @Override
-        public CharSequence getSelectedText(int flags) {
-            return editor.hasSelection() ? editor.selectedText() : null;
-        }
-    }
 }
