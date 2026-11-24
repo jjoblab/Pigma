@@ -1,5 +1,6 @@
 package jo.pigma.syntax;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -33,10 +34,15 @@ import jo.pigma.syntax.lexer.Lexer;
  * laisse la vue libérer les entrées lointaines : les points de
  * contrôle restent et servent le retour. {@link #advanceLexing(int)}
  * remplit par tranches bornées — le budget de temps du fil
- * d'interface ; un vrai fil de fond annulable, dont les résultats ne
- * s'appliqueraient que si la révision du tampon correspond, viendra
- * avec la vue complète : le moteur vit pour l'instant sur le fil qui
- * édite le tampon.</p>
+ * d'interface ; le remplissage peut aussi courir sur un fil de fond :
+ * {@link #takeFillSlice(int)} prend un cliché (texte, bornes de
+ * lignes, état d'ouverture, révision observée), {@link #lexFillSlice}
+ * le lexe sans toucher l'état partagé, et {@link #applyFill} n'écrit
+ * que si la révision observée du moteur correspond encore au cliché —
+ * un résultat périmé ne s'applique jamais : une frappe entre deux
+ * tranches annule la tranche, jamais le document. L'état du moteur
+ * vit sous un verrou court : les méthodes publiques s'y croisent, le
+ * lexage d'un cliché ne le tient jamais.</p>
  *
  * <p>Plafonds : une ligne de plus de {@value #MAX_COLORED_COLUMNS}
  * colonnes n'est pas colorée (jeton aucun, état reporté tel quel) ;
@@ -84,6 +90,17 @@ public final class SyntaxDocument implements TextListener {
     private LineTokens[] lines;
     private int lexedUpto;
 
+    /** Verrou de l'état : le fil d'interface et le fil de fond s'y croisent. */
+    private final Object stateLock = new Object();
+
+    /**
+     * La révision du tampon que le moteur a observée : elle monte dans
+     * {@link #textChanged}, sous verrou. La révision brute du tampon
+     * peut être en avance le temps d'une notification — c'est la
+     * révision observée qui valide l'application d'un cliché.
+     */
+    private int observedRevision;
+
     private boolean measuredFirstRequest;
     private long firstLexNanos;
     private long lastEditNanos;
@@ -96,6 +113,7 @@ public final class SyntaxDocument implements TextListener {
         this.language = language;
         this.lexer = language.newLexer();
         this.lines = new LineTokens[buffer.getLineCount()];
+        this.observedRevision = buffer.getRevision();
     }
 
     /**
@@ -137,6 +155,7 @@ public final class SyntaxDocument implements TextListener {
             throw new IndexOutOfBoundsException(
                     "line out of range: " + line + " for " + count + " lines");
         }
+        synchronized (stateLock) {
         if (lines[line] != null) {
             lastRequestLines = 0;
             lastRequestNanos = 0L;
@@ -161,6 +180,7 @@ public final class SyntaxDocument implements TextListener {
             firstLexNanos = System.nanoTime() - begin;
         }
         return lines[line];
+        }
     }
 
     /**
@@ -203,6 +223,7 @@ public final class SyntaxDocument implements TextListener {
         if (maxLines <= 0) {
             return 0;
         }
+        synchronized (stateLock) {
         int count = buffer.getLineCount();
         if (lexedUpto >= count) {
             return 0;
@@ -217,6 +238,134 @@ public final class SyntaxDocument implements TextListener {
         }
         lexedUpto += budget;
         return budget;
+        }
+    }
+
+    /**
+     * Cliché d'une tranche de remplissage : texte et bornes de lignes
+     * immuables, état qui ouvre la tranche, révision observée à la
+     * prise. Le fil de fond le lexe hors verrou ;
+     * {@link #applyFill(FillSlice, LineTokens[])} ne l'écrit que si
+     * cette révision est encore celle du moteur.
+     *
+     * @param revision   révision observée du moteur à la prise
+     * @param fromLine   première ligne du cliché
+     * @param startState état qui ouvre la première ligne du cliché
+     * @param text       texte de la tranche, immuable
+     * @param lineStarts débuts de ligne, relatifs au texte du cliché
+     * @param lineEnds   fins de ligne, relatives au texte du cliché
+     */
+    public record FillSlice(int revision, int fromLine, int startState,
+            String text, int[] lineStarts, int[] lineEnds) {
+    }
+
+    /**
+     * Prend une tranche à remplir : un cliché du texte et des bornes
+     * des lignes à lexer, l'état qui ouvre la tranche et la révision
+     * observée. Retourne {@code null} quand le préfixe est complet ou
+     * quand le tampon bouge sous la prise (l'édition en cours
+     * rebranchera le fil de fond à sa notification).
+     *
+     * @param maxLines nombre maximal de lignes du cliché
+     * @return le cliché, ou {@code null} si rien ne se prend
+     */
+    public FillSlice takeFillSlice(int maxLines) {
+        if (maxLines <= 0) {
+            return null;
+        }
+        synchronized (stateLock) {
+            int count = buffer.getLineCount();
+            if (lexedUpto >= count) {
+                return null;
+            }
+            int from = lexedUpto;
+            int startState = from == 0 ? 0 : lines[from - 1].endState();
+            int last = Math.min(from + maxLines, count) - 1;
+            int base = buffer.getLineStart(from);
+            int textEnd = buffer.getLineEnd(last);
+            if (base < 0 || textEnd < base || textEnd > buffer.length()) {
+                // le tampon mute avant de notifier (bornes neuves,
+                // longueur ancienne) : le cliché serait déchiré, on
+                // n'en prend pas — l'édition relancera le fil de fond
+                return null;
+            }
+            int linesInSlice = last - from + 1;
+            int[] starts = new int[linesInSlice];
+            int[] ends = new int[linesInSlice];
+            for (int i = 0; i < linesInSlice; i++) {
+                starts[i] = buffer.getLineStart(from + i) - base;
+                ends[i] = buffer.getLineEnd(from + i) - base;
+            }
+            String text = buffer.getText(base, textEnd);
+            return new FillSlice(observedRevision, from, startState, text, starts, ends);
+        }
+    }
+
+    /**
+     * Lexe le cliché hors verrou : aucun état partagé n'est lu ni
+     * écrit, le lexeur est privé à l'appel — appelable depuis un autre
+     * fil que celui du moteur.
+     *
+     * @param slice le cliché pris par {@link #takeFillSlice(int)}
+     * @return les entrées des lignes du cliché, dans son ordre
+     */
+    public LineTokens[] lexFillSlice(FillSlice slice) {
+        Objects.requireNonNull(slice);
+        Lexer own = language.newLexer();
+        int[] starts = slice.lineStarts();
+        int[] ends = slice.lineEnds();
+        LineTokens[] entries = new LineTokens[starts.length];
+        int state = slice.startState();
+        for (int i = 0; i < entries.length; i++) {
+            entries[i] = lexWindow(own, slice.text(), starts[i], ends[i], state,
+                    slice.revision());
+            state = entries[i].endState();
+        }
+        return entries;
+    }
+
+    /**
+     * Applique les entrées d'un cliché : seules celles au-delà du
+     * préfixe déjà lexé s'écrivent, et rien ne s'écrit si la révision
+     * observée a bougé depuis la prise — le contrat du fil de fond
+     * annulable, un résultat périmé ne s'applique jamais.
+     *
+     * @param slice   le cliché pris par {@link #takeFillSlice(int)}
+     * @param entries les entrées calculées par {@link #lexFillSlice}
+     * @return le nombre d'entrées appliquées, 0 si le cliché est périmé
+     */
+    public int applyFill(FillSlice slice, LineTokens[] entries) {
+        Objects.requireNonNull(slice);
+        Objects.requireNonNull(entries);
+        synchronized (stateLock) {
+            if (observedRevision != slice.revision()) {
+                return 0;
+            }
+            int from = Math.max(lexedUpto, slice.fromLine());
+            if (from != lexedUpto) {
+                // le préfixe a reculé (libération d'entrées) : le
+                // cliché ne peut pas combler les trous, la demande
+                // s'en chargera
+                return 0;
+            }
+            int offset = from - slice.fromLine();
+            int available = Math.min(entries.length - offset, lines.length - from);
+            if (available <= 0) {
+                return 0;
+            }
+            int state = offset == 0
+                    ? slice.startState() : lines[from - 1].endState();
+            for (int i = 0; i < available; i++) {
+                int line = from + i;
+                lines[line] = entries[offset + i];
+                if (line % CHECKPOINT_INTERVAL == 0) {
+                    checkpoints.put(line, new Checkpoint(state, slice.revision()));
+                }
+                state = entries[offset + i].endState();
+            }
+            lexedUpto = from + available;
+            return available;
+        }
     }
 
     /**
@@ -227,11 +376,13 @@ public final class SyntaxDocument implements TextListener {
      * @param fromLine première ligne libérée, 0 libère tout
      */
     public void releaseEntries(int fromLine) {
+        synchronized (stateLock) {
         int from = Math.max(0, fromLine);
         for (int i = Math.min(from, lines.length); i < lines.length; i++) {
             lines[i] = null;
         }
         lexedUpto = Math.min(lexedUpto, from);
+        }
     }
 
     /**
@@ -251,6 +402,7 @@ public final class SyntaxDocument implements TextListener {
      * @return le nombre de jetons calculés
      */
     public int tokenCount() {
+        synchronized (stateLock) {
         int total = 0;
         for (LineTokens entry : lines) {
             if (entry != null) {
@@ -258,6 +410,7 @@ public final class SyntaxDocument implements TextListener {
             }
         }
         return total;
+        }
     }
 
     /**
@@ -267,7 +420,9 @@ public final class SyntaxDocument implements TextListener {
      * @return la durée, 0 si aucune demande n'a eu lieu
      */
     public long firstLexNanos() {
-        return firstLexNanos;
+        synchronized (stateLock) {
+            return firstLexNanos;
+        }
     }
 
     /**
@@ -277,7 +432,9 @@ public final class SyntaxDocument implements TextListener {
      * @return la durée, 0 si aucune édition n'a eu lieu
      */
     public long lastEditNanos() {
-        return lastEditNanos;
+        synchronized (stateLock) {
+            return lastEditNanos;
+        }
     }
 
     /**
@@ -288,7 +445,9 @@ public final class SyntaxDocument implements TextListener {
      * @return la durée en nanosecondes, 0 si aucune demande n'a lexé
      */
     public long lastRequestNanos() {
-        return lastRequestNanos;
+        synchronized (stateLock) {
+            return lastRequestNanos;
+        }
     }
 
     /**
@@ -298,7 +457,9 @@ public final class SyntaxDocument implements TextListener {
      * @return le compte, 0 si aucune édition n'a eu lieu
      */
     public int lastRelexedLines() {
-        return lastRelexedLines;
+        synchronized (stateLock) {
+            return lastRelexedLines;
+        }
     }
 
     /**
@@ -308,13 +469,17 @@ public final class SyntaxDocument implements TextListener {
      * @return le compte, 0 si la ligne était déjà calculée
      */
     public int lastRequestLines() {
-        return lastRequestLines;
+        synchronized (stateLock) {
+            return lastRequestLines;
+        }
     }
 
     @Override
     public void textChanged(TextBuffer changed, int start, int removedLength,
             int insertedLength, int revision) {
         long begin = System.nanoTime();
+        synchronized (stateLock) {
+        observedRevision = revision;
         int count = buffer.getLineCount();
         if (lexedUpto == 0) {
             // rien de calculé : les états enregistrés décrivent un texte
@@ -335,7 +500,7 @@ public final class SyntaxDocument implements TextListener {
         }
         LineTokens oldFirst = lines[first];
         int oldCount = lines.length;
-        int insertedBreaks = countBreaks(first, insertedLength);
+        int insertedBreaks = countBreaks(start, insertedLength);
         int removedBreaks = insertedBreaks - (count - oldCount);
         if (removedBreaks < 0) {
             // un tampon bien formé tient l'invariant ; on refuse de
@@ -375,7 +540,15 @@ public final class SyntaxDocument implements TextListener {
             lines[i] = fresh;
             relexed++;
             lastLexed = i;
-            if (old != null && old.endState() == fresh.endState()) {
+            // la sortie sur état rejoint n'est légitime que si la zone
+            // remplacée est entière (i - first >= insertCount - 1) : une
+            // insertion de sauts laisse des slots neufs dans la zone,
+            // sortir avant de les lexer laisserait des trous sous le
+            // préfixe. Pour une zone d'une ligne, le premier slot est
+            // aussi le dernier : la frappe ordinaire garde sa sortie
+            // immédiate.
+            if (old != null && i - first >= insertCount - 1
+                    && old.endState() == fresh.endState()) {
                 stopLine = i;
                 matched = true;
                 break;
@@ -400,6 +573,7 @@ public final class SyntaxDocument implements TextListener {
             }
         }
         finishEdit(begin, relexed);
+        }
     }
 
     // ------------------------------------------------------------ interne
@@ -466,9 +640,13 @@ public final class SyntaxDocument implements TextListener {
         lines = fresh;
     }
 
-    /** Nombre de sauts de ligne du texte inséré par le remplacement. */
-    private int countBreaks(int first, int insertedLength) {
-        int start = buffer.getLineStart(first);
+    /**
+     * Nombre de sauts de ligne du texte inséré par le remplacement :
+     * la fenêtre insérée commence à l'offset d'édition, pas au début
+     * de sa ligne (une insertion en milieu de ligne peut y introduire
+     * des sauts).
+     */
+    private int countBreaks(int start, int insertedLength) {
         int breaks = 0;
         for (int i = 0; i < insertedLength; i++) {
             if (buffer.charAt(start + i) == '\n') {
@@ -491,20 +669,38 @@ public final class SyntaxDocument implements TextListener {
             return new LineTokens(new Token[0], state, revision);
         }
         lexer.start(buffer, start, end, state);
+        return new LineTokens(collectTokens(lexer, start), lexer.state(), revision);
+    }
+
+    /**
+     * Lexe une fenêtre du cliché : la ligne monstre s'y reporte comme
+     * au lexeur du moteur, les bornes sont relatives au texte du
+     * cliché.
+     */
+    private LineTokens lexWindow(Lexer own, CharSequence text, int start, int end,
+            int state, int revision) {
+        if (end - start > MAX_COLORED_COLUMNS) {
+            return new LineTokens(new Token[0], state, revision);
+        }
+        own.start(text, start, end, state);
+        return new LineTokens(collectTokens(own, start), own.state(), revision);
+    }
+
+    /** Collecte les jetons du lexeur prêt, en bornes relatives à la ligne. */
+    private Token[] collectTokens(Lexer ready, int start) {
         Token[] collected = new Token[4];
         int count = 0;
-        lexer.advance();
-        while (lexer.tokenType() != Lexer.NO_TOKEN) {
+        ready.advance();
+        while (ready.tokenType() != Lexer.NO_TOKEN) {
             if (count == collected.length) {
-                collected = java.util.Arrays.copyOf(collected, count * 2);
+                collected = Arrays.copyOf(collected, count * 2);
             }
-            collected[count++] = new Token(lexer.tokenType(),
-                    language.scopeOf(lexer.tokenType()),
-                    lexer.tokenStart() - start,
-                    lexer.tokenEnd() - start);
-            lexer.advance();
+            collected[count++] = new Token(ready.tokenType(),
+                    language.scopeOf(ready.tokenType()),
+                    ready.tokenStart() - start,
+                    ready.tokenEnd() - start);
+            ready.advance();
         }
-        return new LineTokens(java.util.Arrays.copyOf(collected, count),
-                lexer.state(), revision);
+        return Arrays.copyOf(collected, count);
     }
 }

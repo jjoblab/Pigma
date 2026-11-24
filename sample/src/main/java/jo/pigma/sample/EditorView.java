@@ -16,6 +16,7 @@ import jo.pigma.core.TextBuffer;
 import jo.pigma.core.TextListener;
 import jo.pigma.core.TextTransaction;
 import jo.pigma.core.UndoStack;
+import jo.pigma.syntax.BackgroundFill;
 import jo.pigma.syntax.LanguageSyntax;
 import jo.pigma.syntax.Languages;
 import jo.pigma.syntax.SyntaxDocument;
@@ -31,16 +32,18 @@ import jo.pigma.syntax.SyntaxTheme;
  * fixe, une ligne visuelle par ligne du tampon, curseur rectangulaire,
  * soulignement de la zone de composition. Il ne dessine que les
  * lignes visibles — c'est la fenêtre paresseuse du moteur qui s'y
- * paie, le remplissage du reste suit par tranches (la pompe interne,
- * après chaque trame). Changer de thème ne retokenise rien : la
- * résolution des couleurs se fait à la cuisson du plan. Le dessin
- * d'une ligne s'arrête à {@value #MAX_DRAWN_COLUMNS} colonnes, une
- * ligne monstre (hors plafond moteur) s'affiche en texte brut. Les
- * plans de rendu passent par un cache (validité par identité d'entrée,
- * partage par contenu pour les lignes identiques) et la durée de la
- * dernière trame s'y lit — le budget par image du panneau. La
- * sélection et la gouttière viendront avec la vue complète de la
- * bibliothèque.</p>
+ * paie, le remplissage du reste court sur le fil de fond annulable :
+ * les tranches s'y prennent en clichés et ne s'appliquent que si la
+ * révision observée du moteur n'a pas bougé — une frappe entre deux
+ * tranches annule la tranche, jamais le document. Changer de thème ne
+ * retokenise rien : la résolution des couleurs se fait à la cuisson
+ * du plan. Le dessin d'une ligne s'arrête à {@value #MAX_DRAWN_COLUMNS}
+ * colonnes, une ligne monstre (hors plafond moteur) s'affiche en
+ * texte brut. Les plans de rendu passent par un cache (validité par
+ * identité d'entrée, partage par contenu pour les lignes identiques)
+ * et la durée de la dernière trame s'y lit — le budget par image du
+ * panneau. La sélection et la gouttière viendront avec la vue
+ * complète de la bibliothèque.</p>
  */
 public final class EditorView extends View {
 
@@ -55,12 +58,6 @@ public final class EditorView extends View {
 
     /** Colonnes au-delà desquelles le dessin d'une ligne s'arrête. */
     private static final int MAX_DRAWN_COLUMNS = 10_000;
-
-    /** Lignes lexées par tranche de la pompe de remplissage. */
-    private static final int LEX_SLICE_LINES = 256;
-
-    /** Délai entre deux tranches : environ une trame. */
-    private static final long LEX_SLICE_DELAY_MS = 16L;
 
     /** Plans partagés par contenu, au-delà le plus ancien s'évince. */
     private static final int SHARED_PLANS = 256;
@@ -88,7 +85,8 @@ public final class EditorView extends View {
     private float touchStartY;
     private boolean dragging;
 
-    private boolean pumping;
+    /** Le fil de fond du remplissage (clichés révision-vérifiés). */
+    private BackgroundFill backgroundFill;
 
     private final RenderCache<LinePlan> renderCache = new RenderCache<>(SHARED_PLANS);
 
@@ -97,30 +95,13 @@ public final class EditorView extends View {
 
     private long frameCount;
 
-    /**
-     * La pompe de remplissage : après la fenêtre visible, elle lexte le
-     * reste du document par tranches bornées, entre les trames — le
-     * budget de temps du fil d'interface.
-     */
-    private final Runnable lexPump = new Runnable() {
-        @Override
-        public void run() {
-            if (syntax.remainingLines() > 0) {
-                syntax.advanceLexing(LEX_SLICE_LINES);
-                postDelayed(this, LEX_SLICE_DELAY_MS);
-            } else {
-                pumping = false;
-            }
-        }
-    };
-
     private final TextListener modelListener = new TextListener() {
         @Override
         public void textChanged(TextBuffer changed, int start, int removedLength,
                                 int insertedLength, int revision) {
             clampCaret();
             ensureCaretVisible();
-            ensureLexPump();
+            ensureFill();
             invalidate();
         }
     };
@@ -130,6 +111,7 @@ public final class EditorView extends View {
         buffer = TextBuffer.create(INITIAL_TEXT);
         undoStack = new UndoStack(buffer);
         syntax = SyntaxDocument.open(buffer, Languages.JAVA);
+        backgroundFill = BackgroundFill.start(syntax);
         textPaint.setTypeface(Typeface.MONOSPACE);
         textPaint.setTextSize(14.0f * getResources().getDisplayMetrics().scaledDensity);
         fontMetrics = textPaint.getFontMetrics();
@@ -223,18 +205,22 @@ public final class EditorView extends View {
      * @param text     texte de démonstration, jamais {@code null}
      */
     public void setLanguage(LanguageSyntax language, String text) {
+        // le fil de fond s'arrête avant le détachement : sa tranche en
+        // cours finit sur l'ancien document, le nouveau partira sien
+        backgroundFill.stop();
         syntax.detach();
         try (TextTransaction transaction = undoStack.newTransaction()) {
             transaction.replace(0, buffer.length(), text);
         }
         syntax = SyntaxDocument.open(buffer, language);
+        backgroundFill = BackgroundFill.start(syntax);
         // autre langage : les plans portent des couleurs résolues, tout
         // recuit (sans retokeniser — le nouveau document lexe à la demande)
         renderCache.invalidate();
         scrollY = 0.0f;
         clampCaret();
         ensureCaretVisible();
-        ensureLexPump();
+        ensureFill();
         invalidate();
     }
 
@@ -341,8 +327,8 @@ public final class EditorView extends View {
             }
         }
         drawCaret(canvas);
-        // la fenêtre visible est payée : le reste suit par tranches
-        ensureLexPump();
+        // la fenêtre visible est payée : le reste remplit au fil de fond
+        ensureFill();
         lastFrameNanos = System.nanoTime() - frameBegin;
         frameCount++;
     }
@@ -499,12 +485,36 @@ public final class EditorView extends View {
         return dp(8);
     }
 
-    /** Démarre la pompe de remplissage si du travail reste. */
-    private void ensureLexPump() {
-        if (!pumping && syntax.remainingLines() > 0) {
-            pumping = true;
-            postDelayed(lexPump, LEX_SLICE_DELAY_MS);
+    /** Relance le fil de fond si du travail reste (dessin, édition, ouverture). */
+    private void ensureFill() {
+        backgroundFill.kick();
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        if (backgroundFill != null && backgroundFill.stopped()) {
+            backgroundFill = BackgroundFill.start(syntax);
         }
+        ensureFill();
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        // annulation douce : la tranche en cours finit, le fil s'arrête
+        backgroundFill.stop();
+        super.onDetachedFromWindow();
+    }
+
+    /**
+     * Attend le remplissage complet (harnais, tests) : le fil de fond
+     * ne laisse jamais le document incohérent, l'attente n'observe.
+     *
+     * @param timeoutMillis borne d'attente en millisecondes
+     * @return vrai si le préfixe est complet au retour
+     */
+    public boolean awaitBackgroundFill(long timeoutMillis) {
+        return backgroundFill.awaitIdle(timeoutMillis);
     }
 
     private void applyEdit(int start, int end, CharSequence text) {
