@@ -4,6 +4,8 @@ package jo.pigma.sample;
  * Textes de démonstration par langage : chacun exerce les formes de
  * jeton de son lexeur (mots, chaînes, nombres, commentaires, balises,
  * clés) et reste assez court pour lire la coloration d'un coup d'œil.
+ * Le gros fichier, généré, sert la fenêtre paresseuse : seule la
+ * partie visible se paie à l'ouverture.
  */
 public final class DemoTexts {
 
@@ -73,6 +75,40 @@ public final class DemoTexts {
                de plusieurs lignes */
             SELECT COUNT(*) AS total FROM 'commandes';
             """;
+
+    /**
+     * Gros fichier Java de démonstration, généré : environ deux mille
+     * lignes, une ligne monstre au milieu (hors plafond moteur de
+     * coloration, dessin coupé) — la fenêtre visible seule se paie à
+     * l'ouverture, le remplissage suit par tranches.
+     *
+     * @return le texte du gros fichier, jamais {@code null}
+     */
+    public static String bigFile() {
+        StringBuilder text = new StringBuilder();
+        text.append("// Gros fichier de demonstration : seule la fenetre visible se paie a l'ouverture.\n");
+        for (int block = 0; block < 111; block++) {
+            text.append("/* Bloc ").append(block)
+                    .append(" : le remplissage suit en arriere-plan, par tranches. */\n");
+            text.append("package bloc").append(block).append(";\n\n");
+            text.append("/** Calculs du bloc ").append(block).append(". */\n");
+            text.append("public final class Bloc").append(block).append(" {\n");
+            text.append("    private static final double SEUIL = 0.125e-3;\n");
+            text.append("    private static final int MAX = 0x1F_FF;\n\n");
+            text.append("    static double total(int graine, int taille) {\n");
+            text.append("        if (graine > MAX && taille != -1) {\n");
+            text.append("            return graine * taille * SEUIL;\n");
+            text.append("        }\n");
+            text.append("        return (double) graine / taille;\n");
+            text.append("    }\n");
+            text.append("}\n\n");
+            if (block == 2) {
+                text.append("// ligne monstre : non coloree au-dela du plafond moteur, dessin coupe\n");
+                text.append("// ").append("x".repeat(25_000)).append('\n');
+            }
+        }
+        return text.toString();
+    }
 
     private DemoTexts() {
     }

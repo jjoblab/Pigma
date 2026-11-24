@@ -22,14 +22,20 @@ import jo.pigma.syntax.SyntaxTheme;
  * cœur et du moteur de coloration.
  *
  * <p>Deux rangées de sélecteurs : le langage (Java, XML, JSON générés,
- * SQL par la famille générique — le texte de démonstration change
- * avec) et le thème (clair, sombre — changer ne retokenise rien, la
- * mesure du premier lexage ne bouge pas). Le panneau de diagnostic
- * affiche les mesures du moteur : première coloration, coût de la
- * dernière frappe, lignes relues, jetons. La ligne d'état garde la
- * révision, la position et la longueur.</p>
+ * SQL par la famille générique, plus le gros fichier Java de la fenêtre
+ * paresseuse — le texte de démonstration change avec) et le thème
+ * (clair, sombre — changer ne retokenise rien, la mesure de première
+ * coloration ne bouge pas). Le panneau de diagnostic suit les mesures
+ * du moteur : première coloration (la fenêtre visible, pas le document
+ * entier), coût de la dernière frappe, lignes relues, lignes lexées
+ * sur le total — il se rafraîchit pendant que la pompe de remplissage
+ * avance. La ligne d'état garde la révision, la position et la
+ * longueur.</p>
  */
 public final class MainActivity extends Activity {
+
+    /** Délai entre deux rafraîchissements du panneau pendant le remplissage. */
+    private static final long DIAGNOSTIC_WATCH_MS = 200L;
 
     private EditorView editorView;
     private TextView statusView;
@@ -42,7 +48,21 @@ public final class MainActivity extends Activity {
         public void textChanged(TextBuffer buffer, int start, int removedLength,
                                 int insertedLength, int revision) {
             updateStatus();
+            watchDiagnostics();
+        }
+    };
+
+    /**
+     * Le veilleur du panneau : tant que la pompe de remplissage avance,
+     * il rafraîchit les mesures (lignes lexées qui montent).
+     */
+    private final Runnable diagnosticsWatcher = new Runnable() {
+        @Override
+        public void run() {
             updateDiagnostics();
+            if (editorView.getSyntaxDocument().remainingLines() > 0) {
+                editorView.postDelayed(this, DIAGNOSTIC_WATCH_MS);
+            }
         }
     };
 
@@ -65,9 +85,9 @@ public final class MainActivity extends Activity {
         editorView.getBuffer().addListener(statusListener);
         updateStatus();
         updateDiagnostics();
-        // le premier lexage est paresseux (au premier dessin) : le
-        // panneau se rafraîchit juste après la première trame
-        editorView.post(this::updateDiagnostics);
+        // la première coloration est paresseuse (au premier dessin) et
+        // le remplissage avance par tranches : le panneau suit
+        editorView.post(this::watchDiagnostics);
     }
 
     private View buildLayout() {
@@ -84,7 +104,8 @@ public final class MainActivity extends Activity {
                 languageButton("Java", Languages.JAVA, DemoTexts.JAVA),
                 languageButton("XML", Languages.XML, DemoTexts.XML),
                 languageButton("JSON", Languages.JSON, DemoTexts.JSON),
-                languageButton("SQL", Languages.SQL, DemoTexts.SQL)));
+                languageButton("SQL", Languages.SQL, DemoTexts.SQL),
+                languageButton("Gros", Languages.JAVA, DemoTexts.bigFile())));
         root.addView(row(margin,
                 themeButton("Clair", SampleThemes.LIGHT, SampleThemes.LIGHT_BACKGROUND),
                 themeButton("Sombre", SampleThemes.DARK, SampleThemes.DARK_BACKGROUND),
@@ -121,7 +142,7 @@ public final class MainActivity extends Activity {
         button.setOnClickListener(view -> {
             editorView.setLanguage(language, text);
             updateStatus();
-            updateDiagnostics();
+            watchDiagnostics();
         });
         return button;
     }
@@ -155,16 +176,33 @@ public final class MainActivity extends Activity {
         redoButton.setEnabled(stack.canRedo());
     }
 
+    /**
+     * Lance le veilleur du panneau : une passe immédiate, puis une par
+     * intervalle tant que le remplissage avance.
+     */
+    private void watchDiagnostics() {
+        updateDiagnostics();
+        editorView.removeCallbacks(diagnosticsWatcher);
+        if (editorView.getSyntaxDocument().remainingLines() > 0) {
+            editorView.postDelayed(diagnosticsWatcher, DIAGNOSTIC_WATCH_MS);
+        }
+    }
+
     private void updateDiagnostics() {
         SyntaxDocument syntax = editorView.getSyntaxDocument();
-        diagnosticsView.setText(String.format(
+        String text = String.format(
                 "coloration : première %.1f ms · dernière frappe %.2f ms "
-                        + "(%d ligne(s) relue(s)) · %d jetons · %d lignes",
+                        + "(%d ligne(s) relue(s)) · %d/%d lignes lexées · %d jetons",
                 syntax.firstLexNanos() / 1_000_000.0,
                 syntax.lastEditNanos() / 1_000_000.0,
                 syntax.lastRelexedLines(),
-                syntax.tokenCount(),
-                syntax.lineCount()));
+                syntax.lexedLineCount(),
+                syntax.lineCount(),
+                syntax.tokenCount());
+        if (syntax.inBigFileMode()) {
+            text += " · mode gros fichier";
+        }
+        diagnosticsView.setText(text);
     }
 
     private int dp(int value) {

@@ -23,17 +23,20 @@ import jo.pigma.syntax.SyntaxTheme;
 
 /**
  * Vue d'édition minimale : le texte affiché est le tampon du cœur,
- * coloré par le moteur de syntaxe (jetons ligne par ligne, une
- * couleur par portée, thème résolu au dessin), chaque retour de
- * l'IME est une transaction (une unité d'annulation), le curseur se
- * place au toucher.
+ * coloré par le moteur de syntaxe, chaque retour de l'IME est une
+ * transaction (une unité d'annulation), le curseur se place au toucher
+ * et le doigt fait défiler verticalement.
  *
  * <p>Le rendu reste volontairement rudimentaire : police à chasse
  * fixe, une ligne visuelle par ligne du tampon, curseur rectangulaire,
- * soulignement de la zone de composition. Changer de thème ne
- * retokenise rien : la résolution des couleurs se fait au dessin. Le
- * défilement, la sélection et la gouttière viendront avec la vue
- * complète de la bibliothèque.</p>
+ * soulignement de la zone de composition. Il ne dessine que les
+ * lignes visibles — c'est la fenêtre paresseuse du moteur qui s'y
+ * paie, le remplissage du reste suit par tranches (la pompe interne,
+ * après chaque trame). Changer de thème ne retokenise rien : la
+ * résolution des couleurs se fait au dessin. Le dessin d'une ligne
+ * s'arrête à {@value #MAX_DRAWN_COLUMNS} colonnes, une ligne monstre
+ * (hors plafond moteur) s'affiche en texte brut. La sélection et la
+ * gouttière viendront avec la vue complète de la bibliothèque.</p>
  */
 public final class EditorView extends View {
 
@@ -41,6 +44,15 @@ public final class EditorView extends View {
 
     private static final int CARET_COLOR = 0xFF2962FF;
     private static final int COMPOSE_COLOR = 0xFF7A8199;
+
+    /** Colonnes au-delà desquelles le dessin d'une ligne s'arrête. */
+    private static final int MAX_DRAWN_COLUMNS = 10_000;
+
+    /** Lignes lexées par tranche de la pompe de remplissage. */
+    private static final int LEX_SLICE_LINES = 256;
+
+    /** Délai entre deux tranches : environ une trame. */
+    private static final long LEX_SLICE_DELAY_MS = 16L;
 
     private final TextBuffer buffer;
     private final UndoStack undoStack;
@@ -60,11 +72,37 @@ public final class EditorView extends View {
     private int composingStart = -1;
     private int composingEnd = -1;
 
+    private float scrollY;
+    private float touchStartX;
+    private float touchStartY;
+    private boolean dragging;
+
+    private boolean pumping;
+
+    /**
+     * La pompe de remplissage : après la fenêtre visible, elle lexte le
+     * reste du document par tranches bornées, entre les trames — le
+     * budget de temps du fil d'interface.
+     */
+    private final Runnable lexPump = new Runnable() {
+        @Override
+        public void run() {
+            if (syntax.remainingLines() > 0) {
+                syntax.advanceLexing(LEX_SLICE_LINES);
+                postDelayed(this, LEX_SLICE_DELAY_MS);
+            } else {
+                pumping = false;
+            }
+        }
+    };
+
     private final TextListener modelListener = new TextListener() {
         @Override
         public void textChanged(TextBuffer changed, int start, int removedLength,
                                 int insertedLength, int revision) {
             clampCaret();
+            ensureCaretVisible();
+            ensureLexPump();
             invalidate();
         }
     };
@@ -111,7 +149,8 @@ public final class EditorView extends View {
 
     /**
      * Change de langage : le texte est remplacé (une transaction, donc
-     * annulable) et un nouveau document de coloration s'ouvre.
+     * annulable) et un nouveau document de coloration s'ouvre — le
+     * haut du document s'affiche, le remplissage repart.
      *
      * @param language descripteur du langage, jamais {@code null}
      * @param text     texte de démonstration, jamais {@code null}
@@ -122,7 +161,10 @@ public final class EditorView extends View {
             transaction.replace(0, buffer.length(), text);
         }
         syntax = SyntaxDocument.open(buffer, language);
+        scrollY = 0.0f;
         clampCaret();
+        ensureCaretVisible();
+        ensureLexPump();
         invalidate();
     }
 
@@ -171,11 +213,36 @@ public final class EditorView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (event.getAction() == MotionEvent.ACTION_UP) {
-            requestFocus();
-            placeCaretAt(event.getX(), event.getY());
-            clearComposing();
-            showSoftInput();
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                touchStartX = event.getX();
+                touchStartY = event.getY();
+                dragging = false;
+                break;
+            case MotionEvent.ACTION_MOVE:
+                if (!dragging && Math.abs(event.getY() - touchStartY) > touchSlop()) {
+                    dragging = true;
+                }
+                if (dragging) {
+                    scrollY = clampToRange(scrollY - (event.getY() - touchStartY),
+                            0.0f, maxScroll());
+                    touchStartY = event.getY();
+                    touchStartX = event.getX();
+                    invalidate();
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+                if (dragging) {
+                    dragging = false;
+                } else {
+                    requestFocus();
+                    placeCaretAt(event.getX(), event.getY());
+                    clearComposing();
+                    showSoftInput();
+                }
+                break;
+            default:
+                break;
         }
         return true;
     }
@@ -184,11 +251,14 @@ public final class EditorView extends View {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         canvas.drawColor(themeBackground);
-        textPaint.setColor(theme.defaultColor());
-        for (int line = 0; line < buffer.getLineCount(); line++) {
+        int count = buffer.getLineCount();
+        int first = firstVisibleLine();
+        int last = lastVisibleLine();
+        for (int line = first; line <= last && line < count; line++) {
             int start = buffer.getLineStart(line);
             int end = buffer.getLineEnd(line);
-            float baseline = getPaddingTop() - fontMetrics.top + line * lineHeight;
+            float baseline = getPaddingTop() - fontMetrics.top
+                    + line * lineHeight - scrollY;
             if (end > start) {
                 drawTokens(canvas, line, start, baseline);
             }
@@ -197,23 +267,41 @@ public final class EditorView extends View {
             }
         }
         drawCaret(canvas);
+        // la fenêtre visible est payée : le reste suit par tranches
+        ensureLexPump();
     }
 
     /**
      * Dessine la ligne jeton par jeton : la couleur se résout au
      * dessin depuis la portée (le thème peut changer sans retokeniser).
+     * Une ligne sans jeton (ligne monstre, hors plafond moteur) se
+     * dessine en texte brut ; toute ligne s'arrête au plafond de
+     * dessin.
      */
     private void drawTokens(Canvas canvas, int line, int start, float baseline) {
-        SyntaxDocument.Token[] tokens = syntax.lineTokens(line).tokens();
         float left = getPaddingLeft();
+        SyntaxDocument.Token[] tokens = syntax.lineTokens(line).tokens();
+        if (tokens.length == 0) {
+            int drawn = Math.min(MAX_DRAWN_COLUMNS, buffer.getLineEnd(line) - start);
+            if (drawn > 0) {
+                textPaint.setColor(theme.defaultColor());
+                canvas.drawText(buffer.getText(start, start + drawn),
+                        left, baseline, textPaint);
+            }
+            return;
+        }
         for (SyntaxDocument.Token token : tokens) {
             if (token.end() <= token.start()) {
                 continue;
             }
+            if (token.start() >= MAX_DRAWN_COLUMNS) {
+                break;
+            }
+            int endColumn = Math.min(token.end(), MAX_DRAWN_COLUMNS);
             textPaint.setColor(token.scope() == null
                     ? theme.defaultColor() : theme.colorOf(token.scope()));
             canvas.drawText(
-                    buffer.getText(start + token.start(), start + token.end()),
+                    buffer.getText(start + token.start(), start + endColumn),
                     left + token.start() * charWidth, baseline, textPaint);
         }
     }
@@ -234,16 +322,20 @@ public final class EditorView extends View {
     private void drawCaret(Canvas canvas) {
         int offset = Math.min(caretOffset, buffer.length());
         int line = buffer.lineOfOffset(offset);
+        if (line < firstVisibleLine() || line > lastVisibleLine()) {
+            return;
+        }
         int column = offset - buffer.getLineStart(line);
         float x = getPaddingLeft() + column * charWidth;
-        float top = getPaddingTop() + line * lineHeight;
+        float top = getPaddingTop() + line * lineHeight - scrollY;
         canvas.drawRect(x, top + dp(2), x + caretWidth, top + lineHeight - dp(2), caretPaint);
     }
 
     private void placeCaretAt(float x, float y) {
         int line = buffer.getLineCount() - 1;
         if (lineHeight > 0.0f) {
-            line = clampToRange((int) ((y - getPaddingTop()) / lineHeight), 0,
+            line = clampToRange(
+                    (int) ((y - getPaddingTop() + scrollY) / lineHeight), 0,
                     buffer.getLineCount() - 1);
         }
         int lineStart = buffer.getLineStart(line);
@@ -253,6 +345,58 @@ public final class EditorView extends View {
                 : 0;
         caretOffset = buffer.offsetOfPosition(line, column);
         invalidate();
+    }
+
+    /** Amène le curseur dans la fenêtre visible (frappe en bord bas). */
+    private void ensureCaretVisible() {
+        int line = buffer.lineOfOffset(Math.min(caretOffset, buffer.length()));
+        float top = getPaddingTop() + line * lineHeight - scrollY;
+        float bottom = top + lineHeight;
+        if (top < 0.0f) {
+            scrollY += top;
+        } else if (bottom > getHeight()) {
+            scrollY += bottom - getHeight();
+        }
+        scrollY = clampToRange(scrollY, 0.0f, maxScroll());
+    }
+
+    /** Première ligne visible (indice). */
+    private int firstVisibleLine() {
+        if (lineHeight <= 0.0f) {
+            return 0;
+        }
+        return clampToRange((int) (scrollY / lineHeight), 0,
+                Math.max(0, buffer.getLineCount() - 1));
+    }
+
+    /** Dernière ligne visible (indice, bornée au document). */
+    private int lastVisibleLine() {
+        if (lineHeight <= 0.0f) {
+            return 0;
+        }
+        return clampToRange(
+                (int) Math.ceil((scrollY + getHeight()) / lineHeight), 0,
+                Math.max(0, buffer.getLineCount() - 1));
+    }
+
+    /** Borne haute du défilement : la dernière ligne visible en bas. */
+    private float maxScroll() {
+        float content = getPaddingTop() + buffer.getLineCount() * lineHeight
+                + getPaddingBottom();
+        return Math.max(0.0f, content - getHeight());
+    }
+
+    /** Seuil de déplacement avant qu'un contact devienne un défilement. */
+    private float touchSlop() {
+        return dp(8);
+    }
+
+    /** Démarre la pompe de remplissage si du travail reste. */
+    private void ensureLexPump() {
+        if (!pumping && syntax.remainingLines() > 0) {
+            pumping = true;
+            postDelayed(lexPump, LEX_SLICE_DELAY_MS);
+        }
     }
 
     private void applyEdit(int start, int end, CharSequence text) {
@@ -287,6 +431,10 @@ public final class EditorView extends View {
     }
 
     private static int clampToRange(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static float clampToRange(float value, float min, float max) {
         return Math.max(min, Math.min(max, value));
     }
 
