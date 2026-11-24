@@ -146,6 +146,45 @@ public final class DemoTexts {
         return text.toString();
     }
 
+    /**
+     * Le fichier hors normes du plan : 52 000 lignes, plus de 2,5
+     * millions de caractères — le mode gros fichier s'y active (L1 y
+     * reste, la fenêtre se paie, le fond remplit par tranches). Le
+     * texte se génère au premier appel puis se cache : le bouton ne
+     * paie la construction qu'une fois.
+     *
+     * @return le texte de 52 000 lignes environ
+     */
+    public static synchronized String hugeFile() {
+        if (hugeFileCache == null) {
+            String block = "/* Bloc 0. */\n"
+                    + "public final class G0 {\n"
+                    + "    private static final double SEUIL = 0.125e-3;\n"
+                    + "    private static final int MAX = 0x1F_FF;\n\n"
+                    + "    static double total(int graine, int taille) {\n"
+                    + "        if (graine > MAX && taille != -1) {\n"
+                    + "            return graine * taille * SEUIL;\n"
+                    + "        }\n"
+                    + "        return (double) graine / taille;\n"
+                    + "    }\n"
+                    + "}\n\n";
+            int blockLines = 13;
+            int headerLines = 3;
+            int blocks = (52_000 - headerLines + blockLines - 1) / blockLines;
+            StringBuilder text = new StringBuilder(3_000_000);
+            text.append("// Fichier hors normes de demonstration : 52 000 lignes, mode gros fichier.\n");
+            text.append("// La fenetre visible se paie, le remplissage suit en arriere-plan.\n\n");
+            for (int at = 0; at < blocks; at++) {
+                text.append(block.replace("Bloc 0", "Bloc " + at)
+                        .replace("G0", "G" + at));
+            }
+            hugeFileCache = text.toString();
+        }
+        return hugeFileCache;
+    }
+
+    private static String hugeFileCache;
+
     private DemoTexts() {
     }
 }

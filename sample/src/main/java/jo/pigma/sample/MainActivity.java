@@ -163,6 +163,7 @@ public final class MainActivity extends Activity {
                 languageButton("SQL", Languages.SQL, DemoTexts.SQL)));
         root.addView(row(margin,
                 languageButton("Gros", Languages.JAVA, DemoTexts.bigFile()),
+                languageButton("50k l.", Languages.JAVA, DemoTexts.hugeFile()),
                 themeButton("Clair", EditorThemes.LIGHT, EditorThemes.LIGHT_BACKGROUND),
                 themeButton("Sombre", EditorThemes.DARK, EditorThemes.DARK_BACKGROUND),
                 undoButton, redoButton));
@@ -199,7 +200,9 @@ public final class MainActivity extends Activity {
         button.setText(label);
         button.setOnClickListener(view -> {
             editorView.setLanguage(language, text);
-            currentScenario = "Gros".equals(label) ? "gros fichier Java" : label + " (demo)";
+            currentScenario = "Gros".equals(label) ? "gros fichier Java"
+                    : "50k l.".equals(label) ? "fichier 52 000 lignes"
+                    : label + " (demo)";
             loggedFirstColoration = false;
             updateStatus();
             watchDiagnostics();
