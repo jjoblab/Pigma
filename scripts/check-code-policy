@@ -184,6 +184,10 @@ def check_java_file(path, french_words):
     text = path.read_text(encoding="utf-8")
     comments, literals = lex_ranges(text)
     masked = mask_ranges(text, comments + literals)
+    # Texte où seules les chaînes sont neutralisées : les types publics s'y
+    # cherchent sans faux positif sur du code cité dans une chaîne, et les
+    # commentaires restent lisibles pour la vérification de Javadoc.
+    code_with_comments = mask_ranges(text, literals)
 
     for match in re.finditer(r"[^\x00-\x7f]", masked):
         line = line_number(text, match.start())
@@ -205,7 +209,7 @@ def check_java_file(path, french_words):
                 violations.append((KIND_FRENCH_WORD, path, line,
                                    "mot français dans un identifiant : " + word))
 
-    violations.extend(check_public_types(path, text))
+    violations.extend(check_public_types(path, code_with_comments))
     return violations
 
 
