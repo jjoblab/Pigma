@@ -1,6 +1,7 @@
 package jo.pigma.syntax;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -339,6 +340,91 @@ public class StructureDocumentTest {
         assertEquals(1, structure.mismatchCount());
         structure.detach();
         syntax.detach();
+    }
+
+    /**
+     * La portée du curseur : le bloc le plus interne qui l'englobe —
+     * la classe depuis le corps, la méthode depuis le sien, le parent
+     * sur la ligne de l'ouvrant AVANT l'accolade, le bloc nouveau
+     * APRÈS, et rien au niveau racine.
+     *
+     * @throws IOException si le corpus ne se lit pas
+     */
+    @Test
+    public void scopeAtFindsTheInnermostEnclosingBlock() throws IOException {
+        TextBuffer buffer = TextBuffer.create(corpus());
+        SyntaxDocument syntax = SyntaxDocument.open(buffer, Languages.JAVA);
+        StructureDocument structure = StructureDocument.open(buffer, syntax);
+        // la fermante de la classe : la dernière ligne qui porte un « } »
+        int lastLine = buffer.getLineCount() - 1;
+        int classClose = lastLine;
+        while (buffer.getText(buffer.getLineStart(classClose),
+                buffer.getLineEnd(classClose)).toString().isBlank()) {
+            classClose--;
+        }
+        // ligne 8 : « public final class Corpus { » — depuis le corps,
+        // la portée est la classe entière
+        StructureDocument.BlockRange classScope = structure.scopeAt(
+                buffer.getLineStart(9) + 2);
+        assertEquals(8, classScope.fromLine());
+        assertEquals(classClose, classScope.toLine());
+        // ligne 19 : « public double weight0(int seed) { » — depuis le
+        // corps, la portée est la méthode ; la ligne de l'ouvrant, APRÈS
+        // l'accolade, désigne la méthode, AVANT désigne la classe
+        StructureDocument.BlockRange methodScope = structure.scopeAt(
+                buffer.getLineStart(21) + 4);
+        assertEquals(19, methodScope.fromLine());
+        assertEquals(structure.foldEndLine(19), methodScope.toLine());
+        assertEquals(19, structure.scopeAt(buffer.getLineEnd(19)).fromLine());
+        assertEquals(8, structure.scopeAt(
+                buffer.getLineStart(19) + 10).fromLine());
+        // dans le javadoc de classe : profondeur nulle, pas de portée
+        assertNull(structure.scopeAt(buffer.getLineStart(3) + 2));
+        structure.detach();
+        syntax.detach();
+    }
+
+    /**
+     * Les plis : la ligne qui ouvre un bloc est une en-tête, la ligne
+     * de fermeture se lit dans le texte, un bloc jamais refermé va
+     * jusqu'à la dernière ligne.
+     *
+     * @throws IOException si le corpus ne se lit pas
+     */
+    @Test
+    public void foldsOpenAtHeadersAndCloseAtTheReturnLine() throws IOException {
+        TextBuffer buffer = TextBuffer.create(corpus());
+        SyntaxDocument syntax = SyntaxDocument.open(buffer, Languages.JAVA);
+        StructureDocument structure = StructureDocument.open(buffer, syntax);
+        assertTrue("la classe ouvre un pli", structure.foldStartsAt(8));
+        assertTrue("la signature de méthode ouvre un pli", structure.foldStartsAt(19));
+        assertFalse("le corps ne plie pas", structure.foldStartsAt(22));
+        // la fermeture du pli de la méthode porte l'accolade fermante
+        int close = structure.foldEndLine(19);
+        assertTrue("la ligne de fermeture porte le « } » : ligne " + close,
+                buffer.getText(buffer.getLineStart(close), buffer.getLineEnd(close))
+                        .toString().stripLeading().startsWith("}"));
+        // la classe referme à la dernière ligne portée
+        assertEquals(classCloseOf(buffer), structure.foldEndLine(8));
+        // un bloc jamais refermé : jusqu'à la dernière ligne
+        TextBuffer open = TextBuffer.create("class A {\n  int x;\n");
+        SyntaxDocument openSyntax = SyntaxDocument.open(open, Languages.JAVA);
+        StructureDocument openStructure = StructureDocument.open(open, openSyntax);
+        assertEquals(open.getLineCount() - 1, openStructure.foldEndLine(0));
+        assertTrue(openStructure.foldStartsAt(0));
+        openStructure.detach();
+        openSyntax.detach();
+        structure.detach();
+        syntax.detach();
+    }
+
+    private static int classCloseOf(TextBuffer buffer) {
+        int line = buffer.getLineCount() - 1;
+        while (line > 0 && buffer.getText(buffer.getLineStart(line),
+                buffer.getLineEnd(line)).toString().isBlank()) {
+            line--;
+        }
+        return line;
     }
 
     private static char charAt(TextBuffer buffer, int line, int column) {

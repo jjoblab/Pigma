@@ -34,4 +34,5 @@ android {
 dependencies {
     implementation(project(":core"))
     implementation(project(":syntax"))
+    implementation(project(":analysis"))
 }

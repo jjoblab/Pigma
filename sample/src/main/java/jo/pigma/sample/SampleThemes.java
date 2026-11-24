@@ -46,6 +46,31 @@ public final class SampleThemes {
             Map.entry("entity", 0xFFD7BA7D),
             Map.entry("key", 0xFF9CDCFE)), 0xFFD4D4D4);
 
+    /** Natures sémantiques (L3) de la palette claire. */
+    private static final Map<String, Integer> LIGHT_SEMANTIC = Map.of(
+            "type", 0xFF267F99, "méthode", 0xFF795E26, "champ", 0xFF001080);
+
+    /** Natures sémantiques (L3) de la palette sombre. */
+    private static final Map<String, Integer> DARK_SEMANTIC = Map.of(
+            "type", 0xFF4EC9B0, "méthode", 0xFFDCDCAA, "champ", 0xFF9CDCFE);
+
+    /**
+     * La couleur d'une nature sémantique (la fusion L3 au dessin s'en
+     * sert) : la palette du thème donné (les deux du sample par
+     * identité, un thème tiers retombe sur la claire) ; une nature
+     * inconnue retombe sur le neutre du thème — la chaîne ouverte ne
+     * casse jamais le rendu.
+     *
+     * @param theme  le thème courant
+     * @param nature la nature de l'annotation
+     * @return la couleur ARGB
+     */
+    public static int semanticColor(SyntaxTheme theme, String nature) {
+        Map<String, Integer> palette = theme == DARK ? DARK_SEMANTIC : LIGHT_SEMANTIC;
+        Integer color = palette.get(nature);
+        return color == null ? theme.defaultColor() : color;
+    }
+
     private SampleThemes() {
     }
 }

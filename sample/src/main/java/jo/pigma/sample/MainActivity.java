@@ -321,6 +321,12 @@ public final class MainActivity extends Activity {
         if (syntax.inBigFileMode()) {
             text += " · mode gros fichier";
         }
+        if (editorView.hiddenLineCount() > 0) {
+            text += String.format(" · replié : %d pli(s), %d ligne(s) cachée(s)",
+                    editorView.foldedCount(), editorView.hiddenLineCount());
+        }
+        text += String.format(" · L3 : %d annotation(s) (fenêtre)",
+                editorView.semanticVisibleCount());
         diagnosticsView.setText(text);
         if (!loggedFirstColoration && syntax.firstLexNanos() > 0L) {
             loggedFirstColoration = true;

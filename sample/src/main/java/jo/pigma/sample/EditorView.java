@@ -4,6 +4,13 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Typeface;
+
+import java.util.List;
+import java.util.TreeSet;
+
+import jo.pigma.analysis.JavaDeclarations;
+import jo.pigma.analysis.SemanticAnnotation;
+import jo.pigma.analysis.SemanticDocument;
 import android.text.InputType;
 import android.view.MotionEvent;
 import android.view.View;
@@ -48,8 +55,8 @@ import jo.pigma.syntax.SyntaxTheme;
  */
 public final class EditorView extends View {
 
-    /** Plan de rendu d'une ligne : textes tranchés, couleurs résolues, abscisses. */
-    record LinePlan(String[] texts, int[] colors, float[] xs) {
+    /** Plan de rendu d'une ligne : textes tranchés, couleurs résolues (fusion L3 comprise), abscisses, gras. */
+    record LinePlan(String[] texts, int[] colors, float[] xs, boolean[] bolds) {
     }
 
     private static final String INITIAL_TEXT = DemoTexts.JAVA;
@@ -95,18 +102,42 @@ public final class EditorView extends View {
     /** L2 : la structure d'appariement par-dessus les jetons du moteur. */
     private StructureDocument structure;
 
+    /** L3 : l'annotateur sémantique, fusionné à la cuisson des plans. */
+    private SemanticDocument semantic;
+
     /** La paire d'appariement du curseur (L2), null si rien n'adjace. */
     private StructureDocument.BracketPair bracketPair;
+
+    /** La portée du curseur (L2), null au niveau racine. */
+    private StructureDocument.BlockRange scopeRange;
 
     private int pairCaret = -1;
 
     private int pairRevision = -1;
+
+    /** En-têtes de plis repliés (indices de lignes). */
+    private final TreeSet<Integer> folded = new TreeSet<>();
+
+    /** Lignes cachées par les plis, null quand rien n'est replié. */
+    private boolean[] hiddenByFold;
+
+    /** Lignes visibles strictement avant chaque ligne (les plis compactent). */
+    private int[] visibleBefore;
+
+    /** Lignes cachées en cours (le panneau le lit). */
+    private int hiddenLineCount;
+
+    /** Nombre de lignes au dernier avis du tampon (décale les plis à l'édition). */
+    private int trackedLineCount;
 
     /** Le surlignage des deux bouts d'une paire (le trait du signe). */
     private final Paint bracketPaint = new Paint();
 
     /** Les guides d'indentation de L2 (un par niveau de profondeur). */
     private final Paint guidePaint = new Paint();
+
+    /** La bande de fond de la portée du curseur. */
+    private final Paint scopePaint = new Paint();
 
     private final RenderCache<LinePlan> renderCache = new RenderCache<>(SHARED_PLANS);
 
@@ -126,6 +157,7 @@ public final class EditorView extends View {
         public void textChanged(TextBuffer changed, int start, int removedLength,
                                 int insertedLength, int revision) {
             clampCaret();
+            shiftFolds(start);
             ensureCaretVisible();
             // le remplissage n'est PAS relancé ici : la salve du fond ne
             // doit pas chevaucher le dessin qui suit l'édition —
@@ -141,6 +173,8 @@ public final class EditorView extends View {
         undoStack = new UndoStack(buffer);
         syntax = SyntaxDocument.open(buffer, Languages.JAVA);
         structure = StructureDocument.open(buffer, syntax);
+        semantic = SemanticDocument.open(buffer, syntax, structure,
+                new JavaDeclarations());
         backgroundFill = BackgroundFill.start(syntax);
         textPaint.setTypeface(Typeface.MONOSPACE);
         textPaint.setTextSize(14.0f * getResources().getDisplayMetrics().scaledDensity);
@@ -155,6 +189,9 @@ public final class EditorView extends View {
         bracketPaint.setColor(CARET_COLOR);
         guidePaint.setStrokeWidth(dp(1));
         guidePaint.setColor(0x33808080);
+        scopePaint.setStyle(Paint.Style.FILL);
+        scopePaint.setColor(0x0D2962FF);
+        trackedLineCount = buffer.getLineCount();
         buffer.addListener(modelListener);
         int padding = dp(12);
         setPadding(padding, dp(16), padding, dp(16));
@@ -222,6 +259,48 @@ public final class EditorView extends View {
      */
     public StructureDocument.BracketPair bracketPair() {
         return bracketPair;
+    }
+
+    /**
+     * La portée du curseur (L2) : la dernière calculée au dessin — le
+     * harnais la vérifie depuis le tampon.
+     *
+     * @return la plage du bloc englobant, ou {@code null} au niveau racine
+     */
+    public StructureDocument.BlockRange scopeRange() {
+        return scopeRange;
+    }
+
+    /**
+     * L'annotateur sémantique de la vue (le harnais vérifie la fusion).
+     *
+     * @return le document sémantique, jamais {@code null}
+     */
+    public SemanticDocument getSemanticDocument() {
+        return semantic;
+    }
+
+    /**
+     * Annotations sémantiques (L3) de la fenêtre visible : une passe
+     * bornée à la fenêtre (le panneau la lit, jamais le document
+     * entier).
+     *
+     * @return le nombre d'annotations des lignes visibles
+     */
+    public int semanticVisibleCount() {
+        if (semantic == null) {
+            return 0;
+        }
+        int count = buffer.getLineCount();
+        int total = 0;
+        for (int line = firstVisibleLine(); line <= lastVisibleLine()
+                && line < count; line++) {
+            if (isHidden(line)) {
+                continue;
+            }
+            total += semantic.annotationsAt(line).size();
+        }
+        return total;
     }
 
     /**
@@ -335,12 +414,22 @@ public final class EditorView extends View {
         backgroundFill.stop();
         syntax.detach();
         structure.detach();
+        // l'annotateur s'éteint AVANT le remplacement : l'écouteur du
+        // panneau peut lire pendant la transaction (l'ancien annotateur
+        // découperait ses anciens jetons dans le nouveau texte — le
+        // harnais l'a épinglé)
+        semantic = null;
         try (TextTransaction transaction = undoStack.newTransaction()) {
             transaction.replace(0, buffer.length(), text);
         }
         syntax = SyntaxDocument.open(buffer, language);
         structure = StructureDocument.open(buffer, syntax);
+        semantic = SemanticDocument.open(buffer, syntax, structure,
+                new JavaDeclarations());
         backgroundFill = BackgroundFill.start(syntax);
+        // autre document : les plis de l'ancien n'y ont plus de sens
+        folded.clear();
+        rebuildFoldLayout();
         resetFrameStats();
         // autre langage : les plans portent des couleurs résolues, tout
         // recuit (sans retokeniser — le nouveau document lexe à la demande)
@@ -423,6 +512,13 @@ public final class EditorView extends View {
             case MotionEvent.ACTION_UP:
                 if (dragging) {
                     dragging = false;
+                } else if (event.getX() < getPaddingLeft()) {
+                    // la gouttière : le pli de la ligne touchée se
+                    // retourne (le clavier ne s'y ouvre pas)
+                    requestFocus();
+                    toggleFoldAt(lineOfVisibleIndex(
+                            (int) ((event.getY() - getPaddingTop() + scrollY) / lineHeight)));
+                    clearComposing();
                 } else {
                     requestFocus();
                     placeCaretAt(event.getX(), event.getY());
@@ -445,11 +541,17 @@ public final class EditorView extends View {
         int count = buffer.getLineCount();
         int first = firstVisibleLine();
         int last = lastVisibleLine();
+        updateStructureCaches();
+        // la bande de portée se peint avant le texte (le texte se
+        // dessine dessus), les guides et la paire après
+        drawScopeBand(canvas, first, last, count);
         for (int line = first; line <= last && line < count; line++) {
+            if (isHidden(line)) {
+                continue;
+            }
             int start = buffer.getLineStart(line);
             int end = buffer.getLineEnd(line);
-            float baseline = getPaddingTop() - fontMetrics.top
-                    + line * lineHeight - scrollY;
+            float baseline = lineBaseline(line);
             if (end > start) {
                 drawTokens(canvas, line, start, baseline);
             }
@@ -467,35 +569,79 @@ public final class EditorView extends View {
     }
 
     /**
+     * Recalcule la paire et la portée quand le curseur ou le texte
+     * bouge (les deux lectures partagent le même cache — un
+     * déplacement ne paie les marches qu'une fois).
+     */
+    private void updateStructureCaches() {
+        if (caretOffset == pairCaret && buffer.getRevision() == pairRevision) {
+            return;
+        }
+        pairCaret = caretOffset;
+        pairRevision = buffer.getRevision();
+        int caret = Math.min(caretOffset, buffer.length());
+        bracketPair = structure.pairAt(caret);
+        scopeRange = structure.scopeAt(caret);
+    }
+
+    /**
+     * La bande de portée : le bloc englobant du curseur se teinte en
+     * fond — la plage se borne à la fenêtre visible, les lignes
+     * cachées par un pli ne l'élargissent pas.
+     */
+    private void drawScopeBand(Canvas canvas, int first, int last, int count) {
+        if (scopeRange == null) {
+            return;
+        }
+        int from = Math.max(scopeRange.fromLine(), first);
+        int to = Math.min(Math.min(scopeRange.toLine(), last), count - 1);
+        while (from <= to && isHidden(from)) {
+            from++;
+        }
+        while (to >= from && isHidden(to)) {
+            to--;
+        }
+        if (from > to) {
+            return;
+        }
+        float top = getPaddingTop() + visibleIndexOf(from) * lineHeight - scrollY;
+        float bottom = getPaddingTop() + (visibleIndexOf(to) + 1) * lineHeight - scrollY;
+        canvas.drawRect(getPaddingLeft(), top, getWidth() - getPaddingRight(),
+                bottom, scopePaint);
+    }
+
+    /**
      * Dessine la structure de L2 par-dessus les plans : les guides
      * d'indentation (un trait par niveau de profondeur, la chaîne
-     * d'appariement — pas les espaces : un code mal indenté les verrait
-     * décalés, assumé) et, quand le curseur est adjacent à un signe, le
-     * surlignage de la paire — la marche {@code pairAt} saute par la
-     * profondeur, le signe exact se lit dans la ligne.
+     * d'appariement — pas les espaces), le marqueur de pli dans la
+     * gouttière, et le surlignage de la paire du curseur.
      */
     private void drawStructure(Canvas canvas, int first, int last, int count) {
         for (int line = first; line <= last && line < count; line++) {
-            int depth = line == 0 ? 0
-                    : structure.structureOf(line - 1).depthOut();
-            if (depth <= 0) {
+            if (isHidden(line)) {
                 continue;
             }
-            float baseline = getPaddingTop() - fontMetrics.top
-                    + line * lineHeight - scrollY;
+            boolean opens = structure.foldStartsAt(line);
+            if (opens) {
+                drawFoldMarker(canvas, line, folded.contains(line));
+            }
+            // le niveau ne guide que s'il couvre TOUTE la ligne : le fil
+            // s'arrête UNE LIGNE AVANT le fermant, et ne commence
+            // qu'APRÈS la ligne de l'ouvrant
+            int depthIn = line == 0 ? 0 : structure.structureOf(line - 1).depthOut();
+            int guides = Math.min(depthIn, structure.structureOf(line).depthOut());
+            if (guides <= 0) {
+                continue;
+            }
+            float baseline = lineBaseline(line);
             float top = baseline + fontMetrics.top;
             float bottom = baseline + fontMetrics.bottom;
             float left = getPaddingLeft();
-            for (int level = 1; level <= depth; level++) {
+            for (int level = 1; level <= guides; level++) {
                 // un guide par bande de 4 colonnes, centré sur la bande
                 float x = left + (GUIDE_COLUMNS * level - 2) * charWidth;
                 canvas.drawLine(x, top, x, bottom, guidePaint);
             }
-        }
-        if (caretOffset != pairCaret || buffer.getRevision() != pairRevision) {
-            pairCaret = caretOffset;
-            pairRevision = buffer.getRevision();
-            bracketPair = structure.pairAt(Math.min(caretOffset, buffer.length()));
         }
         if (bracketPair == null) {
             return;
@@ -507,20 +653,222 @@ public final class EditorView extends View {
     }
 
     /**
+     * Le marqueur de pli dans la gouttière : un cadre et son signe —
+     * moins quand le bloc est ouvert, plus quand il est replié.
+     */
+    private void drawFoldMarker(Canvas canvas, int line, boolean isFolded) {
+        float baseline = lineBaseline(line);
+        float mid = baseline + (fontMetrics.top + fontMetrics.bottom) / 2.0f;
+        float left = getPaddingLeft() - dp(9);
+        float right = left + dp(7);
+        canvas.drawRect(left, mid - dp(3), right, mid + dp(3), bracketPaint);
+        canvas.drawLine(left + dp(1), mid, right - dp(1), mid, bracketPaint);
+        if (isFolded) {
+            float midX = (left + right) / 2.0f;
+            canvas.drawLine(midX, mid - dp(2), midX, mid + dp(2), bracketPaint);
+        }
+    }
+
+    /**
      * Surligne un bout de paire s'il est visible : un cadre fin autour
      * du signe (la bande verticale de la ligne).
      */
     private void highlightPairEnd(Canvas canvas, int first, int last,
             int line, int column) {
-        if (line < first || line > last) {
+        if (line < first || line > last || isHidden(line)) {
             return;
         }
-        float baseline = getPaddingTop() - fontMetrics.top
-                + line * lineHeight - scrollY;
+        float baseline = lineBaseline(line);
         float x = getPaddingLeft() + column * charWidth;
         canvas.drawRect(x - dp(1), baseline + fontMetrics.top + dp(2),
                 x + charWidth + dp(1), baseline + fontMetrics.bottom - dp(2),
                 bracketPaint);
+    }
+
+    // --------------------------------------------------- plis (régions repliables)
+
+    /**
+     * Replie ou déplie le bloc ouvert à cette ligne (la gouttière le
+     * demande au toucher) ; une ligne sans ouvrant ne fait rien.
+     *
+     * @param line indice de la ligne d'en-tête
+     */
+    public void toggleFoldAt(int line) {
+        if (structure == null || !structure.foldStartsAt(line)) {
+            return;
+        }
+        if (folded.contains(line)) {
+            folded.remove(line);
+        } else {
+            folded.add(line);
+            // le curseur dans la région repliée : il remonte à la fin de
+            // l'en-tête (juste après l'ouvrant, la paire s'y encadre)
+            int end = structure.foldEndLine(line);
+            int caretLine = buffer.lineOfOffset(Math.min(caretOffset, buffer.length()));
+            if (caretLine > line && caretLine <= end) {
+                caretOffset = buffer.getLineEnd(line);
+            }
+        }
+        rebuildFoldLayout();
+        ensureCaretVisible();
+        invalidate();
+    }
+
+    /**
+     * Lignes cachées par les plis courants (le panneau de diagnostic le
+     * lit, le harnais le vérifie).
+     *
+     * @return le nombre de lignes invisibles
+     */
+    public int hiddenLineCount() {
+        return hiddenLineCount;
+    }
+
+    /**
+     * Plis actuellement repliés (le panneau le lit).
+     *
+     * @return le nombre d'en-têtes repliés
+     */
+    public int foldedCount() {
+        return folded.size();
+    }
+
+    /**
+     * Décale les en-têtes de plis suivant l'édition (les lignes après
+     * le point d'édition bougent du delta de lignes), puis reconstruit
+     * le plan des cachées — un pli dont l'en-tête n'ouvre plus rien se
+     * dissout à la reconstruction.
+     */
+    private void shiftFolds(int start) {
+        if (folded.isEmpty()) {
+            trackedLineCount = buffer.getLineCount();
+            return;
+        }
+        int line = buffer.lineOfOffset(start);
+        int delta = buffer.getLineCount() - trackedLineCount;
+        TreeSet<Integer> shifted = new TreeSet<>();
+        for (int header : folded) {
+            int moved = header < line ? header : header + delta;
+            if (moved >= 0 && moved < buffer.getLineCount()) {
+                shifted.add(moved);
+            }
+        }
+        folded.clear();
+        folded.addAll(shifted);
+        rebuildFoldLayout();
+        revealCaret();
+    }
+
+    /**
+     * Le curseur ne vit jamais dans une ligne cachée : le pli le plus
+     * interne qui le cache s'ouvre (l'édition y arrive).
+     */
+    private void revealCaret() {
+        if (hiddenByFold == null) {
+            return;
+        }
+        int line = buffer.lineOfOffset(Math.min(caretOffset, buffer.length()));
+        // la reconstruction peut annuler le tableau (dernier pli ouvert) :
+        // la garde se relit à chaque tour
+        while (hiddenByFold != null && line < hiddenByFold.length
+                && hiddenByFold[line]) {
+            int container = -1;
+            for (int header : folded) {
+                if (header < line && line <= structure.foldEndLine(header)) {
+                    container = header;
+                }
+            }
+            if (container < 0) {
+                return;
+            }
+            folded.remove(container);
+            rebuildFoldLayout();
+        }
+    }
+
+    /**
+     * Reconstruit les lignes cachées et le mapping visible des plis
+     * courants (une passe en O(lignes), aux changements de plis et aux
+     * éditions — jamais par trame).
+     */
+    private void rebuildFoldLayout() {
+        int count = buffer.getLineCount();
+        trackedLineCount = count;
+        if (folded.isEmpty()) {
+            hiddenByFold = null;
+            visibleBefore = null;
+            hiddenLineCount = 0;
+            return;
+        }
+        boolean[] hidden = new boolean[count];
+        for (int header : folded) {
+            if (header < 0 || header >= count || !structure.foldStartsAt(header)) {
+                continue; // l'édition a déplacé la structure : plus d'ouvrant
+            }
+            int end = structure.foldEndLine(header);
+            for (int line = header + 1; line <= end && line < count; line++) {
+                hidden[line] = true;
+            }
+        }
+        int[] before = new int[count];
+        int visible = 0;
+        for (int line = 0; line < count; line++) {
+            before[line] = visible;
+            if (!hidden[line]) {
+                visible++;
+            }
+        }
+        hiddenByFold = hidden;
+        visibleBefore = before;
+        hiddenLineCount = count - visible;
+    }
+
+    /** La ligne est-elle cachée par un pli. */
+    private boolean isHidden(int line) {
+        return hiddenByFold != null && line < hiddenByFold.length
+                && hiddenByFold[line];
+    }
+
+    /** L'indice visible d'une ligne (les plis compactent la hauteur). */
+    private int visibleIndexOf(int line) {
+        return visibleBefore == null ? line : visibleBefore[line];
+    }
+
+    /** Nombre de lignes visibles (le document moins les cachées). */
+    private int visibleLineCount() {
+        return buffer.getLineCount() - hiddenLineCount;
+    }
+
+    /**
+     * La ligne visible d'indice donné : la dernière ligne dont
+     * l'indice visible la précède ou l'égale (les cachées partagent
+     * l'indice de la visible qui les suit).
+     */
+    private int lineOfVisibleIndex(int index) {
+        int count = buffer.getLineCount();
+        if (visibleBefore == null) {
+            return clampToRange(index, 0, Math.max(0, count - 1));
+        }
+        if (index >= visibleLineCount()) {
+            index = visibleLineCount() - 1;
+        }
+        int low = 0;
+        int high = count - 1;
+        while (low < high) {
+            int mid = (low + high + 1) / 2;
+            if (visibleBefore[mid] <= index) {
+                low = mid;
+            } else {
+                high = mid - 1;
+            }
+        }
+        return low;
+    }
+
+    /** Ligne de base d'une ligne VISIBLE (le mapping des plis s'applique). */
+    private float lineBaseline(int line) {
+        int visible = visibleBefore == null ? line : visibleBefore[line];
+        return getPaddingTop() - fontMetrics.top + visible * lineHeight - scrollY;
     }
 
     /**
@@ -539,11 +887,16 @@ public final class EditorView extends View {
         String[] texts = plan.texts();
         int[] colors = plan.colors();
         float[] xs = plan.xs();
+        boolean[] bolds = plan.bolds();
         float left = getPaddingLeft();
         for (int at = 0; at < texts.length; at++) {
             textPaint.setColor(colors[at]);
+            // le gras sémantique (L3) : un drapeau de peinture, pas une
+            // seconde police
+            textPaint.setFakeBoldText(bolds != null && bolds[at]);
             canvas.drawText(texts[at], left + xs[at], baseline, textPaint);
         }
+        textPaint.setFakeBoldText(false);
     }
 
     /**
@@ -559,8 +912,14 @@ public final class EditorView extends View {
             return new LinePlan(
                     new String[] {content.subSequence(0, drawn).toString()},
                     new int[] {theme.defaultColor()},
-                    new float[] {0.0f});
+                    new float[] {0.0f},
+                    null);
         }
+        // la fusion L3 se paie par cuisson (pas par trame) : les
+        // annotations de la ligne, une passe
+        List<SemanticAnnotation> notes = semantic == null
+                ? List.of() : semantic.annotationsAt(line);
+        int lineStart = buffer.getLineStart(line);
         int kept = 0;
         for (SyntaxDocument.Token token : tokens) {
             if (token.end() <= token.start()) {
@@ -574,6 +933,7 @@ public final class EditorView extends View {
         String[] texts = new String[kept];
         int[] colors = new int[kept];
         float[] xs = new float[kept];
+        boolean[] bolds = new boolean[kept];
         int at = 0;
         for (SyntaxDocument.Token token : tokens) {
             if (token.end() <= token.start()) {
@@ -587,9 +947,20 @@ public final class EditorView extends View {
             colors[at] = token.scope() == null
                     ? theme.defaultColor() : theme.colorOf(token.scope());
             xs[at] = token.start() * charWidth;
+            if (token.scope() == null && !notes.isEmpty()) {
+                // fusion L3 > L2 > L1 : seul un neutre peut se colorer —
+                // une couleur L1 affichée ne change jamais
+                for (SemanticAnnotation note : notes) {
+                    if (note.covers(lineStart + token.start(), lineStart + endColumn)) {
+                        colors[at] = SampleThemes.semanticColor(theme, note.nature());
+                        bolds[at] = (note.modifiers() & SemanticAnnotation.BOLD) != 0;
+                        break;
+                    }
+                }
+            }
             at++;
         }
-        return new LinePlan(texts, colors, xs);
+        return new LinePlan(texts, colors, xs, bolds);
     }
 
     // ------------------------------------------------------------ interne
@@ -608,21 +979,20 @@ public final class EditorView extends View {
     private void drawCaret(Canvas canvas) {
         int offset = Math.min(caretOffset, buffer.length());
         int line = buffer.lineOfOffset(offset);
-        if (line < firstVisibleLine() || line > lastVisibleLine()) {
+        if (line < firstVisibleLine() || line > lastVisibleLine() || isHidden(line)) {
             return;
         }
         int column = offset - buffer.getLineStart(line);
         float x = getPaddingLeft() + column * charWidth;
-        float top = getPaddingTop() + line * lineHeight - scrollY;
+        float top = getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
         canvas.drawRect(x, top + dp(2), x + caretWidth, top + lineHeight - dp(2), caretPaint);
     }
 
     private void placeCaretAt(float x, float y) {
         int line = buffer.getLineCount() - 1;
         if (lineHeight > 0.0f) {
-            line = clampToRange(
-                    (int) ((y - getPaddingTop() + scrollY) / lineHeight), 0,
-                    buffer.getLineCount() - 1);
+            line = lineOfVisibleIndex(
+                    (int) ((y - getPaddingTop() + scrollY) / lineHeight));
         }
         int lineStart = buffer.getLineStart(line);
         int lineEnd = buffer.getLineEnd(line);
@@ -633,10 +1003,11 @@ public final class EditorView extends View {
         invalidate();
     }
 
-    /** Amène le curseur dans la fenêtre visible (frappe en bord bas). */
+    /** Amène le curseur dans la fenêtre visible (frappe en bord bas) ; un pli qui le cache s'ouvre. */
     private void ensureCaretVisible() {
+        revealCaret();
         int line = buffer.lineOfOffset(Math.min(caretOffset, buffer.length()));
-        float top = getPaddingTop() + line * lineHeight - scrollY;
+        float top = getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
         float bottom = top + lineHeight;
         if (top < 0.0f) {
             scrollY += top;
@@ -646,13 +1017,12 @@ public final class EditorView extends View {
         scrollY = clampToRange(scrollY, 0.0f, maxScroll());
     }
 
-    /** Première ligne visible (indice). */
+    /** Première ligne visible (indice — les plis cachent des lignes). */
     private int firstVisibleLine() {
         if (lineHeight <= 0.0f) {
             return 0;
         }
-        return clampToRange((int) (scrollY / lineHeight), 0,
-                Math.max(0, buffer.getLineCount() - 1));
+        return lineOfVisibleIndex((int) (scrollY / lineHeight));
     }
 
     /** Dernière ligne visible (indice, bornée au document). */
@@ -660,14 +1030,13 @@ public final class EditorView extends View {
         if (lineHeight <= 0.0f) {
             return 0;
         }
-        return clampToRange(
-                (int) Math.ceil((scrollY + getHeight()) / lineHeight), 0,
-                Math.max(0, buffer.getLineCount() - 1));
+        int index = (int) Math.ceil((scrollY + getHeight()) / lineHeight);
+        return lineOfVisibleIndex(Math.min(index, visibleLineCount() - 1));
     }
 
     /** Borne haute du défilement : la dernière ligne visible en bas. */
     private float maxScroll() {
-        float content = getPaddingTop() + buffer.getLineCount() * lineHeight
+        float content = getPaddingTop() + visibleLineCount() * lineHeight
                 + getPaddingBottom();
         return Math.max(0.0f, content - getHeight());
     }

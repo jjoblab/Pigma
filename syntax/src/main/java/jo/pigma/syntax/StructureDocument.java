@@ -64,6 +64,16 @@ public final class StructureDocument {
     }
 
     /**
+     * Une plage de bloc : les lignes de l'ouvrant à son fermant (un
+     * bloc jamais refermé va jusqu'à la dernière ligne).
+     *
+     * @param fromLine ligne de l'ouvrant
+     * @param toLine   ligne du fermant
+     */
+    public record BlockRange(int fromLine, int toLine) {
+    }
+
+    /**
      * L'analyse interne porte en plus le timbre : l'objet de jetons
      * depuis lequel elle fut calculée. Identité préservée par l'épargne
      * du lexeur : un timbre inchangé prouve que les jetons n'ont pas
@@ -174,6 +184,96 @@ public final class StructureDocument {
                 }
             }
             return null;
+        }
+    }
+
+    /**
+     * La portée du curseur : le bloc le plus interne qui l'englobe —
+     * la profondeur se lit à la position exacte du curseur (sur la
+     * ligne de l'ouvrant, après l'accolade, c'est le bloc NOUVEAU ;
+     * avant, c'est le parent), puis les bornes se cherchent par la
+     * chaîne de profondeur : l'ouvrant vit après la dernière ligne
+     * d'avant qui referme sous ce niveau, le fermant à la première
+     * ligne qui y retombe. La portée surlignée et le pli se
+     * branchent ici.
+     *
+     * @param caretOffset la position du curseur
+     * @return la plage du bloc englobant, ou {@code null} au niveau
+     *         racine (aucun bloc n'englobe le curseur)
+     */
+    public BlockRange scopeAt(int caretOffset) {
+        synchronized (stateLock) {
+            if (caretOffset < 0 || caretOffset > buffer.length()) {
+                return null;
+            }
+            int line = buffer.lineOfOffset(caretOffset);
+            ensureAnalyzed(line + 1);
+            int depth = depthAtOffset(line, caretOffset - buffer.getLineStart(line));
+            if (depth <= 0) {
+                return null;
+            }
+            int count = buffer.getLineCount();
+            int fromLine = 0;
+            for (int m = line - 1; m >= 0; m--) {
+                if (lines[m].depthOut() < depth) {
+                    fromLine = m + 1;
+                    break;
+                }
+            }
+            int toLine = count - 1;
+            for (int m = line; m < count; m++) {
+                ensureAnalyzed(m + 1);
+                if (lines[m].depthOut() < depth) {
+                    toLine = m;
+                    break;
+                }
+            }
+            return new BlockRange(fromLine, toLine);
+        }
+    }
+
+    /**
+     * La ligne ouvre-t-elle un bloc repliable : profondeur de sortie
+     * supérieure à celle d'entrée (la règle nette — une paire ouverte
+     * ET refermée sur sa propre ligne ne plie pas, documenté).
+     *
+     * @param line indice de la ligne
+     * @return vrai si la ligne ouvre un bloc
+     */
+    public boolean foldStartsAt(int line) {
+        synchronized (stateLock) {
+            if (line < 0 || line >= buffer.getLineCount()) {
+                return false;
+            }
+            ensureAnalyzed(line + 1);
+            return lines[line].depthOut() > depthInOf(line);
+        }
+    }
+
+    /**
+     * La ligne où referme le bloc ouvert à cette ligne : la première
+     * ligne dont la profondeur de sortie retombe au niveau d'entrée.
+     * Un bloc jamais refermé va jusqu'à la dernière ligne (document
+     * ouvert).
+     *
+     * @param line indice de la ligne d'ouverture
+     * @return l'indice de la ligne de fermeture
+     */
+    public int foldEndLine(int line) {
+        synchronized (stateLock) {
+            int count = buffer.getLineCount();
+            if (line < 0 || line >= count) {
+                return line;
+            }
+            ensureAnalyzed(line + 1);
+            int depthIn = depthInOf(line);
+            for (int m = line; m < count; m++) {
+                ensureAnalyzed(m + 1);
+                if (lines[m].depthOut() <= depthIn) {
+                    return m;
+                }
+            }
+            return count - 1;
         }
     }
 
@@ -360,6 +460,38 @@ public final class StructureDocument {
     }
 
     // ------------------------------------------------- appariement (L2)
+
+    /**
+     * La profondeur d'appariement à un offset de la ligne (la règle
+     * tolérante de l'analyse, à l'identique) : les jetons d'avant la
+     * position comptent, ceux d'après non.
+     */
+    private int depthAtOffset(int line, int rel) {
+        SyntaxDocument.Token[] tokens = syntax.lineTokens(line).tokens();
+        CharSequence text = buffer.getText(
+                buffer.getLineStart(line), buffer.getLineEnd(line));
+        int depth = depthInOf(line);
+        for (SyntaxDocument.Token token : tokens) {
+            if (token.start() >= rel) {
+                break;
+            }
+            char c = singleSign(token, text);
+            if (c == 0) {
+                continue;
+            }
+            if (c == '(' || c == '{' || c == '[') {
+                depth++;
+            } else if (depth > 0) {
+                depth--;
+            }
+        }
+        return depth;
+    }
+
+    /** La profondeur d'entrée d'une ligne (le préfixe doit être analysé). */
+    private int depthInOf(int line) {
+        return line == 0 ? 0 : lines[line - 1].depthOut();
+    }
 
     /**
      * Le partenaire du signe simple à l'offset donné, ou {@code null}.

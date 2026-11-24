@@ -52,22 +52,23 @@ première coloration ne bouge pas quand on bascule clair/sombre).
 
 Le bac à sable n'a pas d'appareil : les lignes suivantes se remplissent
 depuis le panneau de diagnostic et le bouton « Copier les mesures »
-(journal du scénario au presse-papiers, tableau prêt à coller). Cinq
+(journal du scénario au presse-papiers, tableau prêt à coller). Six
 relevés reçus le même jour — chantier 5, chantier 6 (colonne
 « trame »), chantier 7 (fil de fond annulable), chantier 8 (odomètre de
-trame), chantiers 9+10 (recul du fond, structure L2) ; l'appareil
-n'est pas précisé (modèle et version d'Android à compléter — la ligne
-du tableau copié les demande).
+trame), chantiers 9+10 (recul du fond, structure L2), chantier 13
+(construction release de mesure — le sixième relevé en vient) ;
+l'appareil n'est pas précisé (modèle et version d'Android à
+compléter — la ligne du tableau copié les demande).
 
 | Mesure | Méthode | Valeur |
 | --- | --- | --- |
 | Première coloration, texte de démonstration | ouvrir l'application, lire le panneau | Java 0,5 · XML 0,2–0,5 · JSON 0,1 · Kotlin 0,2 · SQL 0,1 ms (première demande : la fenêtre visible seule, jamais le document) |
 | Première coloration, gros fichier (bouton « Gros ») | appuyer, lire le panneau : seule la fenêtre visible se paie | **0,3 ms** (première demande, deux relevés) ; 1 066–1 322/1 780 lignes déjà lexées au premier tick du panneau (0,2 s) — le remplissage seul (aux relevés : pompe d'interface ; depuis le chantier 7, fil de fond), la couleur est déjà là |
-| Frappe ordinaire (recoloration d'une ligne) | taper, lire « dernière frappe » | **0,26 ms, 1 ligne relue** (cinquième relevé, gros fichier — un caractère tapé avant la copie ; la trame de la frappe : 10,09 ms, moteur 0,21, pire 10,94 — le coût est au rendu, pas au moteur, et tient le budget 60 Hz) |
+| Frappe ordinaire (recoloration d'une ligne) | taper, lire « dernière frappe » | **0,26 ms, 1 ligne relue** (cinquième relevé, gros fichier — un caractère tapé avant la copie ; la trame de la frappe : 10,09 ms, moteur 0,21, pire 10,94 — le coût est au rendu, pas au moteur, et tient le budget 60 Hz) ; **0,20 ms en release** (sixième relevé, trame 2,43 ms, moteur 0,03 — voir la note sur le pire) |
 | Frappe propagée (commentaire ouvert) | supprimer un `*/`, lire les lignes relues | à relever : idem, dans la démo Java (supprimer un `*/` du bloc) |
 | Remplissage du gros fichier | lire « lignes lexées » monter après l'ouverture (aux deux premiers relevés : pompe par tranches sur le fil d'interface ; au troisième : fil de fond annulable, clichés révision-vérifiés) | **1 780/1 780 lignes, 18 095 jetons** ; au troisième relevé, complet **avant le premier tick (0,2 s)** — le fond remplit en ~150 ms ce que la pompe étalait sur ~1 s |
 | Bascule de thème | basculer : la première coloration ne doit pas bouger | **première inchangée (0,3 ms), jetons identiques (18 095), deux relevés et trois bascules : zéro retokenisation constaté sur appareil** |
-| Budget par image (tracé d'une trame) | lire « trame » au panneau ; la colonne « trame » du journal copié l'emporte | **première trame 16,0 ms** (démo Java : cuisson des plans + fenêtre) · **11,9 ms** à l'ouverture du gros fichier · **4,9–6,3 ms en régime établi** (recuisson au thème 5,1–6,3, copie 4,9) · troisième relevé (chantier 7) : 15,5–17,1 ms sur le gros fichier — voir la note · quatrième relevé (chantier 8, odomètre) : régime établi confirmé à 4,5–5,5 ms, moteur 0,09–0,23 ms ; ouverture du gros fichier **moteur 9,23 ms** (réouverture tiède : 4,95) — voir la note · cinquième relevé (chantiers 9+10) : **recul du fond confirmé — ouverture 13,51 ms (moteur 5,93), réouverture 8,49 (moteur 3,24)** ; recuisson **3,46 ms (moteur 0,06)** ; trame de frappe 10,09 (moteur 0,21) — voir la note |
+| Budget par image (tracé d'une trame) | lire « trame » au panneau ; la colonne « trame » du journal copié l'emporte | **première trame 16,0 ms** (démo Java : cuisson des plans + fenêtre) · **11,9 ms** à l'ouverture du gros fichier · **4,9–6,3 ms en régime établi** (recuisson au thème 5,1–6,3, copie 4,9) · troisième relevé (chantier 7) : 15,5–17,1 ms sur le gros fichier — voir la note · quatrième relevé (chantier 8, odomètre) : régime établi confirmé à 4,5–5,5 ms, moteur 0,09–0,23 ms ; ouverture du gros fichier **moteur 9,23 ms** (réouverture tiède : 4,95) — voir la note · cinquième relevé (chantiers 9+10) : **recul du fond confirmé — ouverture 13,51 ms (moteur 5,93), réouverture 8,49 (moteur 3,24)** ; recuisson **3,46 ms (moteur 0,06)** ; trame de frappe 10,09 (moteur 0,21) — voir la note · sixième relevé (chantier 13, **release**) : **ouverture 6,53 ms, moteur 1,65** — l'interprétation à froid tranchée ; frappe 2,43 (moteur 0,03), pire 24,06 — voir la note |
 
 Deux lectures de ce relevé. D'abord, ne pas comparer la colonne
 appareil aux nombres JVM du haut sans précaution : le test JVM paie
@@ -151,6 +152,28 @@ bascule de thème redessine APRÈS le clic — la ligne « thème » porte
 la dernière trame terminée au moment du clic, la recuisson se lit
 sur la ligne suivante (première ligne Sombre : la dernière trame
 JSON ; deuxième : la recuisson précédente, 3,46 ms).
+
+Le sixième relevé vient de l'APK **release** (chantier 13) — et il
+tranche la question ouverte depuis le relevé 4. **Le poids de
+l'interprétation à froid** : l'ouverture du gros fichier tombe à
+**6,53 ms, moteur 1,65** — contre 13,51/5,93 puis 8,49/3,24 en
+debug au même parcours : la construction release divise le moteur
+d'ouverture par plus de trois. Ce qui restait après le chantier 9
+était bien l'interprétation, pas le code — la promesse du chantier
+13 tient, la mesure de référence est là. La frappe suit :
+**0,20 ms, 1 ligne relue** (0,26 en debug), trame 2,43 ms, moteur
+0,03. **Une trame à 24,06 ms (le pire du scénario) dépasse le
+budget** : le suspect désigné est la première marche
+d'appariement — la frappe déplace le curseur, la paire se
+recalcule, la marche suit les jetons jusqu'au partenaire (~1 780
+lignes au pire) sur un chemin jamais encore exécuté, donc
+interprété — le même phénomène que l'ouverture, payé une fois par
+position de curseur, puis le régime tient (2,43). Si le prochain
+relevé le porte encore, la marche passera au rebut borné (la borne
+de 4 000 lignes existe, il suffira de la baisser). La ligne
+« thème Sombre » porte la trame d'ouverture (6,53/1,65) — l'artefact
+documenté au relevé 5, pas une recuisson. Et le document porte la
+frappe : 1 781/1 781 lignes, 18 103 jetons.
 
 Les plafonds du plan sont codés (E3) : ligne de plus de 20 000 colonnes
 non colorée (état reporté, voisines intactes), dessin limité à 10 000
