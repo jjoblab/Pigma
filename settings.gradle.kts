@@ -21,8 +21,11 @@ rootProject.name = "pigma"
 // Un module par fonctionnalité ; aucun module vide n'est créé pour l'avenir.
 // Chaque module arrive avec la fonctionnalité qui le justifie : le cœur du
 // modèle de texte (:core), le moteur de coloration (:syntax), l'annotateur
-// sémantique (:analysis) et l'application de démonstration (:sample).
+// sémantique (:analysis), la bibliothèque d'édition (:editor — la vue,
+// l'hôte n'a qu'elle à déclarer) et l'application de démonstration
+// (:sample).
 include(":core")
 include(":syntax")
 include(":analysis")
+include(":editor")
 include(":sample")

@@ -37,6 +37,8 @@ public final class TextBuffer implements CharSequence {
     private int[] lineStarts;
     private int lineCount;
     private int revision;
+    private final List<TextListener> headListeners = new ArrayList<>();
+
     private final List<TextListener> listeners = new ArrayList<>();
 
     /**
@@ -279,12 +281,31 @@ public final class TextBuffer implements CharSequence {
     }
 
     /**
-     * Retire un écouteur précédemment ajouté ; un écouteur absent est
-     * ignoré silencieusement.
+     * Ajoute un écouteur EN TÊTE de chaîne : les documents (coloration,
+     * structure) s'y inscrivent — leurs caches se réalignent sur le
+     * texte AVANT que tout lecteur d'interface ne réagisse à
+     * l'édition. Un document ré-ouvert (changement de langage) se
+     * ré-enregistre en tête : l'ordre document-avant-interface tient
+     * quoi qu'il arrive, sinon un panneau peut lire des jetons
+     * périmés au beau milieu du remplacement — le plantage arrive là.
+     *
+     * @param listener écouteur à ajouter, jamais {@code null}
+     */
+    public void addListenerFront(TextListener listener) {
+        if (listener == null) {
+            throw new NullPointerException("listener must not be null");
+        }
+        headListeners.add(listener);
+    }
+
+    /**
+     * Retire un écouteur précédemment ajouté (en tête ou en queue) ; un
+     * écouteur absent est ignoré silencieusement.
      *
      * @param listener écouteur à retirer
      */
     public void removeListener(TextListener listener) {
+        headListeners.remove(listener);
         listeners.remove(listener);
     }
 
@@ -319,7 +340,11 @@ public final class TextBuffer implements CharSequence {
             textLength += inserted;
         }
         revision++;
-        List<TextListener> snapshot = new ArrayList<>(listeners);
+        // les documents d'abord (en tête), les lecteurs ensuite : l'ordre
+        // document-avant-interface est l'invariant qui protège les
+        // lectures de mi-remplacement
+        List<TextListener> snapshot = new ArrayList<>(headListeners);
+        snapshot.addAll(listeners);
         for (TextListener listener : snapshot) {
             listener.textChanged(this, start, removed, inserted, revision);
         }

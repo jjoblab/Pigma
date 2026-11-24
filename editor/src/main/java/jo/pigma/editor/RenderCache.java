@@ -1,4 +1,4 @@
-package jo.pigma.sample;
+package jo.pigma.editor;
 
 import java.util.Arrays;
 import java.util.LinkedHashMap;

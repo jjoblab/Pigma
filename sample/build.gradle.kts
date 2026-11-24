@@ -32,7 +32,8 @@ android {
 }
 
 dependencies {
-    implementation(project(":core"))
-    implementation(project(":syntax"))
-    implementation(project(":analysis"))
+    // l'hôte ne déclare que la bibliothèque d'édition : elle expose en
+    // api le cœur, le moteur et l'annotateur (le cas courant de
+    // l'architecture — une seule dépendance)
+    implementation(project(":editor"))
 }

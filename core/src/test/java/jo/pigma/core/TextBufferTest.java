@@ -7,6 +7,8 @@ import java.util.List;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertThrows;
 
 /** Tests du modèle de texte : lectures, lignes, bornes, écouteurs. */
@@ -194,5 +196,52 @@ public class TextBufferTest {
         assertEquals("ZabXYef", buffer.toString());
         assertEquals('Z', buffer.charAt(0));
         assertEquals('f', buffer.charAt(6));
+    }
+
+    /**
+     * L'ordre document-avant-interface : un écouteur en tête court
+     * avant la queue, MÊME enregistré après elle (un document ré-ouvert
+     * au changement de langage) — sinon un lecteur d'interface lit des
+     * jetons périmés au beau milieu du remplacement.
+     */
+    @Test
+    public void frontListenersRunBeforeTheQueueEvenWhenRegisteredLater() {
+        TextBuffer buffer = TextBuffer.create("abc");
+        List<String> order = new ArrayList<>();
+        TextListener back = (b, start, removed, inserted, revision) -> order.add("queue");
+        buffer.addListener(back);
+        // le document s'enregistre APRÈS l'écouteur d'interface (le
+        // scénario du ré-enregistrement) : il court pourtant en premier
+        TextListener front = (b, start, removed, inserted, revision) -> order.add("tête");
+        buffer.addListenerFront(front);
+        buffer.replace(0, 0, "\n");
+        assertEquals(List.of("tête", "queue"), order);
+        // le retrait fait son œuvre des deux listes
+        buffer.removeListener(front);
+        order.clear();
+        buffer.replace(0, 0, "\n");
+        assertEquals(List.of("queue"), order);
+        buffer.removeListener(back);
+        order.clear();
+        buffer.replace(0, 0, "\n");
+        assertEquals(List.of(), order);
+    }
+
+    /** Oublier l'histoire : plus rien d'annulable ni de rétablissable. */
+    @Test
+    public void clearForgetsUndoAndRedo() {
+        TextBuffer buffer = TextBuffer.create("abc");
+        UndoStack stack = new UndoStack(buffer);
+        try (TextTransaction transaction = stack.newTransaction()) {
+            transaction.replace(3, 3, "def");
+        }
+        stack.clear();
+        assertFalse(stack.canUndo());
+        assertFalse(stack.canRedo());
+        // une nouvelle édition après l'oubli redevient annulable
+        try (TextTransaction transaction = stack.newTransaction()) {
+            transaction.replace(0, 0, "x");
+        }
+        assertTrue(stack.canUndo());
     }
 }

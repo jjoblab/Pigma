@@ -1,15 +1,15 @@
-package jo.pigma.sample;
+package jo.pigma.editor;
 
 import java.util.Map;
 
 import jo.pigma.syntax.SyntaxTheme;
 
 /**
- * Les deux palettes du sample : claire et sombre. Le thème ne connaît
- * que des portées ; le fond est porté à côté (il appartient à la vue,
- * pas au moteur).
+ * Les deux palettes de la bibliothèque : claire et sombre (un hôte peut
+ * apporter la sienne). Le thème ne connaît que des portées ; le fond est
+ * porté à côté (il appartient à la vue, pas au moteur).
  */
-public final class SampleThemes {
+public final class EditorThemes {
 
     /** Fond du thème clair. */
     public static final int LIGHT_BACKGROUND = 0xFFFDFDFD;
@@ -71,6 +71,6 @@ public final class SampleThemes {
         return color == null ? theme.defaultColor() : color;
     }
 
-    private SampleThemes() {
+    private EditorThemes() {
     }
 }

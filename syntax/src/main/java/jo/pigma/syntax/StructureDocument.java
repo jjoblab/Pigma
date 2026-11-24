@@ -109,7 +109,7 @@ public final class StructureDocument {
     private StructureDocument(TextBuffer buffer, SyntaxDocument syntax) {
         this.buffer = buffer;
         this.syntax = syntax;
-        buffer.addListener(modelListener);
+        buffer.addListenerFront(modelListener);
     }
 
     /**

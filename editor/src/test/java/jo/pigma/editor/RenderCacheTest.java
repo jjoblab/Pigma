@@ -1,10 +1,10 @@
-package jo.pigma.sample;
+package jo.pigma.editor;
 
 import java.util.function.Supplier;
 
 import org.junit.Test;
 
-import jo.pigma.sample.RenderCache.PlanBaker;
+import jo.pigma.editor.RenderCache.PlanBaker;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotSame;

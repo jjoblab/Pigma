@@ -128,7 +128,7 @@ public final class SyntaxDocument implements TextListener {
         Objects.requireNonNull(buffer);
         Objects.requireNonNull(language);
         SyntaxDocument document = new SyntaxDocument(buffer, language);
-        buffer.addListener(document);
+        buffer.addListenerFront(document);
         return document;
     }
 

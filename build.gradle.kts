@@ -8,6 +8,7 @@ import org.gradle.api.tasks.compile.JavaCompile
 
 plugins {
     alias(libs.plugins.android.application) apply false
+    alias(libs.plugins.android.library) apply false
 }
 
 // Politique de langue et de commentaires (identifiants anglais ASCII,

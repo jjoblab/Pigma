@@ -1,4 +1,4 @@
-package jo.pigma.sample;
+package jo.pigma.editor;
 
 import android.content.Context;
 import android.graphics.Canvas;
@@ -8,10 +8,13 @@ import android.graphics.Typeface;
 import java.util.List;
 import java.util.TreeSet;
 
+import jo.pigma.analysis.DiagnosticsDocument;
 import jo.pigma.analysis.JavaDeclarations;
 import jo.pigma.analysis.SemanticAnnotation;
 import jo.pigma.analysis.SemanticDocument;
+import jo.pigma.analysis.SymbolIndex;
 import android.text.InputType;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.inputmethod.BaseInputConnection;
@@ -59,7 +62,7 @@ public final class EditorView extends View {
     record LinePlan(String[] texts, int[] colors, float[] xs, boolean[] bolds) {
     }
 
-    private static final String INITIAL_TEXT = DemoTexts.JAVA;
+    private static final String INITIAL_TEXT = "";
 
     private static final int CARET_COLOR = 0xFF2962FF;
     private static final int COMPOSE_COLOR = 0xFF7A8199;
@@ -84,8 +87,8 @@ public final class EditorView extends View {
     private final float caretWidth;
 
     private SyntaxDocument syntax;
-    private SyntaxTheme theme = SampleThemes.LIGHT;
-    private int themeBackground = SampleThemes.LIGHT_BACKGROUND;
+    private SyntaxTheme theme = EditorThemes.LIGHT;
+    private int themeBackground = EditorThemes.LIGHT_BACKGROUND;
 
     private int caretOffset;
     private int composingStart = -1;
@@ -104,6 +107,27 @@ public final class EditorView extends View {
 
     /** L3 : l'annotateur sémantique, fusionné à la cuisson des plans. */
     private SemanticDocument semantic;
+
+    /** L'index de symboles (complétion de base), rafraîchi au ralenti. */
+    private SymbolIndex symbolIndex;
+
+    /** Les diagnostics d'appariement, rafraîchis au ralenti. */
+    private DiagnosticsDocument diagnostics;
+
+    /** Révision de l'index et des diagnostics courants. */
+    private int analysisRevision = -1;
+
+    /** Horodatage du dernier rafraîchissement d'analyse (le ralenti). */
+    private long lastAnalysisNanos;
+
+    /** Les candidats du bandeau de complétion (le mot courant). */
+    private List<String> suggestions = List.of();
+
+    /** La borne de début du mot courant (l'insertion remplace le préfixe). */
+    private int suggestionWordStart = -1;
+
+    /** Les abscisses des candidats dessinés (le toucher s'y teste). */
+    private float[] suggestionXs = new float[0];
 
     /** La paire d'appariement du curseur (L2), null si rien n'adjace. */
     private StructureDocument.BracketPair bracketPair;
@@ -138,6 +162,15 @@ public final class EditorView extends View {
 
     /** La bande de fond de la portée du curseur. */
     private final Paint scopePaint = new Paint();
+
+    /** Le souligné des diagnostics d'appariement. */
+    private final Paint diagnosticPaint = new Paint();
+
+    /** Le texte des candidats de complétion (bandeau). */
+    private final Paint suggestionPaint = new Paint();
+
+    /** Le fond du bandeau de complétion. */
+    private final Paint suggestionBackground = new Paint();
 
     private final RenderCache<LinePlan> renderCache = new RenderCache<>(SHARED_PLANS);
 
@@ -191,6 +224,13 @@ public final class EditorView extends View {
         guidePaint.setColor(0x33808080);
         scopePaint.setStyle(Paint.Style.FILL);
         scopePaint.setColor(0x0D2962FF);
+        diagnosticPaint.setStyle(Paint.Style.STROKE);
+        diagnosticPaint.setStrokeWidth(dp(2));
+        diagnosticPaint.setColor(0xFFFF3B30);
+        suggestionPaint.setColor(0xFF1B1B1F);
+        suggestionPaint.setTextSize(dp(13));
+        suggestionBackground.setStyle(Paint.Style.FILL);
+        suggestionBackground.setColor(0x11000000);
         trackedLineCount = buffer.getLineCount();
         buffer.addListener(modelListener);
         int padding = dp(12);
@@ -417,8 +457,14 @@ public final class EditorView extends View {
         // l'annotateur s'éteint AVANT le remplacement : l'écouteur du
         // panneau peut lire pendant la transaction (l'ancien annotateur
         // découperait ses anciens jetons dans le nouveau texte — le
-        // harnais l'a épinglé)
+        // harnais l'a épinglé). L'analyse suit : l'index et les
+        // diagnostics de l'ancien document n'y ont plus cours
         semantic = null;
+        symbolIndex = null;
+        diagnostics = null;
+        analysisRevision = -1;
+        suggestions = List.of();
+        suggestionWordStart = -1;
         try (TextTransaction transaction = undoStack.newTransaction()) {
             transaction.replace(0, buffer.length(), text);
         }
@@ -519,6 +565,13 @@ public final class EditorView extends View {
                     toggleFoldAt(lineOfVisibleIndex(
                             (int) ((event.getY() - getPaddingTop() + scrollY) / lineHeight)));
                     clearComposing();
+                } else if (!suggestions.isEmpty() && event.getY() > getHeight()
+                        - dp(28) - getPaddingBottom()) {
+                    // le bandeau de complétion : le candidat désigné
+                    // complète le mot courant
+                    requestFocus();
+                    insertSuggestion(event.getX());
+                    clearComposing();
                 } else {
                     requestFocus();
                     placeCaretAt(event.getX(), event.getY());
@@ -561,6 +614,13 @@ public final class EditorView extends View {
         }
         drawStructure(canvas, first, last, count);
         drawCaret(canvas);
+        // les candidats AVANT leur dessin (un déplacement de curseur
+        // rend ses candidats dans la même trame), les soulignés de
+        // diagnostic par-dessus le texte, le bandeau par-dessus tout
+        refreshAnalysis();
+        updateSuggestions();
+        drawDiagnostics(canvas, first, last, count);
+        drawSuggestions(canvas);
         // la fenêtre visible est payée : le reste remplit au fil de fond
         ensureFill();
         lastFrameNanos = System.nanoTime() - frameBegin;
@@ -952,7 +1012,7 @@ public final class EditorView extends View {
                 // une couleur L1 affichée ne change jamais
                 for (SemanticAnnotation note : notes) {
                     if (note.covers(lineStart + token.start(), lineStart + endColumn)) {
-                        colors[at] = SampleThemes.semanticColor(theme, note.nature());
+                        colors[at] = EditorThemes.semanticColor(theme, note.nature());
                         bolds[at] = (note.modifiers() & SemanticAnnotation.BOLD) != 0;
                         break;
                     }
@@ -961,6 +1021,181 @@ public final class EditorView extends View {
             at++;
         }
         return new LinePlan(texts, colors, xs, bolds);
+    }
+
+    // -------------------------------------------- complétion et diagnostics
+
+    /**
+     * Les candidats du mot courant : le préfixe se lit au curseur (au
+     * moins deux caractères, sinon le bandeau se vide), la requête
+     * interroge le dernier index — un index périmé reste une bonne
+     * indication (les noms, pas les positions).
+     */
+    private void updateSuggestions() {
+        int caret = Math.min(caretOffset, buffer.length());
+        int wordStart = wordStartAt(caret);
+        if (wordStart < 0) {
+            suggestions = List.of();
+            suggestionWordStart = -1;
+            return;
+        }
+        String prefix = buffer.getText(wordStart, caret).toString();
+        suggestions = symbolIndex == null
+                ? List.of() : symbolIndex.query(prefix, 8);
+        suggestionWordStart = wordStart;
+    }
+
+    /**
+     * Le début du mot au curseur, ou -1 s'il est trop court. La fenêtre
+     * de lecture est bornée : jamais le document pour un mot.
+     */
+    private int wordStartAt(int caret) {
+        if (caret <= 0) {
+            return -1;
+        }
+        int window = Math.min(64, caret);
+        CharSequence text = buffer.getText(caret - window, caret);
+        int at = window;
+        while (at > 0 && Character.isJavaIdentifierPart(text.charAt(at - 1))) {
+            at--;
+        }
+        if (at < window && Character.isJavaIdentifierStart(text.charAt(at))
+                && window - at >= 2) {
+            return caret - window + at;
+        }
+        return -1;
+    }
+
+    /**
+     * Ralentit l'analyse (l'index de symboles et les diagnostics) : au
+     * plus une passe par tranche de 300 ms — la frappe ne paie jamais
+     * l'index, les trames tiennent leur budget.
+     */
+    private void refreshAnalysis() {
+        if (symbolIndex != null && buffer.getRevision() == analysisRevision) {
+            return;
+        }
+        long now = System.nanoTime();
+        if (symbolIndex != null && now - lastAnalysisNanos < 300_000_000L) {
+            return;
+        }
+        symbolIndex = SymbolIndex.of(buffer, syntax, structure, new JavaDeclarations());
+        diagnostics = DiagnosticsDocument.of(buffer, syntax, structure);
+        analysisRevision = buffer.getRevision();
+        lastAnalysisNanos = now;
+    }
+
+    /**
+     * Les soulignés de diagnostic de la fenêtre visible : un trait rouge
+     * sous chaque signe mésapparié — uniquement quand la passe est à la
+     * révision courante (un souligné périmé serait mal placé).
+     */
+    private void drawDiagnostics(Canvas canvas, int first, int last, int count) {
+        if (diagnostics == null || analysisRevision != buffer.getRevision()) {
+            return;
+        }
+        for (DiagnosticsDocument.Diagnostic diagnostic
+                : diagnostics.betweenLines(first, last)) {
+            int line = buffer.lineOfOffset(Math.min(diagnostic.start(),
+                    Math.max(0, buffer.length() - 1)));
+            if (line < first || line > last || isHidden(line)) {
+                continue;
+            }
+            int column = diagnostic.start() - buffer.getLineStart(line);
+            float baseline = lineBaseline(line);
+            float x = getPaddingLeft() + column * charWidth;
+            canvas.drawLine(x, baseline + dp(3), x + charWidth, baseline + dp(3),
+                    diagnosticPaint);
+        }
+    }
+
+    /**
+     * Le bandeau de complétion : les candidats du mot courant côte à
+     * côte, en bas de la vue — les abscisses se gardent pour le toucher.
+     */
+    private void drawSuggestions(Canvas canvas) {
+        if (suggestions.isEmpty()) {
+            suggestionXs = new float[0];
+            return;
+        }
+        float height = dp(28);
+        float top = getHeight() - height - getPaddingBottom();
+        if (top < 0.0f) {
+            suggestionXs = new float[0];
+            return;
+        }
+        canvas.drawRect(0.0f, top, getWidth(), top + height, suggestionBackground);
+        float x = getPaddingLeft();
+        float limit = getWidth() - getPaddingRight();
+        float[] xs = new float[suggestions.size()];
+        int drawn = 0;
+        for (String candidate : suggestions) {
+            float width = suggestionPaint.measureText(candidate) + dp(16);
+            if (x + width > limit) {
+                break;
+            }
+            xs[drawn] = x;
+            canvas.drawText(candidate, x + dp(8),
+                    top + height / 2.0f + dp(4), suggestionPaint);
+            x += width;
+            drawn++;
+        }
+        suggestionXs = drawn == xs.length ? xs : java.util.Arrays.copyOf(xs, drawn);
+    }
+
+    /**
+     * Un toucher dans le bandeau : le candidat désigné complète le mot
+     * courant (le préfixe se remplace par le candidat entier).
+     *
+     * @param x l'abscisse du toucher
+     */
+    private void insertSuggestion(float x) {
+        for (int at = 0; at < suggestionXs.length; at++) {
+            float next = at + 1 < suggestionXs.length
+                    ? suggestionXs[at + 1] : getWidth();
+            if (x >= suggestionXs[at] && x < next) {
+                applyEdit(suggestionWordStart, Math.min(caretOffset, buffer.length()),
+                        suggestions.get(at));
+                return;
+            }
+        }
+    }
+
+    /**
+     * Les candidats courants du bandeau (le harnais les vérifie, l'hôte
+     * peut les afficher ailleurs).
+     *
+     * @return les candidats du mot courant, jamais {@code null}
+     */
+    public List<String> suggestions() {
+        return suggestions;
+    }
+
+    /**
+     * L'index courant (le panneau lit ses tailles).
+     *
+     * @return le nombre de déclarations, ou 0 sans index
+     */
+    public int symbolCount() {
+        return symbolIndex == null ? 0 : symbolIndex.symbols().size();
+    }
+
+    /**
+     * Les mots distincts de l'index courant (le panneau le lit).
+     *
+     * @return le nombre de mots connus
+     */
+    public int wordCount() {
+        return symbolIndex == null ? 0 : symbolIndex.wordCount();
+    }
+
+    /**
+     * Les diagnostics courants (le panneau le lit, le harnais le vérifie).
+     *
+     * @return le nombre de diagnostics
+     */
+    public int diagnosticCount() {
+        return diagnostics == null ? 0 : diagnostics.diagnostics().size();
     }
 
     // ------------------------------------------------------------ interne
@@ -1086,6 +1321,36 @@ public final class EditorView extends View {
         invalidate();
     }
 
+    /**
+     * Supprime autour du curseur (le chemin Suppr : la demande IME et
+     * l'événement clavier y passent).
+     *
+     * @param leftLength  caractères à gauche du curseur
+     * @param rightLength caractères à droite du curseur
+     */
+    void deleteAround(int leftLength, int rightLength) {
+        clearComposing();
+        int start = Math.max(0, caretOffset - leftLength);
+        int end = Math.min(buffer.length(), caretOffset + rightLength);
+        if (end > start) {
+            applyEdit(start, end, "");
+        }
+    }
+
+    /** Déplace le curseur d'un caractère (les flèches du clavier). */
+    void moveCaret(int delta) {
+        caretTo(clampToRange(caretOffset + delta, 0, buffer.length()));
+    }
+
+    /** Déplace le curseur d'une ligne, colonne conservée au plus près. */
+    void moveCaretVertically(int lines) {
+        int current = buffer.lineOfOffset(Math.min(caretOffset, buffer.length()));
+        int column = caretOffset - buffer.getLineStart(current);
+        int line = clampToRange(current + lines, 0, buffer.getLineCount() - 1);
+        int lineStart = buffer.getLineStart(line);
+        caretTo(lineStart + Math.min(column, buffer.getLineEnd(line) - lineStart));
+    }
+
     private void clearComposing() {
         if (composingStart < 0) {
             return;
@@ -1156,18 +1421,61 @@ public final class EditorView extends View {
 
         @Override
         public boolean deleteSurroundingText(int leftLength, int rightLength) {
-            editor.clearComposing();
-            int start = Math.max(0, editor.caretOffset - leftLength);
-            int end = Math.min(editor.buffer.length(), editor.caretOffset + rightLength);
-            if (end > start) {
-                editor.applyEdit(start, end, "");
-            }
+            editor.deleteAround(leftLength, rightLength);
             return true;
         }
 
         @Override
         public boolean finishComposingText() {
             editor.clearComposing();
+            return true;
+        }
+
+        /**
+         * Les claviers qui passent par les événements (Suppr, Entrée,
+         * flèches) : le mode factice de la classe de base les perdrait —
+         * la connexion traduit, le clavier ne peut pas être muet.
+         */
+        @Override
+        public boolean sendKeyEvent(KeyEvent event) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                switch (event.getKeyCode()) {
+                    case KeyEvent.KEYCODE_DEL:
+                        editor.deleteAround(1, 0);
+                        return true;
+                    case KeyEvent.KEYCODE_FORWARD_DEL:
+                        editor.deleteAround(0, 1);
+                        return true;
+                    case KeyEvent.KEYCODE_ENTER:
+                    case KeyEvent.KEYCODE_NUMPAD_ENTER:
+                        editor.applyEdit(editor.caretOffset, editor.caretOffset, "\n");
+                        return true;
+                    case KeyEvent.KEYCODE_DPAD_LEFT:
+                        editor.moveCaret(-1);
+                        return true;
+                    case KeyEvent.KEYCODE_DPAD_RIGHT:
+                        editor.moveCaret(1);
+                        return true;
+                    case KeyEvent.KEYCODE_DPAD_UP:
+                        editor.moveCaretVertically(-1);
+                        return true;
+                    case KeyEvent.KEYCODE_DPAD_DOWN:
+                        editor.moveCaretVertically(1);
+                        return true;
+                    default:
+                        break;
+                }
+            }
+            return super.sendKeyEvent(event);
+        }
+
+        /**
+         * La touche action du clavier (Entrée) : un saut de ligne —
+         * l'éditeur ne déclare pas d'action spéciale.
+         */
+        @Override
+        public boolean performEditorAction(int actionCode) {
+            editor.applyEdit(editor.caretOffset, editor.caretOffset, "\n");
             return true;
         }
     }

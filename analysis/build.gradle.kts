@@ -8,4 +8,5 @@ dependencies {
     // compilation, l'annotateur les expose dans son API.
     api(project(":core"))
     api(project(":syntax"))
+    testImplementation(libs.archunit)
 }

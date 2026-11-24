@@ -16,6 +16,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import jo.pigma.editor.EditorThemes;
+import jo.pigma.editor.EditorView;
 import jo.pigma.core.TextBuffer;
 import jo.pigma.core.TextListener;
 import jo.pigma.core.TextPosition;
@@ -121,6 +123,11 @@ public final class MainActivity extends Activity {
 
         setContentView(buildLayout());
         editorView.getBuffer().addListener(statusListener);
+        // la vue de bibliothèque démarre vide : l'hôte charge son
+        // contenu — ici la démo Java (le chargement n'est pas une
+        // édition à défaire, l'histoire repart vide)
+        editorView.setLanguage(Languages.JAVA, DemoTexts.JAVA);
+        editorView.getUndoStack().clear();
         updateStatus();
         updateDiagnostics();
         // la première coloration est paresseuse (au premier dessin) et
@@ -146,8 +153,8 @@ public final class MainActivity extends Activity {
                 languageButton("SQL", Languages.SQL, DemoTexts.SQL)));
         root.addView(row(margin,
                 languageButton("Gros", Languages.JAVA, DemoTexts.bigFile()),
-                themeButton("Clair", SampleThemes.LIGHT, SampleThemes.LIGHT_BACKGROUND),
-                themeButton("Sombre", SampleThemes.DARK, SampleThemes.DARK_BACKGROUND),
+                themeButton("Clair", EditorThemes.LIGHT, EditorThemes.LIGHT_BACKGROUND),
+                themeButton("Sombre", EditorThemes.DARK, EditorThemes.DARK_BACKGROUND),
                 undoButton, redoButton));
 
         root.addView(row(margin, copyButton));
@@ -325,8 +332,12 @@ public final class MainActivity extends Activity {
             text += String.format(" · replié : %d pli(s), %d ligne(s) cachée(s)",
                     editorView.foldedCount(), editorView.hiddenLineCount());
         }
-        text += String.format(" · L3 : %d annotation(s) (fenêtre)",
-                editorView.semanticVisibleCount());
+        text += String.format(" · L3 : %d annotation(s) (fenêtre)"
+                        + " · symboles : %d (%d mots) · diagnostics : %d",
+                editorView.semanticVisibleCount(),
+                editorView.symbolCount(),
+                editorView.wordCount(),
+                editorView.diagnosticCount());
         diagnosticsView.setText(text);
         if (!loggedFirstColoration && syntax.firstLexNanos() > 0L) {
             loggedFirstColoration = true;

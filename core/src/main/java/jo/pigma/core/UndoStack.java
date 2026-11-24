@@ -72,6 +72,16 @@ public final class UndoStack {
     }
 
     /**
+     * Oublie toute l'histoire : ni annulable, ni rétablissable. L'hôte
+     * l'appelle après un chargement de contenu intégral (ouvrir un
+     * fichier) : le chargement n'est pas une édition à défaire.
+     */
+    public void clear() {
+        undoUnits.clear();
+        redoUnits.clear();
+    }
+
+    /**
      * Indique si au moins une unité est annulable.
      *
      * @return vrai s'il reste quelque chose à annuler
