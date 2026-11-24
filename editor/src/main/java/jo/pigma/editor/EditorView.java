@@ -8,20 +8,18 @@ import jo.pigma.editor.selection.SelectionRenderer;
 import jo.pigma.editor.selection.SelectionState;
 
 
-import jo.pigma.editor.popups.GotoBarView;
+import jo.pigma.editor.popups.CarteClavier;
+import jo.pigma.editor.popups.GotoBar;
 import jo.pigma.editor.popups.InfoPopup;
 import jo.pigma.editor.render.RenderCache;
 import jo.pigma.editor.popups.PopupMetrics;
-import jo.pigma.editor.popups.SearchBarView;
+import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.editor.popups.SuggestionBand;
 
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Typeface;
-import android.view.Gravity;
-import android.view.ViewGroup;
-import android.widget.PopupWindow;
 
 import java.util.List;
 import java.util.TreeSet;
@@ -137,15 +135,14 @@ public final class EditorView extends View {
     /** La popup d'info ancrée — état et dessin au paquet des popups. */
     private InfoPopup infoPopup;
 
-    /** La barre de recherche flottante — vue réelle du paquet popups. */
-    private SearchBarView searchBar;
-    /** La fenêtre qui la porte (créée paresseusement, jamais deux fois). */
-    private PopupWindow searchPopup;
+    /** La carte de recherche — dessinée dans la vue (à la façon de celeris). */
+    private SearchBar searchBar;
 
-    /** La barre « aller à la ligne » flottante. */
-    private GotoBarView gotoBar;
-    /** La fenêtre qui la porte. */
-    private PopupWindow gotoPopup;
+    /** La carte « aller à la ligne » — dessinée dans la vue. */
+    private GotoBar gotoBar;
+
+    /** Le doigt est-il tombé sur une carte ouverte ? — le geste entier lui revient. */
+    private boolean downSurCarte;
 
     /** L'horodatage de l'appui courant (l'appui long sélectionne le mot). */
     private long touchDownNanos;
@@ -1036,86 +1033,90 @@ public final class EditorView extends View {
     }
 
     /**
-     * La barre de recherche en popup flottante, à la façon d'Android
-     * Studio — un VRAI View du paquet popups (l'hôte n'y bricole
-     * plus sa feuille dans son layout). La carte flotte en haut à
-     * DROITE de l'éditeur et prend le focus : le champ, le clavier
-     * et la recherche incrémentale amortie lui reviennent ; l'appui
-     * hors d'elle la range et la recherche se range avec. Un nouvel
-     * appel la range aussi — le bouton « Rechercher » de l'hôte fait
-     * bascule.
+     * La carte de recherche, à la création de celeris : DESSINÉE DANS
+     * LA VUE — jamais de PopupWindow, pas de jeton de fenêtre, pas de
+     * conflit de focus avec l'IME. PIEGE-27 : la carte ne prend
+     * jamais le focus ; le clavier reste à l'éditeur, qui lui rend
+     * les verdicts des touches (le contrat d'entrée route la frappe
+     * vers la carte ouverte). Elle se pose AU CARET (dessous si elle
+     * tient, dessus sinon, bornée aux murs) et le suit à chaque
+     * dessin. Un nouvel appel la range aussi — le bouton
+     * « Rechercher » de l'hôte fait bascule.
      */
     public void toggleSearchPopup() {
-        if (searchPopup != null && searchPopup.isShowing()) {
+        if (searchBar != null && searchBar.estMontrée()) {
             dismissSearchPopup();
             return;
         }
         if (searchBar == null) {
-            searchBar = new SearchBarView(getContext());
+            searchBar = new SearchBar();
             searchBar.bind(this);
         }
-        if (searchPopup == null) {
-            searchPopup = new PopupWindow(searchBar, dp(360),
-                    ViewGroup.LayoutParams.WRAP_CONTENT, true);
-            searchPopup.setOutsideTouchable(true);
-            // la carte jette son ombre, le clavier se montre au champ
-            searchPopup.setElevation(dp(4));
-            searchPopup.setInputMethodMode(PopupWindow.INPUT_METHOD_NEEDED);
-            searchPopup.setOnDismissListener(() -> {
-                clearSearch();
-                searchBar.closed();
-            });
-        }
-        searchPopup.setWidth(Math.min(getWidth() - dp(16), dp(360)));
-        searchBar.opened();
-        searchPopup.showAtLocation(this, Gravity.TOP | Gravity.END, dp(8), dp(8));
+        searchBar.montrer();
+        invalidate();
     }
 
     /**
-     * Range la barre de recherche (la croix, la bascule, l'appui
-     * hors d'elle — la recherche se range avec).
+     * Range la carte de recherche (la croix, la bascule) : la
+     * requête se vide, la recherche se range avec.
      */
     public void dismissSearchPopup() {
-        if (searchPopup != null && searchPopup.isShowing()) {
-            searchPopup.dismiss();
+        if (searchBar != null && searchBar.estMontrée()) {
+            searchBar.cacher();
+            clearSearch();
+            invalidate();
         }
     }
 
     /**
-     * La barre « aller à la ligne » en popup flottante, à la façon
-     * d'Android Studio (le Ctrl+G de l'atelier) : la carte se
-     * CENTRE en haut de l'éditeur, l'invite « Aller à la ligne : »
-     * précède le champ — la touche « Aller » du clavier vaut la
-     * validation, le numéro se borne au fichier. La même bascule,
-     * le même rangement que la barre de recherche.
+     * La carte « aller à la ligne », à la création de celeris :
+     * dessinée dans la vue, posée au caret, le clavier délégué — les
+     * chiffres s'y posent, la validation y va, la croix la range. La
+     * même bascule, le même rangement que la recherche.
      */
     public void toggleGotoPopup() {
-        if (gotoPopup != null && gotoPopup.isShowing()) {
+        if (gotoBar != null && gotoBar.estMontrée()) {
             dismissGotoPopup();
             return;
         }
         if (gotoBar == null) {
-            gotoBar = new GotoBarView(getContext());
+            gotoBar = new GotoBar();
             gotoBar.bind(this);
         }
-        if (gotoPopup == null) {
-            gotoPopup = new PopupWindow(gotoBar, dp(300),
-                    ViewGroup.LayoutParams.WRAP_CONTENT, true);
-            gotoPopup.setOutsideTouchable(true);
-            gotoPopup.setElevation(dp(4));
-            gotoPopup.setInputMethodMode(PopupWindow.INPUT_METHOD_NEEDED);
-        }
-        gotoPopup.setWidth(Math.min(getWidth() - dp(16), dp(300)));
-        gotoBar.opened();
-        gotoPopup.showAtLocation(this, Gravity.TOP | Gravity.CENTER_HORIZONTAL,
-                0, dp(8));
+        gotoBar.montrer();
+        invalidate();
     }
 
-    /** Range la barre « aller à la ligne ». */
+    /** Range la carte « aller à la ligne ». */
     public void dismissGotoPopup() {
-        if (gotoPopup != null && gotoPopup.isShowing()) {
-            gotoPopup.dismiss();
+        if (gotoBar != null && gotoBar.estMontrée()) {
+            gotoBar.cacher();
+            invalidate();
         }
+    }
+
+    /** La carte de recherche, null si jamais ouverte (le harnais la lit). */
+    public SearchBar searchBar() {
+        return searchBar;
+    }
+
+    /** La carte « aller à la ligne », null si jamais ouverte (le harnais la lit). */
+    public GotoBar gotoBar() {
+        return gotoBar;
+    }
+
+    /**
+     * La carte ouverte qui reçoit le clavier (PIEGE-27, à la façon de
+     * celeris) : la recherche ou l'aller-à montrés, aucune sinon.
+     */
+    private CarteClavier carteOuverte() {
+        if (searchBar != null && searchBar.estMontrée()) {
+            return searchBar;
+        }
+        if (gotoBar != null && gotoBar.estMontrée()) {
+            return gotoBar;
+        }
+        return null;
     }
 
     /**
@@ -1367,6 +1368,28 @@ public final class EditorView extends View {
 
             @Override
             public void applyEdit(int start, int end, CharSequence text) {
+                // PIEGE-27, à la façon de celeris : la carte ouverte
+                // reçoit le clavier — l'éditeur garde la connexion et
+                // lui rend les verdicts des touches (la validation
+                // Entrée, le texte tapé, la composition du clavier
+                // logiciel qui remplace ce qu'elle avait posé). La
+                // carte décline : la touche retourne à la vie normale
+                // de l'éditeur.
+                CarteClavier carte = carteOuverte();
+                if (carte != null) {
+                    if (text != null && text.length() == 1
+                            && text.charAt(0) == '\n') {
+                        if (carte.surValidation()) {
+                            return;
+                        }
+                    } else if (composingStart >= 0
+                            && start == composingStart && end == composingEnd
+                            && carte.surComposition(text)) {
+                        return;
+                    } else if (carte.surTexte(text)) {
+                        return;
+                    }
+                }
                 EditorView.this.applyEdit(start, end, text);
             }
 
@@ -1377,6 +1400,13 @@ public final class EditorView extends View {
 
             @Override
             public void deleteAround(int left, int right) {
+                // le retour arrière de la carte ouverte efface dans la
+                // carte (le clavier lui est délégué, PIEGE-27)
+                CarteClavier carte = carteOuverte();
+                if (carte != null && left == 1 && right == 0
+                        && carte.surRetourArriere()) {
+                    return;
+                }
                 EditorView.this.deleteAround(left, right);
             }
 
@@ -1387,6 +1417,12 @@ public final class EditorView extends View {
 
             @Override
             public void moveCaretVertically(int delta) {
+                // la flèche verticale de la carte ouverte navigue la
+                // carte (les correspondances de la recherche)
+                CarteClavier carte = carteOuverte();
+                if (carte != null && carte.surFleche(delta)) {
+                    return;
+                }
                 EditorView.this.moveCaretVertically(delta);
             }
 
@@ -1399,6 +1435,26 @@ public final class EditorView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        // les cartes vivantes (la création de celeris : dessinées dans
+        // la vue) : le doigt qui tombe SUR une carte lui appartient —
+        // elle agit et le geste entier se consomme ; le doigt hors
+        // des cartes poursuit sa vie vers l'éditeur (le caret bouge,
+        // la sélection suit)
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            downSurCarte = (searchBar != null && searchBar.estMontrée()
+                    && searchBar.surTouch(event.getX(), event.getY()))
+                    || (gotoBar != null && gotoBar.estMontrée()
+                            && gotoBar.surTouch(event.getX(), event.getY()));
+            if (downSurCarte) {
+                return true;
+            }
+        } else if (downSurCarte) {
+            if (event.getActionMasked() == MotionEvent.ACTION_UP
+                    || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                downSurCarte = false;
+            }
+            return true;
+        }
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 touchStartX = event.getX();
@@ -1723,6 +1779,16 @@ public final class EditorView extends View {
         drawDiagnostics(canvas, first, last, count);
         drawSuggestions(canvas);
         drawInfoPopup(canvas);
+        // les cartes de recherche et d'aller-à, par-dessus tout : la
+        // création de celeris — dessinées dans la vue, posées au
+        // caret, le clavier délégué (la pose se recalcule ici : le
+        // caret les suit, le harnais la lit)
+        if (searchBar != null && searchBar.estMontrée()) {
+            searchBar.draw(canvas, popupMetrics());
+        }
+        if (gotoBar != null && gotoBar.estMontrée()) {
+            gotoBar.draw(canvas, popupMetrics());
+        }
         // la fenêtre visible est payée : le reste remplit au fil de fond
         ensureFill();
         lastFrameNanos = System.nanoTime() - frameBegin;
@@ -1853,9 +1919,15 @@ public final class EditorView extends View {
      * popups n'en connaît que ces nombres.
      */
     private PopupMetrics popupMetrics() {
+        int caretOffset = Math.min(selection.caret(), buffer.length());
+        int caretLineIndex = buffer.lineOfOffset(caretOffset);
+        float caretX = getPaddingLeft()
+                + (caretOffset - buffer.getLineStart(caretLineIndex)) * charWidth;
+        float caretY = getPaddingTop()
+                + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
         return new PopupMetrics(getPaddingLeft(), getPaddingTop(),
                 getPaddingRight(), getPaddingBottom(), getWidth(), getHeight(),
-                lineHeight, charWidth, dp(1));
+                lineHeight, charWidth, dp(1), caretX, caretY);
     }
 
     /**

@@ -13,8 +13,10 @@ package jo.pigma.editor.popups;
  * @param lineHeight    hauteur d'une ligne de texte (px)
  * @param charWidth     avance d'un caractère (px, chasse fixe)
  * @param density       densité de l'écran (le dp en pixels)
+ * @param caretX        l'abscisse du caret dans la vue (px) — l'ancre des cartes
+ * @param caretY        l'ordonnée du caret dans la vue (px) — l'ancre des cartes
  */
 public record PopupMetrics(float paddingLeft, float paddingTop, float paddingRight,
         float paddingBottom, float viewWidth, float viewHeight, float lineHeight,
-        float charWidth, float density) {
+        float charWidth, float density, float caretX, float caretY) {
 }

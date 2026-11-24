@@ -108,24 +108,6 @@ public class TextView extends View {
         return inputType;
     }
 
-    /** La couleur du texte. */
-    private int textColor = 0xFF000000;
-
-    /**
-     * Pose la couleur du texte (le compte « i/n » rougit quand rien
-     * ne correspond).
-     *
-     * @param color la couleur
-     */
-    public void setTextColor(int color) {
-        this.textColor = color;
-    }
-
-    /** La couleur du texte (le harnais la lit). */
-    public int getTextColor() {
-        return textColor;
-    }
-
     /**
      * Pose la police.
      *
