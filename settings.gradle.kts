@@ -20,6 +20,8 @@ rootProject.name = "pigma"
 
 // Un module par fonctionnalité ; aucun module vide n'est créé pour l'avenir.
 // Chaque module arrive avec la fonctionnalité qui le justifie : le cœur du
-// modèle de texte (:core) et l'application de démonstration (:sample).
+// modèle de texte (:core), le moteur de coloration (:syntax) et
+// l'application de démonstration (:sample).
 include(":core")
+include(":syntax")
 include(":sample")

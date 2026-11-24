@@ -29,6 +29,16 @@ val checkForbiddenRefs = tasks.register("checkForbiddenRefs", Exec::class) {
     commandLine("python3", rootProject.file("scripts/check-forbidden-refs").absolutePath)
 }
 
+// Lexeurs générés versionnés : le code doit rester à jour des
+// descriptions (le contrôle s'ignore proprement si JFlex est absent :
+// définir JFLEX_CP ou TOOLS pour l'activer, cf. scripts/check-lexers-fresh).
+val checkLexersFresh = tasks.register("checkLexersFresh", Exec::class) {
+    group = "verification"
+    description = "Vérifie que le code généré des lexeurs correspond aux descriptions."
+    workingDir = rootDir
+    commandLine("python3", rootProject.file("scripts/check-lexers-fresh").absolutePath)
+}
+
 // Captures du catalogue de versions : l'accesseur n'existe que pour le
 // script racine, pas dans subprojects.
 val checkstyleVersion = libs.versions.checkstyle.get()
@@ -75,7 +85,7 @@ subprojects {
     }
 
     tasks.matching { it.name == "check" }.configureEach {
-        dependsOn(checkCodePolicy, checkForbiddenRefs, checkstyleSources)
+        dependsOn(checkCodePolicy, checkForbiddenRefs, checkLexersFresh, checkstyleSources)
     }
 }
 
@@ -83,8 +93,8 @@ subprojects {
 // tout le dépôt sans viser un module en particulier.
 tasks.register("check") {
     group = "verification"
-    description = "Toutes les vérifications : tests, style, politique, références interdites."
-    dependsOn(checkCodePolicy, checkForbiddenRefs)
+    description = "Toutes les vérifications : tests, style, politique, références interdites, lexeurs."
+    dependsOn(checkCodePolicy, checkForbiddenRefs, checkLexersFresh)
     dependsOn(subprojects.map { "${it.path}:check" })
 }
 

@@ -1,0 +1,2000 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE catalogue SYSTEM "catalogue.dtd">
+<?instructions mode="corpus" ?>
+<catalogue id="corpus-e0" version="1">
+
+    <!-- entree 1 du catalogue, poids 0.5 -->
+    <item id="1" position="1" poids="0.5" actif="true">
+        <nom>lot-1</nom>
+        <description>description de l'entree 1, avec ponctuation et accents</description>
+        <limites min="-1" max="10" ratio="0.125"/>
+        <raw><![CDATA[contenu brut 1 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 2 du catalogue, poids 1.0 -->
+    <item id="2" position="2" poids="1.0" actif="false">
+        <nom>lot-2</nom>
+        <description>description de l'entree 2, avec ponctuation et accents</description>
+        <limites min="-2" max="20" ratio="0.25"/>
+        <raw><![CDATA[contenu brut 2 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 3 du catalogue, poids 1.5 -->
+    <item id="3" position="3" poids="1.5" actif="true">
+        <nom>lot-3</nom>
+        <description>description de l'entree 3, avec ponctuation et accents</description>
+        <limites min="-3" max="30" ratio="0.375"/>
+        <raw><![CDATA[contenu brut 3 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 4 du catalogue, poids 2.0 -->
+    <item id="4" position="4" poids="2.0" actif="false">
+        <nom>lot-4</nom>
+        <description>description de l'entree 4, avec ponctuation et accents</description>
+        <limites min="-4" max="40" ratio="0.5"/>
+        <raw><![CDATA[contenu brut 4 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 5 du catalogue, poids 2.5 -->
+    <item id="5" position="5" poids="2.5" actif="true">
+        <nom>lot-5</nom>
+        <description>description de l'entree 5, avec ponctuation et accents</description>
+        <limites min="-5" max="50" ratio="0.625"/>
+        <raw><![CDATA[contenu brut 5 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 6 du catalogue, poids 3.0 -->
+    <item id="6" position="6" poids="3.0" actif="false">
+        <nom>lot-6</nom>
+        <description>description de l'entree 6, avec ponctuation et accents</description>
+        <limites min="-6" max="60" ratio="0.75"/>
+        <raw><![CDATA[contenu brut 6 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 7 du catalogue, poids 3.5 -->
+    <item id="7" position="7" poids="3.5" actif="true">
+        <nom>lot-7</nom>
+        <description>description de l'entree 7, avec ponctuation et accents</description>
+        <limites min="-7" max="70" ratio="0.875"/>
+        <raw><![CDATA[contenu brut 7 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 8 du catalogue, poids 4.0 -->
+    <item id="8" position="8" poids="4.0" actif="false">
+        <nom>lot-8</nom>
+        <description>description de l'entree 8, avec ponctuation et accents</description>
+        <limites min="-8" max="80" ratio="1.0"/>
+        <raw><![CDATA[contenu brut 8 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 9 du catalogue, poids 4.5 -->
+    <item id="9" position="9" poids="4.5" actif="true">
+        <nom>lot-9</nom>
+        <description>description de l'entree 9, avec ponctuation et accents</description>
+        <limites min="-9" max="90" ratio="1.125"/>
+        <raw><![CDATA[contenu brut 9 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 10 du catalogue, poids 5.0 -->
+    <item id="10" position="10" poids="5.0" actif="false">
+        <nom>lot-10</nom>
+        <description>description de l'entree 10, avec ponctuation et accents</description>
+        <limites min="-10" max="100" ratio="1.25"/>
+        <raw><![CDATA[contenu brut 10 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 11 du catalogue, poids 5.5 -->
+    <item id="11" position="11" poids="5.5" actif="true">
+        <nom>lot-11</nom>
+        <description>description de l'entree 11, avec ponctuation et accents</description>
+        <limites min="-11" max="110" ratio="1.375"/>
+        <raw><![CDATA[contenu brut 11 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 12 du catalogue, poids 6.0 -->
+    <item id="12" position="12" poids="6.0" actif="false">
+        <nom>lot-12</nom>
+        <description>description de l'entree 12, avec ponctuation et accents</description>
+        <limites min="-12" max="120" ratio="1.5"/>
+        <raw><![CDATA[contenu brut 12 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 13 du catalogue, poids 6.5 -->
+    <item id="13" position="13" poids="6.5" actif="true">
+        <nom>lot-13</nom>
+        <description>description de l'entree 13, avec ponctuation et accents</description>
+        <limites min="-13" max="130" ratio="1.625"/>
+        <raw><![CDATA[contenu brut 13 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 14 du catalogue, poids 7.0 -->
+    <item id="14" position="14" poids="7.0" actif="false">
+        <nom>lot-14</nom>
+        <description>description de l'entree 14, avec ponctuation et accents</description>
+        <limites min="-14" max="140" ratio="1.75"/>
+        <raw><![CDATA[contenu brut 14 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 15 du catalogue, poids 7.5 -->
+    <item id="15" position="15" poids="7.5" actif="true">
+        <nom>lot-15</nom>
+        <description>description de l'entree 15, avec ponctuation et accents</description>
+        <limites min="-15" max="150" ratio="1.875"/>
+        <raw><![CDATA[contenu brut 15 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 16 du catalogue, poids 8.0 -->
+    <item id="16" position="16" poids="8.0" actif="false">
+        <nom>lot-16</nom>
+        <description>description de l'entree 16, avec ponctuation et accents</description>
+        <limites min="-16" max="160" ratio="2.0"/>
+        <raw><![CDATA[contenu brut 16 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 17 du catalogue, poids 8.5 -->
+    <item id="17" position="17" poids="8.5" actif="true">
+        <nom>lot-17</nom>
+        <description>description de l'entree 17, avec ponctuation et accents</description>
+        <limites min="-17" max="170" ratio="2.125"/>
+        <raw><![CDATA[contenu brut 17 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 18 du catalogue, poids 9.0 -->
+    <item id="18" position="18" poids="9.0" actif="false">
+        <nom>lot-18</nom>
+        <description>description de l'entree 18, avec ponctuation et accents</description>
+        <limites min="-18" max="180" ratio="2.25"/>
+        <raw><![CDATA[contenu brut 18 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 19 du catalogue, poids 9.5 -->
+    <item id="19" position="19" poids="9.5" actif="true">
+        <nom>lot-19</nom>
+        <description>description de l'entree 19, avec ponctuation et accents</description>
+        <limites min="-19" max="190" ratio="2.375"/>
+        <raw><![CDATA[contenu brut 19 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 20 du catalogue, poids 10.0 -->
+    <item id="20" position="20" poids="10.0" actif="false">
+        <nom>lot-20</nom>
+        <description>description de l'entree 20, avec ponctuation et accents</description>
+        <limites min="-20" max="200" ratio="2.5"/>
+        <raw><![CDATA[contenu brut 20 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 21 du catalogue, poids 10.5 -->
+    <item id="21" position="21" poids="10.5" actif="true">
+        <nom>lot-21</nom>
+        <description>description de l'entree 21, avec ponctuation et accents</description>
+        <limites min="-21" max="210" ratio="2.625"/>
+        <raw><![CDATA[contenu brut 21 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 22 du catalogue, poids 11.0 -->
+    <item id="22" position="22" poids="11.0" actif="false">
+        <nom>lot-22</nom>
+        <description>description de l'entree 22, avec ponctuation et accents</description>
+        <limites min="-22" max="220" ratio="2.75"/>
+        <raw><![CDATA[contenu brut 22 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 23 du catalogue, poids 11.5 -->
+    <item id="23" position="23" poids="11.5" actif="true">
+        <nom>lot-23</nom>
+        <description>description de l'entree 23, avec ponctuation et accents</description>
+        <limites min="-23" max="230" ratio="2.875"/>
+        <raw><![CDATA[contenu brut 23 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 24 du catalogue, poids 12.0 -->
+    <item id="24" position="24" poids="12.0" actif="false">
+        <nom>lot-24</nom>
+        <description>description de l'entree 24, avec ponctuation et accents</description>
+        <limites min="-24" max="240" ratio="3.0"/>
+        <raw><![CDATA[contenu brut 24 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 25 du catalogue, poids 12.5 -->
+    <item id="25" position="25" poids="12.5" actif="true">
+        <nom>lot-25</nom>
+        <description>description de l'entree 25, avec ponctuation et accents</description>
+        <limites min="-25" max="250" ratio="3.125"/>
+        <raw><![CDATA[contenu brut 25 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 26 du catalogue, poids 13.0 -->
+    <item id="26" position="26" poids="13.0" actif="false">
+        <nom>lot-26</nom>
+        <description>description de l'entree 26, avec ponctuation et accents</description>
+        <limites min="-26" max="260" ratio="3.25"/>
+        <raw><![CDATA[contenu brut 26 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 27 du catalogue, poids 13.5 -->
+    <item id="27" position="27" poids="13.5" actif="true">
+        <nom>lot-27</nom>
+        <description>description de l'entree 27, avec ponctuation et accents</description>
+        <limites min="-27" max="270" ratio="3.375"/>
+        <raw><![CDATA[contenu brut 27 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 28 du catalogue, poids 14.0 -->
+    <item id="28" position="28" poids="14.0" actif="false">
+        <nom>lot-28</nom>
+        <description>description de l'entree 28, avec ponctuation et accents</description>
+        <limites min="-28" max="280" ratio="3.5"/>
+        <raw><![CDATA[contenu brut 28 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 29 du catalogue, poids 14.5 -->
+    <item id="29" position="29" poids="14.5" actif="true">
+        <nom>lot-29</nom>
+        <description>description de l'entree 29, avec ponctuation et accents</description>
+        <limites min="-29" max="290" ratio="3.625"/>
+        <raw><![CDATA[contenu brut 29 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 30 du catalogue, poids 15.0 -->
+    <item id="30" position="30" poids="15.0" actif="false">
+        <nom>lot-30</nom>
+        <description>description de l'entree 30, avec ponctuation et accents</description>
+        <limites min="-30" max="300" ratio="3.75"/>
+        <raw><![CDATA[contenu brut 30 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 31 du catalogue, poids 15.5 -->
+    <item id="31" position="31" poids="15.5" actif="true">
+        <nom>lot-31</nom>
+        <description>description de l'entree 31, avec ponctuation et accents</description>
+        <limites min="-31" max="310" ratio="3.875"/>
+        <raw><![CDATA[contenu brut 31 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 32 du catalogue, poids 16.0 -->
+    <item id="32" position="32" poids="16.0" actif="false">
+        <nom>lot-32</nom>
+        <description>description de l'entree 32, avec ponctuation et accents</description>
+        <limites min="-32" max="320" ratio="4.0"/>
+        <raw><![CDATA[contenu brut 32 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 33 du catalogue, poids 16.5 -->
+    <item id="33" position="33" poids="16.5" actif="true">
+        <nom>lot-33</nom>
+        <description>description de l'entree 33, avec ponctuation et accents</description>
+        <limites min="-33" max="330" ratio="4.125"/>
+        <raw><![CDATA[contenu brut 33 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 34 du catalogue, poids 17.0 -->
+    <item id="34" position="34" poids="17.0" actif="false">
+        <nom>lot-34</nom>
+        <description>description de l'entree 34, avec ponctuation et accents</description>
+        <limites min="-34" max="340" ratio="4.25"/>
+        <raw><![CDATA[contenu brut 34 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 35 du catalogue, poids 17.5 -->
+    <item id="35" position="35" poids="17.5" actif="true">
+        <nom>lot-35</nom>
+        <description>description de l'entree 35, avec ponctuation et accents</description>
+        <limites min="-35" max="350" ratio="4.375"/>
+        <raw><![CDATA[contenu brut 35 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 36 du catalogue, poids 18.0 -->
+    <item id="36" position="36" poids="18.0" actif="false">
+        <nom>lot-36</nom>
+        <description>description de l'entree 36, avec ponctuation et accents</description>
+        <limites min="-36" max="360" ratio="4.5"/>
+        <raw><![CDATA[contenu brut 36 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 37 du catalogue, poids 18.5 -->
+    <item id="37" position="37" poids="18.5" actif="true">
+        <nom>lot-37</nom>
+        <description>description de l'entree 37, avec ponctuation et accents</description>
+        <limites min="-37" max="370" ratio="4.625"/>
+        <raw><![CDATA[contenu brut 37 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 38 du catalogue, poids 19.0 -->
+    <item id="38" position="38" poids="19.0" actif="false">
+        <nom>lot-38</nom>
+        <description>description de l'entree 38, avec ponctuation et accents</description>
+        <limites min="-38" max="380" ratio="4.75"/>
+        <raw><![CDATA[contenu brut 38 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 39 du catalogue, poids 19.5 -->
+    <item id="39" position="39" poids="19.5" actif="true">
+        <nom>lot-39</nom>
+        <description>description de l'entree 39, avec ponctuation et accents</description>
+        <limites min="-39" max="390" ratio="4.875"/>
+        <raw><![CDATA[contenu brut 39 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 40 du catalogue, poids 20.0 -->
+    <item id="40" position="40" poids="20.0" actif="false">
+        <nom>lot-40</nom>
+        <description>description de l'entree 40, avec ponctuation et accents</description>
+        <limites min="-40" max="400" ratio="5.0"/>
+        <raw><![CDATA[contenu brut 40 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 41 du catalogue, poids 20.5 -->
+    <item id="41" position="41" poids="20.5" actif="true">
+        <nom>lot-41</nom>
+        <description>description de l'entree 41, avec ponctuation et accents</description>
+        <limites min="-41" max="410" ratio="5.125"/>
+        <raw><![CDATA[contenu brut 41 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 42 du catalogue, poids 21.0 -->
+    <item id="42" position="42" poids="21.0" actif="false">
+        <nom>lot-42</nom>
+        <description>description de l'entree 42, avec ponctuation et accents</description>
+        <limites min="-42" max="420" ratio="5.25"/>
+        <raw><![CDATA[contenu brut 42 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 43 du catalogue, poids 21.5 -->
+    <item id="43" position="43" poids="21.5" actif="true">
+        <nom>lot-43</nom>
+        <description>description de l'entree 43, avec ponctuation et accents</description>
+        <limites min="-43" max="430" ratio="5.375"/>
+        <raw><![CDATA[contenu brut 43 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 44 du catalogue, poids 22.0 -->
+    <item id="44" position="44" poids="22.0" actif="false">
+        <nom>lot-44</nom>
+        <description>description de l'entree 44, avec ponctuation et accents</description>
+        <limites min="-44" max="440" ratio="5.5"/>
+        <raw><![CDATA[contenu brut 44 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 45 du catalogue, poids 22.5 -->
+    <item id="45" position="45" poids="22.5" actif="true">
+        <nom>lot-45</nom>
+        <description>description de l'entree 45, avec ponctuation et accents</description>
+        <limites min="-45" max="450" ratio="5.625"/>
+        <raw><![CDATA[contenu brut 45 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 46 du catalogue, poids 23.0 -->
+    <item id="46" position="46" poids="23.0" actif="false">
+        <nom>lot-46</nom>
+        <description>description de l'entree 46, avec ponctuation et accents</description>
+        <limites min="-46" max="460" ratio="5.75"/>
+        <raw><![CDATA[contenu brut 46 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 47 du catalogue, poids 23.5 -->
+    <item id="47" position="47" poids="23.5" actif="true">
+        <nom>lot-47</nom>
+        <description>description de l'entree 47, avec ponctuation et accents</description>
+        <limites min="-47" max="470" ratio="5.875"/>
+        <raw><![CDATA[contenu brut 47 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 48 du catalogue, poids 24.0 -->
+    <item id="48" position="48" poids="24.0" actif="false">
+        <nom>lot-48</nom>
+        <description>description de l'entree 48, avec ponctuation et accents</description>
+        <limites min="-48" max="480" ratio="6.0"/>
+        <raw><![CDATA[contenu brut 48 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 49 du catalogue, poids 24.5 -->
+    <item id="49" position="49" poids="24.5" actif="true">
+        <nom>lot-49</nom>
+        <description>description de l'entree 49, avec ponctuation et accents</description>
+        <limites min="-49" max="490" ratio="6.125"/>
+        <raw><![CDATA[contenu brut 49 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 50 du catalogue, poids 25.0 -->
+    <item id="50" position="50" poids="25.0" actif="false">
+        <nom>lot-50</nom>
+        <description>description de l'entree 50, avec ponctuation et accents</description>
+        <limites min="-50" max="500" ratio="6.25"/>
+        <raw><![CDATA[contenu brut 50 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 51 du catalogue, poids 25.5 -->
+    <item id="51" position="51" poids="25.5" actif="true">
+        <nom>lot-51</nom>
+        <description>description de l'entree 51, avec ponctuation et accents</description>
+        <limites min="-51" max="510" ratio="6.375"/>
+        <raw><![CDATA[contenu brut 51 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 52 du catalogue, poids 26.0 -->
+    <item id="52" position="52" poids="26.0" actif="false">
+        <nom>lot-52</nom>
+        <description>description de l'entree 52, avec ponctuation et accents</description>
+        <limites min="-52" max="520" ratio="6.5"/>
+        <raw><![CDATA[contenu brut 52 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 53 du catalogue, poids 26.5 -->
+    <item id="53" position="53" poids="26.5" actif="true">
+        <nom>lot-53</nom>
+        <description>description de l'entree 53, avec ponctuation et accents</description>
+        <limites min="-53" max="530" ratio="6.625"/>
+        <raw><![CDATA[contenu brut 53 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 54 du catalogue, poids 27.0 -->
+    <item id="54" position="54" poids="27.0" actif="false">
+        <nom>lot-54</nom>
+        <description>description de l'entree 54, avec ponctuation et accents</description>
+        <limites min="-54" max="540" ratio="6.75"/>
+        <raw><![CDATA[contenu brut 54 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 55 du catalogue, poids 27.5 -->
+    <item id="55" position="55" poids="27.5" actif="true">
+        <nom>lot-55</nom>
+        <description>description de l'entree 55, avec ponctuation et accents</description>
+        <limites min="-55" max="550" ratio="6.875"/>
+        <raw><![CDATA[contenu brut 55 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 56 du catalogue, poids 28.0 -->
+    <item id="56" position="56" poids="28.0" actif="false">
+        <nom>lot-56</nom>
+        <description>description de l'entree 56, avec ponctuation et accents</description>
+        <limites min="-56" max="560" ratio="7.0"/>
+        <raw><![CDATA[contenu brut 56 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 57 du catalogue, poids 28.5 -->
+    <item id="57" position="57" poids="28.5" actif="true">
+        <nom>lot-57</nom>
+        <description>description de l'entree 57, avec ponctuation et accents</description>
+        <limites min="-57" max="570" ratio="7.125"/>
+        <raw><![CDATA[contenu brut 57 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 58 du catalogue, poids 29.0 -->
+    <item id="58" position="58" poids="29.0" actif="false">
+        <nom>lot-58</nom>
+        <description>description de l'entree 58, avec ponctuation et accents</description>
+        <limites min="-58" max="580" ratio="7.25"/>
+        <raw><![CDATA[contenu brut 58 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 59 du catalogue, poids 29.5 -->
+    <item id="59" position="59" poids="29.5" actif="true">
+        <nom>lot-59</nom>
+        <description>description de l'entree 59, avec ponctuation et accents</description>
+        <limites min="-59" max="590" ratio="7.375"/>
+        <raw><![CDATA[contenu brut 59 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 60 du catalogue, poids 30.0 -->
+    <item id="60" position="60" poids="30.0" actif="false">
+        <nom>lot-60</nom>
+        <description>description de l'entree 60, avec ponctuation et accents</description>
+        <limites min="-60" max="600" ratio="7.5"/>
+        <raw><![CDATA[contenu brut 60 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 61 du catalogue, poids 30.5 -->
+    <item id="61" position="61" poids="30.5" actif="true">
+        <nom>lot-61</nom>
+        <description>description de l'entree 61, avec ponctuation et accents</description>
+        <limites min="-61" max="610" ratio="7.625"/>
+        <raw><![CDATA[contenu brut 61 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 62 du catalogue, poids 31.0 -->
+    <item id="62" position="62" poids="31.0" actif="false">
+        <nom>lot-62</nom>
+        <description>description de l'entree 62, avec ponctuation et accents</description>
+        <limites min="-62" max="620" ratio="7.75"/>
+        <raw><![CDATA[contenu brut 62 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 63 du catalogue, poids 31.5 -->
+    <item id="63" position="63" poids="31.5" actif="true">
+        <nom>lot-63</nom>
+        <description>description de l'entree 63, avec ponctuation et accents</description>
+        <limites min="-63" max="630" ratio="7.875"/>
+        <raw><![CDATA[contenu brut 63 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 64 du catalogue, poids 32.0 -->
+    <item id="64" position="64" poids="32.0" actif="false">
+        <nom>lot-64</nom>
+        <description>description de l'entree 64, avec ponctuation et accents</description>
+        <limites min="-64" max="640" ratio="8.0"/>
+        <raw><![CDATA[contenu brut 64 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 65 du catalogue, poids 32.5 -->
+    <item id="65" position="65" poids="32.5" actif="true">
+        <nom>lot-65</nom>
+        <description>description de l'entree 65, avec ponctuation et accents</description>
+        <limites min="-65" max="650" ratio="8.125"/>
+        <raw><![CDATA[contenu brut 65 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 66 du catalogue, poids 33.0 -->
+    <item id="66" position="66" poids="33.0" actif="false">
+        <nom>lot-66</nom>
+        <description>description de l'entree 66, avec ponctuation et accents</description>
+        <limites min="-66" max="660" ratio="8.25"/>
+        <raw><![CDATA[contenu brut 66 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 67 du catalogue, poids 33.5 -->
+    <item id="67" position="67" poids="33.5" actif="true">
+        <nom>lot-67</nom>
+        <description>description de l'entree 67, avec ponctuation et accents</description>
+        <limites min="-67" max="670" ratio="8.375"/>
+        <raw><![CDATA[contenu brut 67 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 68 du catalogue, poids 34.0 -->
+    <item id="68" position="68" poids="34.0" actif="false">
+        <nom>lot-68</nom>
+        <description>description de l'entree 68, avec ponctuation et accents</description>
+        <limites min="-68" max="680" ratio="8.5"/>
+        <raw><![CDATA[contenu brut 68 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 69 du catalogue, poids 34.5 -->
+    <item id="69" position="69" poids="34.5" actif="true">
+        <nom>lot-69</nom>
+        <description>description de l'entree 69, avec ponctuation et accents</description>
+        <limites min="-69" max="690" ratio="8.625"/>
+        <raw><![CDATA[contenu brut 69 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 70 du catalogue, poids 35.0 -->
+    <item id="70" position="70" poids="35.0" actif="false">
+        <nom>lot-70</nom>
+        <description>description de l'entree 70, avec ponctuation et accents</description>
+        <limites min="-70" max="700" ratio="8.75"/>
+        <raw><![CDATA[contenu brut 70 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 71 du catalogue, poids 35.5 -->
+    <item id="71" position="71" poids="35.5" actif="true">
+        <nom>lot-71</nom>
+        <description>description de l'entree 71, avec ponctuation et accents</description>
+        <limites min="-71" max="710" ratio="8.875"/>
+        <raw><![CDATA[contenu brut 71 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 72 du catalogue, poids 36.0 -->
+    <item id="72" position="72" poids="36.0" actif="false">
+        <nom>lot-72</nom>
+        <description>description de l'entree 72, avec ponctuation et accents</description>
+        <limites min="-72" max="720" ratio="9.0"/>
+        <raw><![CDATA[contenu brut 72 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 73 du catalogue, poids 36.5 -->
+    <item id="73" position="73" poids="36.5" actif="true">
+        <nom>lot-73</nom>
+        <description>description de l'entree 73, avec ponctuation et accents</description>
+        <limites min="-73" max="730" ratio="9.125"/>
+        <raw><![CDATA[contenu brut 73 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 74 du catalogue, poids 37.0 -->
+    <item id="74" position="74" poids="37.0" actif="false">
+        <nom>lot-74</nom>
+        <description>description de l'entree 74, avec ponctuation et accents</description>
+        <limites min="-74" max="740" ratio="9.25"/>
+        <raw><![CDATA[contenu brut 74 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 75 du catalogue, poids 37.5 -->
+    <item id="75" position="75" poids="37.5" actif="true">
+        <nom>lot-75</nom>
+        <description>description de l'entree 75, avec ponctuation et accents</description>
+        <limites min="-75" max="750" ratio="9.375"/>
+        <raw><![CDATA[contenu brut 75 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 76 du catalogue, poids 38.0 -->
+    <item id="76" position="76" poids="38.0" actif="false">
+        <nom>lot-76</nom>
+        <description>description de l'entree 76, avec ponctuation et accents</description>
+        <limites min="-76" max="760" ratio="9.5"/>
+        <raw><![CDATA[contenu brut 76 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 77 du catalogue, poids 38.5 -->
+    <item id="77" position="77" poids="38.5" actif="true">
+        <nom>lot-77</nom>
+        <description>description de l'entree 77, avec ponctuation et accents</description>
+        <limites min="-77" max="770" ratio="9.625"/>
+        <raw><![CDATA[contenu brut 77 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 78 du catalogue, poids 39.0 -->
+    <item id="78" position="78" poids="39.0" actif="false">
+        <nom>lot-78</nom>
+        <description>description de l'entree 78, avec ponctuation et accents</description>
+        <limites min="-78" max="780" ratio="9.75"/>
+        <raw><![CDATA[contenu brut 78 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 79 du catalogue, poids 39.5 -->
+    <item id="79" position="79" poids="39.5" actif="true">
+        <nom>lot-79</nom>
+        <description>description de l'entree 79, avec ponctuation et accents</description>
+        <limites min="-79" max="790" ratio="9.875"/>
+        <raw><![CDATA[contenu brut 79 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 80 du catalogue, poids 40.0 -->
+    <item id="80" position="80" poids="40.0" actif="false">
+        <nom>lot-80</nom>
+        <description>description de l'entree 80, avec ponctuation et accents</description>
+        <limites min="-80" max="800" ratio="10.0"/>
+        <raw><![CDATA[contenu brut 80 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 81 du catalogue, poids 40.5 -->
+    <item id="81" position="81" poids="40.5" actif="true">
+        <nom>lot-81</nom>
+        <description>description de l'entree 81, avec ponctuation et accents</description>
+        <limites min="-81" max="810" ratio="10.125"/>
+        <raw><![CDATA[contenu brut 81 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 82 du catalogue, poids 41.0 -->
+    <item id="82" position="82" poids="41.0" actif="false">
+        <nom>lot-82</nom>
+        <description>description de l'entree 82, avec ponctuation et accents</description>
+        <limites min="-82" max="820" ratio="10.25"/>
+        <raw><![CDATA[contenu brut 82 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 83 du catalogue, poids 41.5 -->
+    <item id="83" position="83" poids="41.5" actif="true">
+        <nom>lot-83</nom>
+        <description>description de l'entree 83, avec ponctuation et accents</description>
+        <limites min="-83" max="830" ratio="10.375"/>
+        <raw><![CDATA[contenu brut 83 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 84 du catalogue, poids 42.0 -->
+    <item id="84" position="84" poids="42.0" actif="false">
+        <nom>lot-84</nom>
+        <description>description de l'entree 84, avec ponctuation et accents</description>
+        <limites min="-84" max="840" ratio="10.5"/>
+        <raw><![CDATA[contenu brut 84 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 85 du catalogue, poids 42.5 -->
+    <item id="85" position="85" poids="42.5" actif="true">
+        <nom>lot-85</nom>
+        <description>description de l'entree 85, avec ponctuation et accents</description>
+        <limites min="-85" max="850" ratio="10.625"/>
+        <raw><![CDATA[contenu brut 85 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 86 du catalogue, poids 43.0 -->
+    <item id="86" position="86" poids="43.0" actif="false">
+        <nom>lot-86</nom>
+        <description>description de l'entree 86, avec ponctuation et accents</description>
+        <limites min="-86" max="860" ratio="10.75"/>
+        <raw><![CDATA[contenu brut 86 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 87 du catalogue, poids 43.5 -->
+    <item id="87" position="87" poids="43.5" actif="true">
+        <nom>lot-87</nom>
+        <description>description de l'entree 87, avec ponctuation et accents</description>
+        <limites min="-87" max="870" ratio="10.875"/>
+        <raw><![CDATA[contenu brut 87 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 88 du catalogue, poids 44.0 -->
+    <item id="88" position="88" poids="44.0" actif="false">
+        <nom>lot-88</nom>
+        <description>description de l'entree 88, avec ponctuation et accents</description>
+        <limites min="-88" max="880" ratio="11.0"/>
+        <raw><![CDATA[contenu brut 88 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 89 du catalogue, poids 44.5 -->
+    <item id="89" position="89" poids="44.5" actif="true">
+        <nom>lot-89</nom>
+        <description>description de l'entree 89, avec ponctuation et accents</description>
+        <limites min="-89" max="890" ratio="11.125"/>
+        <raw><![CDATA[contenu brut 89 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 90 du catalogue, poids 45.0 -->
+    <item id="90" position="90" poids="45.0" actif="false">
+        <nom>lot-90</nom>
+        <description>description de l'entree 90, avec ponctuation et accents</description>
+        <limites min="-90" max="900" ratio="11.25"/>
+        <raw><![CDATA[contenu brut 90 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 91 du catalogue, poids 45.5 -->
+    <item id="91" position="91" poids="45.5" actif="true">
+        <nom>lot-91</nom>
+        <description>description de l'entree 91, avec ponctuation et accents</description>
+        <limites min="-91" max="910" ratio="11.375"/>
+        <raw><![CDATA[contenu brut 91 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 92 du catalogue, poids 46.0 -->
+    <item id="92" position="92" poids="46.0" actif="false">
+        <nom>lot-92</nom>
+        <description>description de l'entree 92, avec ponctuation et accents</description>
+        <limites min="-92" max="920" ratio="11.5"/>
+        <raw><![CDATA[contenu brut 92 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 93 du catalogue, poids 46.5 -->
+    <item id="93" position="93" poids="46.5" actif="true">
+        <nom>lot-93</nom>
+        <description>description de l'entree 93, avec ponctuation et accents</description>
+        <limites min="-93" max="930" ratio="11.625"/>
+        <raw><![CDATA[contenu brut 93 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 94 du catalogue, poids 47.0 -->
+    <item id="94" position="94" poids="47.0" actif="false">
+        <nom>lot-94</nom>
+        <description>description de l'entree 94, avec ponctuation et accents</description>
+        <limites min="-94" max="940" ratio="11.75"/>
+        <raw><![CDATA[contenu brut 94 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 95 du catalogue, poids 47.5 -->
+    <item id="95" position="95" poids="47.5" actif="true">
+        <nom>lot-95</nom>
+        <description>description de l'entree 95, avec ponctuation et accents</description>
+        <limites min="-95" max="950" ratio="11.875"/>
+        <raw><![CDATA[contenu brut 95 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 96 du catalogue, poids 48.0 -->
+    <item id="96" position="96" poids="48.0" actif="false">
+        <nom>lot-96</nom>
+        <description>description de l'entree 96, avec ponctuation et accents</description>
+        <limites min="-96" max="960" ratio="12.0"/>
+        <raw><![CDATA[contenu brut 96 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 97 du catalogue, poids 48.5 -->
+    <item id="97" position="97" poids="48.5" actif="true">
+        <nom>lot-97</nom>
+        <description>description de l'entree 97, avec ponctuation et accents</description>
+        <limites min="-97" max="970" ratio="12.125"/>
+        <raw><![CDATA[contenu brut 97 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 98 du catalogue, poids 49.0 -->
+    <item id="98" position="98" poids="49.0" actif="false">
+        <nom>lot-98</nom>
+        <description>description de l'entree 98, avec ponctuation et accents</description>
+        <limites min="-98" max="980" ratio="12.25"/>
+        <raw><![CDATA[contenu brut 98 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 99 du catalogue, poids 49.5 -->
+    <item id="99" position="99" poids="49.5" actif="true">
+        <nom>lot-99</nom>
+        <description>description de l'entree 99, avec ponctuation et accents</description>
+        <limites min="-99" max="990" ratio="12.375"/>
+        <raw><![CDATA[contenu brut 99 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 100 du catalogue, poids 50.0 -->
+    <item id="100" position="100" poids="50.0" actif="false">
+        <nom>lot-100</nom>
+        <description>description de l'entree 100, avec ponctuation et accents</description>
+        <limites min="-100" max="1000" ratio="12.5"/>
+        <raw><![CDATA[contenu brut 100 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 101 du catalogue, poids 50.5 -->
+    <item id="101" position="101" poids="50.5" actif="true">
+        <nom>lot-101</nom>
+        <description>description de l'entree 101, avec ponctuation et accents</description>
+        <limites min="-101" max="1010" ratio="12.625"/>
+        <raw><![CDATA[contenu brut 101 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 102 du catalogue, poids 51.0 -->
+    <item id="102" position="102" poids="51.0" actif="false">
+        <nom>lot-102</nom>
+        <description>description de l'entree 102, avec ponctuation et accents</description>
+        <limites min="-102" max="1020" ratio="12.75"/>
+        <raw><![CDATA[contenu brut 102 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 103 du catalogue, poids 51.5 -->
+    <item id="103" position="103" poids="51.5" actif="true">
+        <nom>lot-103</nom>
+        <description>description de l'entree 103, avec ponctuation et accents</description>
+        <limites min="-103" max="1030" ratio="12.875"/>
+        <raw><![CDATA[contenu brut 103 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 104 du catalogue, poids 52.0 -->
+    <item id="104" position="104" poids="52.0" actif="false">
+        <nom>lot-104</nom>
+        <description>description de l'entree 104, avec ponctuation et accents</description>
+        <limites min="-104" max="1040" ratio="13.0"/>
+        <raw><![CDATA[contenu brut 104 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 105 du catalogue, poids 52.5 -->
+    <item id="105" position="105" poids="52.5" actif="true">
+        <nom>lot-105</nom>
+        <description>description de l'entree 105, avec ponctuation et accents</description>
+        <limites min="-105" max="1050" ratio="13.125"/>
+        <raw><![CDATA[contenu brut 105 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 106 du catalogue, poids 53.0 -->
+    <item id="106" position="106" poids="53.0" actif="false">
+        <nom>lot-106</nom>
+        <description>description de l'entree 106, avec ponctuation et accents</description>
+        <limites min="-106" max="1060" ratio="13.25"/>
+        <raw><![CDATA[contenu brut 106 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 107 du catalogue, poids 53.5 -->
+    <item id="107" position="107" poids="53.5" actif="true">
+        <nom>lot-107</nom>
+        <description>description de l'entree 107, avec ponctuation et accents</description>
+        <limites min="-107" max="1070" ratio="13.375"/>
+        <raw><![CDATA[contenu brut 107 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 108 du catalogue, poids 54.0 -->
+    <item id="108" position="108" poids="54.0" actif="false">
+        <nom>lot-108</nom>
+        <description>description de l'entree 108, avec ponctuation et accents</description>
+        <limites min="-108" max="1080" ratio="13.5"/>
+        <raw><![CDATA[contenu brut 108 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 109 du catalogue, poids 54.5 -->
+    <item id="109" position="109" poids="54.5" actif="true">
+        <nom>lot-109</nom>
+        <description>description de l'entree 109, avec ponctuation et accents</description>
+        <limites min="-109" max="1090" ratio="13.625"/>
+        <raw><![CDATA[contenu brut 109 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 110 du catalogue, poids 55.0 -->
+    <item id="110" position="110" poids="55.0" actif="false">
+        <nom>lot-110</nom>
+        <description>description de l'entree 110, avec ponctuation et accents</description>
+        <limites min="-110" max="1100" ratio="13.75"/>
+        <raw><![CDATA[contenu brut 110 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 111 du catalogue, poids 55.5 -->
+    <item id="111" position="111" poids="55.5" actif="true">
+        <nom>lot-111</nom>
+        <description>description de l'entree 111, avec ponctuation et accents</description>
+        <limites min="-111" max="1110" ratio="13.875"/>
+        <raw><![CDATA[contenu brut 111 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 112 du catalogue, poids 56.0 -->
+    <item id="112" position="112" poids="56.0" actif="false">
+        <nom>lot-112</nom>
+        <description>description de l'entree 112, avec ponctuation et accents</description>
+        <limites min="-112" max="1120" ratio="14.0"/>
+        <raw><![CDATA[contenu brut 112 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 113 du catalogue, poids 56.5 -->
+    <item id="113" position="113" poids="56.5" actif="true">
+        <nom>lot-113</nom>
+        <description>description de l'entree 113, avec ponctuation et accents</description>
+        <limites min="-113" max="1130" ratio="14.125"/>
+        <raw><![CDATA[contenu brut 113 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 114 du catalogue, poids 57.0 -->
+    <item id="114" position="114" poids="57.0" actif="false">
+        <nom>lot-114</nom>
+        <description>description de l'entree 114, avec ponctuation et accents</description>
+        <limites min="-114" max="1140" ratio="14.25"/>
+        <raw><![CDATA[contenu brut 114 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 115 du catalogue, poids 57.5 -->
+    <item id="115" position="115" poids="57.5" actif="true">
+        <nom>lot-115</nom>
+        <description>description de l'entree 115, avec ponctuation et accents</description>
+        <limites min="-115" max="1150" ratio="14.375"/>
+        <raw><![CDATA[contenu brut 115 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 116 du catalogue, poids 58.0 -->
+    <item id="116" position="116" poids="58.0" actif="false">
+        <nom>lot-116</nom>
+        <description>description de l'entree 116, avec ponctuation et accents</description>
+        <limites min="-116" max="1160" ratio="14.5"/>
+        <raw><![CDATA[contenu brut 116 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 117 du catalogue, poids 58.5 -->
+    <item id="117" position="117" poids="58.5" actif="true">
+        <nom>lot-117</nom>
+        <description>description de l'entree 117, avec ponctuation et accents</description>
+        <limites min="-117" max="1170" ratio="14.625"/>
+        <raw><![CDATA[contenu brut 117 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 118 du catalogue, poids 59.0 -->
+    <item id="118" position="118" poids="59.0" actif="false">
+        <nom>lot-118</nom>
+        <description>description de l'entree 118, avec ponctuation et accents</description>
+        <limites min="-118" max="1180" ratio="14.75"/>
+        <raw><![CDATA[contenu brut 118 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 119 du catalogue, poids 59.5 -->
+    <item id="119" position="119" poids="59.5" actif="true">
+        <nom>lot-119</nom>
+        <description>description de l'entree 119, avec ponctuation et accents</description>
+        <limites min="-119" max="1190" ratio="14.875"/>
+        <raw><![CDATA[contenu brut 119 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 120 du catalogue, poids 60.0 -->
+    <item id="120" position="120" poids="60.0" actif="false">
+        <nom>lot-120</nom>
+        <description>description de l'entree 120, avec ponctuation et accents</description>
+        <limites min="-120" max="1200" ratio="15.0"/>
+        <raw><![CDATA[contenu brut 120 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 121 du catalogue, poids 60.5 -->
+    <item id="121" position="121" poids="60.5" actif="true">
+        <nom>lot-121</nom>
+        <description>description de l'entree 121, avec ponctuation et accents</description>
+        <limites min="-121" max="1210" ratio="15.125"/>
+        <raw><![CDATA[contenu brut 121 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 122 du catalogue, poids 61.0 -->
+    <item id="122" position="122" poids="61.0" actif="false">
+        <nom>lot-122</nom>
+        <description>description de l'entree 122, avec ponctuation et accents</description>
+        <limites min="-122" max="1220" ratio="15.25"/>
+        <raw><![CDATA[contenu brut 122 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 123 du catalogue, poids 61.5 -->
+    <item id="123" position="123" poids="61.5" actif="true">
+        <nom>lot-123</nom>
+        <description>description de l'entree 123, avec ponctuation et accents</description>
+        <limites min="-123" max="1230" ratio="15.375"/>
+        <raw><![CDATA[contenu brut 123 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 124 du catalogue, poids 62.0 -->
+    <item id="124" position="124" poids="62.0" actif="false">
+        <nom>lot-124</nom>
+        <description>description de l'entree 124, avec ponctuation et accents</description>
+        <limites min="-124" max="1240" ratio="15.5"/>
+        <raw><![CDATA[contenu brut 124 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 125 du catalogue, poids 62.5 -->
+    <item id="125" position="125" poids="62.5" actif="true">
+        <nom>lot-125</nom>
+        <description>description de l'entree 125, avec ponctuation et accents</description>
+        <limites min="-125" max="1250" ratio="15.625"/>
+        <raw><![CDATA[contenu brut 125 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 126 du catalogue, poids 63.0 -->
+    <item id="126" position="126" poids="63.0" actif="false">
+        <nom>lot-126</nom>
+        <description>description de l'entree 126, avec ponctuation et accents</description>
+        <limites min="-126" max="1260" ratio="15.75"/>
+        <raw><![CDATA[contenu brut 126 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 127 du catalogue, poids 63.5 -->
+    <item id="127" position="127" poids="63.5" actif="true">
+        <nom>lot-127</nom>
+        <description>description de l'entree 127, avec ponctuation et accents</description>
+        <limites min="-127" max="1270" ratio="15.875"/>
+        <raw><![CDATA[contenu brut 127 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 128 du catalogue, poids 64.0 -->
+    <item id="128" position="128" poids="64.0" actif="false">
+        <nom>lot-128</nom>
+        <description>description de l'entree 128, avec ponctuation et accents</description>
+        <limites min="-128" max="1280" ratio="16.0"/>
+        <raw><![CDATA[contenu brut 128 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 129 du catalogue, poids 64.5 -->
+    <item id="129" position="129" poids="64.5" actif="true">
+        <nom>lot-129</nom>
+        <description>description de l'entree 129, avec ponctuation et accents</description>
+        <limites min="-129" max="1290" ratio="16.125"/>
+        <raw><![CDATA[contenu brut 129 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 130 du catalogue, poids 65.0 -->
+    <item id="130" position="130" poids="65.0" actif="false">
+        <nom>lot-130</nom>
+        <description>description de l'entree 130, avec ponctuation et accents</description>
+        <limites min="-130" max="1300" ratio="16.25"/>
+        <raw><![CDATA[contenu brut 130 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 131 du catalogue, poids 65.5 -->
+    <item id="131" position="131" poids="65.5" actif="true">
+        <nom>lot-131</nom>
+        <description>description de l'entree 131, avec ponctuation et accents</description>
+        <limites min="-131" max="1310" ratio="16.375"/>
+        <raw><![CDATA[contenu brut 131 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 132 du catalogue, poids 66.0 -->
+    <item id="132" position="132" poids="66.0" actif="false">
+        <nom>lot-132</nom>
+        <description>description de l'entree 132, avec ponctuation et accents</description>
+        <limites min="-132" max="1320" ratio="16.5"/>
+        <raw><![CDATA[contenu brut 132 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 133 du catalogue, poids 66.5 -->
+    <item id="133" position="133" poids="66.5" actif="true">
+        <nom>lot-133</nom>
+        <description>description de l'entree 133, avec ponctuation et accents</description>
+        <limites min="-133" max="1330" ratio="16.625"/>
+        <raw><![CDATA[contenu brut 133 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 134 du catalogue, poids 67.0 -->
+    <item id="134" position="134" poids="67.0" actif="false">
+        <nom>lot-134</nom>
+        <description>description de l'entree 134, avec ponctuation et accents</description>
+        <limites min="-134" max="1340" ratio="16.75"/>
+        <raw><![CDATA[contenu brut 134 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 135 du catalogue, poids 67.5 -->
+    <item id="135" position="135" poids="67.5" actif="true">
+        <nom>lot-135</nom>
+        <description>description de l'entree 135, avec ponctuation et accents</description>
+        <limites min="-135" max="1350" ratio="16.875"/>
+        <raw><![CDATA[contenu brut 135 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 136 du catalogue, poids 68.0 -->
+    <item id="136" position="136" poids="68.0" actif="false">
+        <nom>lot-136</nom>
+        <description>description de l'entree 136, avec ponctuation et accents</description>
+        <limites min="-136" max="1360" ratio="17.0"/>
+        <raw><![CDATA[contenu brut 136 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 137 du catalogue, poids 68.5 -->
+    <item id="137" position="137" poids="68.5" actif="true">
+        <nom>lot-137</nom>
+        <description>description de l'entree 137, avec ponctuation et accents</description>
+        <limites min="-137" max="1370" ratio="17.125"/>
+        <raw><![CDATA[contenu brut 137 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 138 du catalogue, poids 69.0 -->
+    <item id="138" position="138" poids="69.0" actif="false">
+        <nom>lot-138</nom>
+        <description>description de l'entree 138, avec ponctuation et accents</description>
+        <limites min="-138" max="1380" ratio="17.25"/>
+        <raw><![CDATA[contenu brut 138 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 139 du catalogue, poids 69.5 -->
+    <item id="139" position="139" poids="69.5" actif="true">
+        <nom>lot-139</nom>
+        <description>description de l'entree 139, avec ponctuation et accents</description>
+        <limites min="-139" max="1390" ratio="17.375"/>
+        <raw><![CDATA[contenu brut 139 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 140 du catalogue, poids 70.0 -->
+    <item id="140" position="140" poids="70.0" actif="false">
+        <nom>lot-140</nom>
+        <description>description de l'entree 140, avec ponctuation et accents</description>
+        <limites min="-140" max="1400" ratio="17.5"/>
+        <raw><![CDATA[contenu brut 140 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 141 du catalogue, poids 70.5 -->
+    <item id="141" position="141" poids="70.5" actif="true">
+        <nom>lot-141</nom>
+        <description>description de l'entree 141, avec ponctuation et accents</description>
+        <limites min="-141" max="1410" ratio="17.625"/>
+        <raw><![CDATA[contenu brut 141 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 142 du catalogue, poids 71.0 -->
+    <item id="142" position="142" poids="71.0" actif="false">
+        <nom>lot-142</nom>
+        <description>description de l'entree 142, avec ponctuation et accents</description>
+        <limites min="-142" max="1420" ratio="17.75"/>
+        <raw><![CDATA[contenu brut 142 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 143 du catalogue, poids 71.5 -->
+    <item id="143" position="143" poids="71.5" actif="true">
+        <nom>lot-143</nom>
+        <description>description de l'entree 143, avec ponctuation et accents</description>
+        <limites min="-143" max="1430" ratio="17.875"/>
+        <raw><![CDATA[contenu brut 143 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 144 du catalogue, poids 72.0 -->
+    <item id="144" position="144" poids="72.0" actif="false">
+        <nom>lot-144</nom>
+        <description>description de l'entree 144, avec ponctuation et accents</description>
+        <limites min="-144" max="1440" ratio="18.0"/>
+        <raw><![CDATA[contenu brut 144 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 145 du catalogue, poids 72.5 -->
+    <item id="145" position="145" poids="72.5" actif="true">
+        <nom>lot-145</nom>
+        <description>description de l'entree 145, avec ponctuation et accents</description>
+        <limites min="-145" max="1450" ratio="18.125"/>
+        <raw><![CDATA[contenu brut 145 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 146 du catalogue, poids 73.0 -->
+    <item id="146" position="146" poids="73.0" actif="false">
+        <nom>lot-146</nom>
+        <description>description de l'entree 146, avec ponctuation et accents</description>
+        <limites min="-146" max="1460" ratio="18.25"/>
+        <raw><![CDATA[contenu brut 146 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 147 du catalogue, poids 73.5 -->
+    <item id="147" position="147" poids="73.5" actif="true">
+        <nom>lot-147</nom>
+        <description>description de l'entree 147, avec ponctuation et accents</description>
+        <limites min="-147" max="1470" ratio="18.375"/>
+        <raw><![CDATA[contenu brut 147 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 148 du catalogue, poids 74.0 -->
+    <item id="148" position="148" poids="74.0" actif="false">
+        <nom>lot-148</nom>
+        <description>description de l'entree 148, avec ponctuation et accents</description>
+        <limites min="-148" max="1480" ratio="18.5"/>
+        <raw><![CDATA[contenu brut 148 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 149 du catalogue, poids 74.5 -->
+    <item id="149" position="149" poids="74.5" actif="true">
+        <nom>lot-149</nom>
+        <description>description de l'entree 149, avec ponctuation et accents</description>
+        <limites min="-149" max="1490" ratio="18.625"/>
+        <raw><![CDATA[contenu brut 149 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 150 du catalogue, poids 75.0 -->
+    <item id="150" position="150" poids="75.0" actif="false">
+        <nom>lot-150</nom>
+        <description>description de l'entree 150, avec ponctuation et accents</description>
+        <limites min="-150" max="1500" ratio="18.75"/>
+        <raw><![CDATA[contenu brut 150 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 151 du catalogue, poids 75.5 -->
+    <item id="151" position="151" poids="75.5" actif="true">
+        <nom>lot-151</nom>
+        <description>description de l'entree 151, avec ponctuation et accents</description>
+        <limites min="-151" max="1510" ratio="18.875"/>
+        <raw><![CDATA[contenu brut 151 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 152 du catalogue, poids 76.0 -->
+    <item id="152" position="152" poids="76.0" actif="false">
+        <nom>lot-152</nom>
+        <description>description de l'entree 152, avec ponctuation et accents</description>
+        <limites min="-152" max="1520" ratio="19.0"/>
+        <raw><![CDATA[contenu brut 152 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 153 du catalogue, poids 76.5 -->
+    <item id="153" position="153" poids="76.5" actif="true">
+        <nom>lot-153</nom>
+        <description>description de l'entree 153, avec ponctuation et accents</description>
+        <limites min="-153" max="1530" ratio="19.125"/>
+        <raw><![CDATA[contenu brut 153 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 154 du catalogue, poids 77.0 -->
+    <item id="154" position="154" poids="77.0" actif="false">
+        <nom>lot-154</nom>
+        <description>description de l'entree 154, avec ponctuation et accents</description>
+        <limites min="-154" max="1540" ratio="19.25"/>
+        <raw><![CDATA[contenu brut 154 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 155 du catalogue, poids 77.5 -->
+    <item id="155" position="155" poids="77.5" actif="true">
+        <nom>lot-155</nom>
+        <description>description de l'entree 155, avec ponctuation et accents</description>
+        <limites min="-155" max="1550" ratio="19.375"/>
+        <raw><![CDATA[contenu brut 155 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 156 du catalogue, poids 78.0 -->
+    <item id="156" position="156" poids="78.0" actif="false">
+        <nom>lot-156</nom>
+        <description>description de l'entree 156, avec ponctuation et accents</description>
+        <limites min="-156" max="1560" ratio="19.5"/>
+        <raw><![CDATA[contenu brut 156 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 157 du catalogue, poids 78.5 -->
+    <item id="157" position="157" poids="78.5" actif="true">
+        <nom>lot-157</nom>
+        <description>description de l'entree 157, avec ponctuation et accents</description>
+        <limites min="-157" max="1570" ratio="19.625"/>
+        <raw><![CDATA[contenu brut 157 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 158 du catalogue, poids 79.0 -->
+    <item id="158" position="158" poids="79.0" actif="false">
+        <nom>lot-158</nom>
+        <description>description de l'entree 158, avec ponctuation et accents</description>
+        <limites min="-158" max="1580" ratio="19.75"/>
+        <raw><![CDATA[contenu brut 158 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 159 du catalogue, poids 79.5 -->
+    <item id="159" position="159" poids="79.5" actif="true">
+        <nom>lot-159</nom>
+        <description>description de l'entree 159, avec ponctuation et accents</description>
+        <limites min="-159" max="1590" ratio="19.875"/>
+        <raw><![CDATA[contenu brut 159 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 160 du catalogue, poids 80.0 -->
+    <item id="160" position="160" poids="80.0" actif="false">
+        <nom>lot-160</nom>
+        <description>description de l'entree 160, avec ponctuation et accents</description>
+        <limites min="-160" max="1600" ratio="20.0"/>
+        <raw><![CDATA[contenu brut 160 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 161 du catalogue, poids 80.5 -->
+    <item id="161" position="161" poids="80.5" actif="true">
+        <nom>lot-161</nom>
+        <description>description de l'entree 161, avec ponctuation et accents</description>
+        <limites min="-161" max="1610" ratio="20.125"/>
+        <raw><![CDATA[contenu brut 161 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 162 du catalogue, poids 81.0 -->
+    <item id="162" position="162" poids="81.0" actif="false">
+        <nom>lot-162</nom>
+        <description>description de l'entree 162, avec ponctuation et accents</description>
+        <limites min="-162" max="1620" ratio="20.25"/>
+        <raw><![CDATA[contenu brut 162 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 163 du catalogue, poids 81.5 -->
+    <item id="163" position="163" poids="81.5" actif="true">
+        <nom>lot-163</nom>
+        <description>description de l'entree 163, avec ponctuation et accents</description>
+        <limites min="-163" max="1630" ratio="20.375"/>
+        <raw><![CDATA[contenu brut 163 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 164 du catalogue, poids 82.0 -->
+    <item id="164" position="164" poids="82.0" actif="false">
+        <nom>lot-164</nom>
+        <description>description de l'entree 164, avec ponctuation et accents</description>
+        <limites min="-164" max="1640" ratio="20.5"/>
+        <raw><![CDATA[contenu brut 164 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 165 du catalogue, poids 82.5 -->
+    <item id="165" position="165" poids="82.5" actif="true">
+        <nom>lot-165</nom>
+        <description>description de l'entree 165, avec ponctuation et accents</description>
+        <limites min="-165" max="1650" ratio="20.625"/>
+        <raw><![CDATA[contenu brut 165 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 166 du catalogue, poids 83.0 -->
+    <item id="166" position="166" poids="83.0" actif="false">
+        <nom>lot-166</nom>
+        <description>description de l'entree 166, avec ponctuation et accents</description>
+        <limites min="-166" max="1660" ratio="20.75"/>
+        <raw><![CDATA[contenu brut 166 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 167 du catalogue, poids 83.5 -->
+    <item id="167" position="167" poids="83.5" actif="true">
+        <nom>lot-167</nom>
+        <description>description de l'entree 167, avec ponctuation et accents</description>
+        <limites min="-167" max="1670" ratio="20.875"/>
+        <raw><![CDATA[contenu brut 167 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 168 du catalogue, poids 84.0 -->
+    <item id="168" position="168" poids="84.0" actif="false">
+        <nom>lot-168</nom>
+        <description>description de l'entree 168, avec ponctuation et accents</description>
+        <limites min="-168" max="1680" ratio="21.0"/>
+        <raw><![CDATA[contenu brut 168 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 169 du catalogue, poids 84.5 -->
+    <item id="169" position="169" poids="84.5" actif="true">
+        <nom>lot-169</nom>
+        <description>description de l'entree 169, avec ponctuation et accents</description>
+        <limites min="-169" max="1690" ratio="21.125"/>
+        <raw><![CDATA[contenu brut 169 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 170 du catalogue, poids 85.0 -->
+    <item id="170" position="170" poids="85.0" actif="false">
+        <nom>lot-170</nom>
+        <description>description de l'entree 170, avec ponctuation et accents</description>
+        <limites min="-170" max="1700" ratio="21.25"/>
+        <raw><![CDATA[contenu brut 170 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 171 du catalogue, poids 85.5 -->
+    <item id="171" position="171" poids="85.5" actif="true">
+        <nom>lot-171</nom>
+        <description>description de l'entree 171, avec ponctuation et accents</description>
+        <limites min="-171" max="1710" ratio="21.375"/>
+        <raw><![CDATA[contenu brut 171 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 172 du catalogue, poids 86.0 -->
+    <item id="172" position="172" poids="86.0" actif="false">
+        <nom>lot-172</nom>
+        <description>description de l'entree 172, avec ponctuation et accents</description>
+        <limites min="-172" max="1720" ratio="21.5"/>
+        <raw><![CDATA[contenu brut 172 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 173 du catalogue, poids 86.5 -->
+    <item id="173" position="173" poids="86.5" actif="true">
+        <nom>lot-173</nom>
+        <description>description de l'entree 173, avec ponctuation et accents</description>
+        <limites min="-173" max="1730" ratio="21.625"/>
+        <raw><![CDATA[contenu brut 173 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 174 du catalogue, poids 87.0 -->
+    <item id="174" position="174" poids="87.0" actif="false">
+        <nom>lot-174</nom>
+        <description>description de l'entree 174, avec ponctuation et accents</description>
+        <limites min="-174" max="1740" ratio="21.75"/>
+        <raw><![CDATA[contenu brut 174 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 175 du catalogue, poids 87.5 -->
+    <item id="175" position="175" poids="87.5" actif="true">
+        <nom>lot-175</nom>
+        <description>description de l'entree 175, avec ponctuation et accents</description>
+        <limites min="-175" max="1750" ratio="21.875"/>
+        <raw><![CDATA[contenu brut 175 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 176 du catalogue, poids 88.0 -->
+    <item id="176" position="176" poids="88.0" actif="false">
+        <nom>lot-176</nom>
+        <description>description de l'entree 176, avec ponctuation et accents</description>
+        <limites min="-176" max="1760" ratio="22.0"/>
+        <raw><![CDATA[contenu brut 176 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 177 du catalogue, poids 88.5 -->
+    <item id="177" position="177" poids="88.5" actif="true">
+        <nom>lot-177</nom>
+        <description>description de l'entree 177, avec ponctuation et accents</description>
+        <limites min="-177" max="1770" ratio="22.125"/>
+        <raw><![CDATA[contenu brut 177 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 178 du catalogue, poids 89.0 -->
+    <item id="178" position="178" poids="89.0" actif="false">
+        <nom>lot-178</nom>
+        <description>description de l'entree 178, avec ponctuation et accents</description>
+        <limites min="-178" max="1780" ratio="22.25"/>
+        <raw><![CDATA[contenu brut 178 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 179 du catalogue, poids 89.5 -->
+    <item id="179" position="179" poids="89.5" actif="true">
+        <nom>lot-179</nom>
+        <description>description de l'entree 179, avec ponctuation et accents</description>
+        <limites min="-179" max="1790" ratio="22.375"/>
+        <raw><![CDATA[contenu brut 179 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 180 du catalogue, poids 90.0 -->
+    <item id="180" position="180" poids="90.0" actif="false">
+        <nom>lot-180</nom>
+        <description>description de l'entree 180, avec ponctuation et accents</description>
+        <limites min="-180" max="1800" ratio="22.5"/>
+        <raw><![CDATA[contenu brut 180 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 181 du catalogue, poids 90.5 -->
+    <item id="181" position="181" poids="90.5" actif="true">
+        <nom>lot-181</nom>
+        <description>description de l'entree 181, avec ponctuation et accents</description>
+        <limites min="-181" max="1810" ratio="22.625"/>
+        <raw><![CDATA[contenu brut 181 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 182 du catalogue, poids 91.0 -->
+    <item id="182" position="182" poids="91.0" actif="false">
+        <nom>lot-182</nom>
+        <description>description de l'entree 182, avec ponctuation et accents</description>
+        <limites min="-182" max="1820" ratio="22.75"/>
+        <raw><![CDATA[contenu brut 182 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 183 du catalogue, poids 91.5 -->
+    <item id="183" position="183" poids="91.5" actif="true">
+        <nom>lot-183</nom>
+        <description>description de l'entree 183, avec ponctuation et accents</description>
+        <limites min="-183" max="1830" ratio="22.875"/>
+        <raw><![CDATA[contenu brut 183 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 184 du catalogue, poids 92.0 -->
+    <item id="184" position="184" poids="92.0" actif="false">
+        <nom>lot-184</nom>
+        <description>description de l'entree 184, avec ponctuation et accents</description>
+        <limites min="-184" max="1840" ratio="23.0"/>
+        <raw><![CDATA[contenu brut 184 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 185 du catalogue, poids 92.5 -->
+    <item id="185" position="185" poids="92.5" actif="true">
+        <nom>lot-185</nom>
+        <description>description de l'entree 185, avec ponctuation et accents</description>
+        <limites min="-185" max="1850" ratio="23.125"/>
+        <raw><![CDATA[contenu brut 185 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 186 du catalogue, poids 93.0 -->
+    <item id="186" position="186" poids="93.0" actif="false">
+        <nom>lot-186</nom>
+        <description>description de l'entree 186, avec ponctuation et accents</description>
+        <limites min="-186" max="1860" ratio="23.25"/>
+        <raw><![CDATA[contenu brut 186 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 187 du catalogue, poids 93.5 -->
+    <item id="187" position="187" poids="93.5" actif="true">
+        <nom>lot-187</nom>
+        <description>description de l'entree 187, avec ponctuation et accents</description>
+        <limites min="-187" max="1870" ratio="23.375"/>
+        <raw><![CDATA[contenu brut 187 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 188 du catalogue, poids 94.0 -->
+    <item id="188" position="188" poids="94.0" actif="false">
+        <nom>lot-188</nom>
+        <description>description de l'entree 188, avec ponctuation et accents</description>
+        <limites min="-188" max="1880" ratio="23.5"/>
+        <raw><![CDATA[contenu brut 188 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 189 du catalogue, poids 94.5 -->
+    <item id="189" position="189" poids="94.5" actif="true">
+        <nom>lot-189</nom>
+        <description>description de l'entree 189, avec ponctuation et accents</description>
+        <limites min="-189" max="1890" ratio="23.625"/>
+        <raw><![CDATA[contenu brut 189 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 190 du catalogue, poids 95.0 -->
+    <item id="190" position="190" poids="95.0" actif="false">
+        <nom>lot-190</nom>
+        <description>description de l'entree 190, avec ponctuation et accents</description>
+        <limites min="-190" max="1900" ratio="23.75"/>
+        <raw><![CDATA[contenu brut 190 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 191 du catalogue, poids 95.5 -->
+    <item id="191" position="191" poids="95.5" actif="true">
+        <nom>lot-191</nom>
+        <description>description de l'entree 191, avec ponctuation et accents</description>
+        <limites min="-191" max="1910" ratio="23.875"/>
+        <raw><![CDATA[contenu brut 191 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 192 du catalogue, poids 96.0 -->
+    <item id="192" position="192" poids="96.0" actif="false">
+        <nom>lot-192</nom>
+        <description>description de l'entree 192, avec ponctuation et accents</description>
+        <limites min="-192" max="1920" ratio="24.0"/>
+        <raw><![CDATA[contenu brut 192 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 193 du catalogue, poids 96.5 -->
+    <item id="193" position="193" poids="96.5" actif="true">
+        <nom>lot-193</nom>
+        <description>description de l'entree 193, avec ponctuation et accents</description>
+        <limites min="-193" max="1930" ratio="24.125"/>
+        <raw><![CDATA[contenu brut 193 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 194 du catalogue, poids 97.0 -->
+    <item id="194" position="194" poids="97.0" actif="false">
+        <nom>lot-194</nom>
+        <description>description de l'entree 194, avec ponctuation et accents</description>
+        <limites min="-194" max="1940" ratio="24.25"/>
+        <raw><![CDATA[contenu brut 194 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 195 du catalogue, poids 97.5 -->
+    <item id="195" position="195" poids="97.5" actif="true">
+        <nom>lot-195</nom>
+        <description>description de l'entree 195, avec ponctuation et accents</description>
+        <limites min="-195" max="1950" ratio="24.375"/>
+        <raw><![CDATA[contenu brut 195 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 196 du catalogue, poids 98.0 -->
+    <item id="196" position="196" poids="98.0" actif="false">
+        <nom>lot-196</nom>
+        <description>description de l'entree 196, avec ponctuation et accents</description>
+        <limites min="-196" max="1960" ratio="24.5"/>
+        <raw><![CDATA[contenu brut 196 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 197 du catalogue, poids 98.5 -->
+    <item id="197" position="197" poids="98.5" actif="true">
+        <nom>lot-197</nom>
+        <description>description de l'entree 197, avec ponctuation et accents</description>
+        <limites min="-197" max="1970" ratio="24.625"/>
+        <raw><![CDATA[contenu brut 197 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 198 du catalogue, poids 99.0 -->
+    <item id="198" position="198" poids="99.0" actif="false">
+        <nom>lot-198</nom>
+        <description>description de l'entree 198, avec ponctuation et accents</description>
+        <limites min="-198" max="1980" ratio="24.75"/>
+        <raw><![CDATA[contenu brut 198 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 199 du catalogue, poids 99.5 -->
+    <item id="199" position="199" poids="99.5" actif="true">
+        <nom>lot-199</nom>
+        <description>description de l'entree 199, avec ponctuation et accents</description>
+        <limites min="-199" max="1990" ratio="24.875"/>
+        <raw><![CDATA[contenu brut 199 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 200 du catalogue, poids 100.0 -->
+    <item id="200" position="200" poids="100.0" actif="false">
+        <nom>lot-200</nom>
+        <description>description de l'entree 200, avec ponctuation et accents</description>
+        <limites min="-200" max="2000" ratio="25.0"/>
+        <raw><![CDATA[contenu brut 200 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 201 du catalogue, poids 100.5 -->
+    <item id="201" position="201" poids="100.5" actif="true">
+        <nom>lot-201</nom>
+        <description>description de l'entree 201, avec ponctuation et accents</description>
+        <limites min="-201" max="2010" ratio="25.125"/>
+        <raw><![CDATA[contenu brut 201 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 202 du catalogue, poids 101.0 -->
+    <item id="202" position="202" poids="101.0" actif="false">
+        <nom>lot-202</nom>
+        <description>description de l'entree 202, avec ponctuation et accents</description>
+        <limites min="-202" max="2020" ratio="25.25"/>
+        <raw><![CDATA[contenu brut 202 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 203 du catalogue, poids 101.5 -->
+    <item id="203" position="203" poids="101.5" actif="true">
+        <nom>lot-203</nom>
+        <description>description de l'entree 203, avec ponctuation et accents</description>
+        <limites min="-203" max="2030" ratio="25.375"/>
+        <raw><![CDATA[contenu brut 203 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 204 du catalogue, poids 102.0 -->
+    <item id="204" position="204" poids="102.0" actif="false">
+        <nom>lot-204</nom>
+        <description>description de l'entree 204, avec ponctuation et accents</description>
+        <limites min="-204" max="2040" ratio="25.5"/>
+        <raw><![CDATA[contenu brut 204 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 205 du catalogue, poids 102.5 -->
+    <item id="205" position="205" poids="102.5" actif="true">
+        <nom>lot-205</nom>
+        <description>description de l'entree 205, avec ponctuation et accents</description>
+        <limites min="-205" max="2050" ratio="25.625"/>
+        <raw><![CDATA[contenu brut 205 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 206 du catalogue, poids 103.0 -->
+    <item id="206" position="206" poids="103.0" actif="false">
+        <nom>lot-206</nom>
+        <description>description de l'entree 206, avec ponctuation et accents</description>
+        <limites min="-206" max="2060" ratio="25.75"/>
+        <raw><![CDATA[contenu brut 206 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 207 du catalogue, poids 103.5 -->
+    <item id="207" position="207" poids="103.5" actif="true">
+        <nom>lot-207</nom>
+        <description>description de l'entree 207, avec ponctuation et accents</description>
+        <limites min="-207" max="2070" ratio="25.875"/>
+        <raw><![CDATA[contenu brut 207 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 208 du catalogue, poids 104.0 -->
+    <item id="208" position="208" poids="104.0" actif="false">
+        <nom>lot-208</nom>
+        <description>description de l'entree 208, avec ponctuation et accents</description>
+        <limites min="-208" max="2080" ratio="26.0"/>
+        <raw><![CDATA[contenu brut 208 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 209 du catalogue, poids 104.5 -->
+    <item id="209" position="209" poids="104.5" actif="true">
+        <nom>lot-209</nom>
+        <description>description de l'entree 209, avec ponctuation et accents</description>
+        <limites min="-209" max="2090" ratio="26.125"/>
+        <raw><![CDATA[contenu brut 209 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 210 du catalogue, poids 105.0 -->
+    <item id="210" position="210" poids="105.0" actif="false">
+        <nom>lot-210</nom>
+        <description>description de l'entree 210, avec ponctuation et accents</description>
+        <limites min="-210" max="2100" ratio="26.25"/>
+        <raw><![CDATA[contenu brut 210 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 211 du catalogue, poids 105.5 -->
+    <item id="211" position="211" poids="105.5" actif="true">
+        <nom>lot-211</nom>
+        <description>description de l'entree 211, avec ponctuation et accents</description>
+        <limites min="-211" max="2110" ratio="26.375"/>
+        <raw><![CDATA[contenu brut 211 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 212 du catalogue, poids 106.0 -->
+    <item id="212" position="212" poids="106.0" actif="false">
+        <nom>lot-212</nom>
+        <description>description de l'entree 212, avec ponctuation et accents</description>
+        <limites min="-212" max="2120" ratio="26.5"/>
+        <raw><![CDATA[contenu brut 212 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 213 du catalogue, poids 106.5 -->
+    <item id="213" position="213" poids="106.5" actif="true">
+        <nom>lot-213</nom>
+        <description>description de l'entree 213, avec ponctuation et accents</description>
+        <limites min="-213" max="2130" ratio="26.625"/>
+        <raw><![CDATA[contenu brut 213 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 214 du catalogue, poids 107.0 -->
+    <item id="214" position="214" poids="107.0" actif="false">
+        <nom>lot-214</nom>
+        <description>description de l'entree 214, avec ponctuation et accents</description>
+        <limites min="-214" max="2140" ratio="26.75"/>
+        <raw><![CDATA[contenu brut 214 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 215 du catalogue, poids 107.5 -->
+    <item id="215" position="215" poids="107.5" actif="true">
+        <nom>lot-215</nom>
+        <description>description de l'entree 215, avec ponctuation et accents</description>
+        <limites min="-215" max="2150" ratio="26.875"/>
+        <raw><![CDATA[contenu brut 215 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 216 du catalogue, poids 108.0 -->
+    <item id="216" position="216" poids="108.0" actif="false">
+        <nom>lot-216</nom>
+        <description>description de l'entree 216, avec ponctuation et accents</description>
+        <limites min="-216" max="2160" ratio="27.0"/>
+        <raw><![CDATA[contenu brut 216 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 217 du catalogue, poids 108.5 -->
+    <item id="217" position="217" poids="108.5" actif="true">
+        <nom>lot-217</nom>
+        <description>description de l'entree 217, avec ponctuation et accents</description>
+        <limites min="-217" max="2170" ratio="27.125"/>
+        <raw><![CDATA[contenu brut 217 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 218 du catalogue, poids 109.0 -->
+    <item id="218" position="218" poids="109.0" actif="false">
+        <nom>lot-218</nom>
+        <description>description de l'entree 218, avec ponctuation et accents</description>
+        <limites min="-218" max="2180" ratio="27.25"/>
+        <raw><![CDATA[contenu brut 218 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 219 du catalogue, poids 109.5 -->
+    <item id="219" position="219" poids="109.5" actif="true">
+        <nom>lot-219</nom>
+        <description>description de l'entree 219, avec ponctuation et accents</description>
+        <limites min="-219" max="2190" ratio="27.375"/>
+        <raw><![CDATA[contenu brut 219 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 220 du catalogue, poids 110.0 -->
+    <item id="220" position="220" poids="110.0" actif="false">
+        <nom>lot-220</nom>
+        <description>description de l'entree 220, avec ponctuation et accents</description>
+        <limites min="-220" max="2200" ratio="27.5"/>
+        <raw><![CDATA[contenu brut 220 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 221 du catalogue, poids 110.5 -->
+    <item id="221" position="221" poids="110.5" actif="true">
+        <nom>lot-221</nom>
+        <description>description de l'entree 221, avec ponctuation et accents</description>
+        <limites min="-221" max="2210" ratio="27.625"/>
+        <raw><![CDATA[contenu brut 221 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 222 du catalogue, poids 111.0 -->
+    <item id="222" position="222" poids="111.0" actif="false">
+        <nom>lot-222</nom>
+        <description>description de l'entree 222, avec ponctuation et accents</description>
+        <limites min="-222" max="2220" ratio="27.75"/>
+        <raw><![CDATA[contenu brut 222 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 223 du catalogue, poids 111.5 -->
+    <item id="223" position="223" poids="111.5" actif="true">
+        <nom>lot-223</nom>
+        <description>description de l'entree 223, avec ponctuation et accents</description>
+        <limites min="-223" max="2230" ratio="27.875"/>
+        <raw><![CDATA[contenu brut 223 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 224 du catalogue, poids 112.0 -->
+    <item id="224" position="224" poids="112.0" actif="false">
+        <nom>lot-224</nom>
+        <description>description de l'entree 224, avec ponctuation et accents</description>
+        <limites min="-224" max="2240" ratio="28.0"/>
+        <raw><![CDATA[contenu brut 224 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 225 du catalogue, poids 112.5 -->
+    <item id="225" position="225" poids="112.5" actif="true">
+        <nom>lot-225</nom>
+        <description>description de l'entree 225, avec ponctuation et accents</description>
+        <limites min="-225" max="2250" ratio="28.125"/>
+        <raw><![CDATA[contenu brut 225 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 226 du catalogue, poids 113.0 -->
+    <item id="226" position="226" poids="113.0" actif="false">
+        <nom>lot-226</nom>
+        <description>description de l'entree 226, avec ponctuation et accents</description>
+        <limites min="-226" max="2260" ratio="28.25"/>
+        <raw><![CDATA[contenu brut 226 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 227 du catalogue, poids 113.5 -->
+    <item id="227" position="227" poids="113.5" actif="true">
+        <nom>lot-227</nom>
+        <description>description de l'entree 227, avec ponctuation et accents</description>
+        <limites min="-227" max="2270" ratio="28.375"/>
+        <raw><![CDATA[contenu brut 227 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 228 du catalogue, poids 114.0 -->
+    <item id="228" position="228" poids="114.0" actif="false">
+        <nom>lot-228</nom>
+        <description>description de l'entree 228, avec ponctuation et accents</description>
+        <limites min="-228" max="2280" ratio="28.5"/>
+        <raw><![CDATA[contenu brut 228 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 229 du catalogue, poids 114.5 -->
+    <item id="229" position="229" poids="114.5" actif="true">
+        <nom>lot-229</nom>
+        <description>description de l'entree 229, avec ponctuation et accents</description>
+        <limites min="-229" max="2290" ratio="28.625"/>
+        <raw><![CDATA[contenu brut 229 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 230 du catalogue, poids 115.0 -->
+    <item id="230" position="230" poids="115.0" actif="false">
+        <nom>lot-230</nom>
+        <description>description de l'entree 230, avec ponctuation et accents</description>
+        <limites min="-230" max="2300" ratio="28.75"/>
+        <raw><![CDATA[contenu brut 230 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 231 du catalogue, poids 115.5 -->
+    <item id="231" position="231" poids="115.5" actif="true">
+        <nom>lot-231</nom>
+        <description>description de l'entree 231, avec ponctuation et accents</description>
+        <limites min="-231" max="2310" ratio="28.875"/>
+        <raw><![CDATA[contenu brut 231 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 232 du catalogue, poids 116.0 -->
+    <item id="232" position="232" poids="116.0" actif="false">
+        <nom>lot-232</nom>
+        <description>description de l'entree 232, avec ponctuation et accents</description>
+        <limites min="-232" max="2320" ratio="29.0"/>
+        <raw><![CDATA[contenu brut 232 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 233 du catalogue, poids 116.5 -->
+    <item id="233" position="233" poids="116.5" actif="true">
+        <nom>lot-233</nom>
+        <description>description de l'entree 233, avec ponctuation et accents</description>
+        <limites min="-233" max="2330" ratio="29.125"/>
+        <raw><![CDATA[contenu brut 233 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 234 du catalogue, poids 117.0 -->
+    <item id="234" position="234" poids="117.0" actif="false">
+        <nom>lot-234</nom>
+        <description>description de l'entree 234, avec ponctuation et accents</description>
+        <limites min="-234" max="2340" ratio="29.25"/>
+        <raw><![CDATA[contenu brut 234 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 235 du catalogue, poids 117.5 -->
+    <item id="235" position="235" poids="117.5" actif="true">
+        <nom>lot-235</nom>
+        <description>description de l'entree 235, avec ponctuation et accents</description>
+        <limites min="-235" max="2350" ratio="29.375"/>
+        <raw><![CDATA[contenu brut 235 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 236 du catalogue, poids 118.0 -->
+    <item id="236" position="236" poids="118.0" actif="false">
+        <nom>lot-236</nom>
+        <description>description de l'entree 236, avec ponctuation et accents</description>
+        <limites min="-236" max="2360" ratio="29.5"/>
+        <raw><![CDATA[contenu brut 236 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 237 du catalogue, poids 118.5 -->
+    <item id="237" position="237" poids="118.5" actif="true">
+        <nom>lot-237</nom>
+        <description>description de l'entree 237, avec ponctuation et accents</description>
+        <limites min="-237" max="2370" ratio="29.625"/>
+        <raw><![CDATA[contenu brut 237 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 238 du catalogue, poids 119.0 -->
+    <item id="238" position="238" poids="119.0" actif="false">
+        <nom>lot-238</nom>
+        <description>description de l'entree 238, avec ponctuation et accents</description>
+        <limites min="-238" max="2380" ratio="29.75"/>
+        <raw><![CDATA[contenu brut 238 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 239 du catalogue, poids 119.5 -->
+    <item id="239" position="239" poids="119.5" actif="true">
+        <nom>lot-239</nom>
+        <description>description de l'entree 239, avec ponctuation et accents</description>
+        <limites min="-239" max="2390" ratio="29.875"/>
+        <raw><![CDATA[contenu brut 239 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 240 du catalogue, poids 120.0 -->
+    <item id="240" position="240" poids="120.0" actif="false">
+        <nom>lot-240</nom>
+        <description>description de l'entree 240, avec ponctuation et accents</description>
+        <limites min="-240" max="2400" ratio="30.0"/>
+        <raw><![CDATA[contenu brut 240 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 241 du catalogue, poids 120.5 -->
+    <item id="241" position="241" poids="120.5" actif="true">
+        <nom>lot-241</nom>
+        <description>description de l'entree 241, avec ponctuation et accents</description>
+        <limites min="-241" max="2410" ratio="30.125"/>
+        <raw><![CDATA[contenu brut 241 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 242 du catalogue, poids 121.0 -->
+    <item id="242" position="242" poids="121.0" actif="false">
+        <nom>lot-242</nom>
+        <description>description de l'entree 242, avec ponctuation et accents</description>
+        <limites min="-242" max="2420" ratio="30.25"/>
+        <raw><![CDATA[contenu brut 242 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 243 du catalogue, poids 121.5 -->
+    <item id="243" position="243" poids="121.5" actif="true">
+        <nom>lot-243</nom>
+        <description>description de l'entree 243, avec ponctuation et accents</description>
+        <limites min="-243" max="2430" ratio="30.375"/>
+        <raw><![CDATA[contenu brut 243 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 244 du catalogue, poids 122.0 -->
+    <item id="244" position="244" poids="122.0" actif="false">
+        <nom>lot-244</nom>
+        <description>description de l'entree 244, avec ponctuation et accents</description>
+        <limites min="-244" max="2440" ratio="30.5"/>
+        <raw><![CDATA[contenu brut 244 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 245 du catalogue, poids 122.5 -->
+    <item id="245" position="245" poids="122.5" actif="true">
+        <nom>lot-245</nom>
+        <description>description de l'entree 245, avec ponctuation et accents</description>
+        <limites min="-245" max="2450" ratio="30.625"/>
+        <raw><![CDATA[contenu brut 245 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 246 du catalogue, poids 123.0 -->
+    <item id="246" position="246" poids="123.0" actif="false">
+        <nom>lot-246</nom>
+        <description>description de l'entree 246, avec ponctuation et accents</description>
+        <limites min="-246" max="2460" ratio="30.75"/>
+        <raw><![CDATA[contenu brut 246 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 247 du catalogue, poids 123.5 -->
+    <item id="247" position="247" poids="123.5" actif="true">
+        <nom>lot-247</nom>
+        <description>description de l'entree 247, avec ponctuation et accents</description>
+        <limites min="-247" max="2470" ratio="30.875"/>
+        <raw><![CDATA[contenu brut 247 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 248 du catalogue, poids 124.0 -->
+    <item id="248" position="248" poids="124.0" actif="false">
+        <nom>lot-248</nom>
+        <description>description de l'entree 248, avec ponctuation et accents</description>
+        <limites min="-248" max="2480" ratio="31.0"/>
+        <raw><![CDATA[contenu brut 248 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+    <!-- entree 249 du catalogue, poids 124.5 -->
+    <item id="249" position="249" poids="124.5" actif="true">
+        <nom>lot-249</nom>
+        <description>description de l'entree 249, avec ponctuation et accents</description>
+        <limites min="-249" max="2490" ratio="31.125"/>
+        <raw><![CDATA[contenu brut 249 : <balise> & symbole]]></raw>
+        <entites amp="&amp;" lt="&lt;" code="&#169;" hex="&#x263A;"/>
+    </item>
+</catalogue>
+<!-- fin du corpus -->
+    <!-- ligne de remplissage -->

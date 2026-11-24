@@ -1,0 +1,2003 @@
+[
+
+    {
+        "id": 1,
+        "nom": "lot-1",
+        "actif": true,
+        "annule": null,
+        "poids": 0.25,
+        "rapport": 2e-2,
+        "mesures": [1, 0.25, -1, 1000000],
+        "texte": "description \"1\" avec \u00e9 et \t",
+        "detail": {
+            "min": -1,
+            "max": 10,
+            "liste": [1, 2, 3],
+            "vide": {}
+        }
+    },
+    {
+        "id": 2,
+        "nom": "lot-2",
+        "actif": false,
+        "annule": null,
+        "poids": 0.5,
+        "rapport": 3e-3,
+        "mesures": [2, 0.5, -2, 2000000],
+        "texte": "description \"2\" avec \u00e9 et \t",
+        "detail": {
+            "min": -2,
+            "max": 20,
+            "liste": [2, 4, 6],
+            "vide": {}
+        }
+    },
+    {
+        "id": 3,
+        "nom": "lot-3",
+        "actif": true,
+        "annule": null,
+        "poids": 0.75,
+        "rapport": 4e-4,
+        "mesures": [3, 0.75, -3, 3000000],
+        "texte": "description \"3\" avec \u00e9 et \t",
+        "detail": {
+            "min": -3,
+            "max": 30,
+            "liste": [3, 6, 9],
+            "vide": {}
+        }
+    },
+    {
+        "id": 4,
+        "nom": "lot-4",
+        "actif": false,
+        "annule": null,
+        "poids": 1.0,
+        "rapport": 5e-5,
+        "mesures": [4, 1.0, -4, 4000000],
+        "texte": "description \"4\" avec \u00e9 et \t",
+        "detail": {
+            "min": -4,
+            "max": 40,
+            "liste": [4, 8, 12],
+            "vide": {}
+        }
+    },
+    {
+        "id": 5,
+        "nom": "lot-5",
+        "actif": true,
+        "annule": null,
+        "poids": 1.25,
+        "rapport": 6e-1,
+        "mesures": [5, 1.25, -5, 5000000],
+        "texte": "description \"5\" avec \u00e9 et \t",
+        "detail": {
+            "min": -5,
+            "max": 50,
+            "liste": [5, 10, 15],
+            "vide": {}
+        }
+    },
+    {
+        "id": 6,
+        "nom": "lot-6",
+        "actif": false,
+        "annule": null,
+        "poids": 1.5,
+        "rapport": 7e-2,
+        "mesures": [6, 1.5, -6, 6000000],
+        "texte": "description \"6\" avec \u00e9 et \t",
+        "detail": {
+            "min": -6,
+            "max": 60,
+            "liste": [6, 12, 18],
+            "vide": {}
+        }
+    },
+    {
+        "id": 7,
+        "nom": "lot-7",
+        "actif": true,
+        "annule": null,
+        "poids": 1.75,
+        "rapport": 8e-3,
+        "mesures": [7, 1.75, -7, 7000000],
+        "texte": "description \"7\" avec \u00e9 et \t",
+        "detail": {
+            "min": -7,
+            "max": 70,
+            "liste": [7, 14, 21],
+            "vide": {}
+        }
+    },
+    {
+        "id": 8,
+        "nom": "lot-8",
+        "actif": false,
+        "annule": null,
+        "poids": 2.0,
+        "rapport": 9e-4,
+        "mesures": [8, 2.0, -8, 8000000],
+        "texte": "description \"8\" avec \u00e9 et \t",
+        "detail": {
+            "min": -8,
+            "max": 80,
+            "liste": [8, 16, 24],
+            "vide": {}
+        }
+    },
+    {
+        "id": 9,
+        "nom": "lot-9",
+        "actif": true,
+        "annule": null,
+        "poids": 2.25,
+        "rapport": 1e-5,
+        "mesures": [9, 2.25, -9, 9000000],
+        "texte": "description \"9\" avec \u00e9 et \t",
+        "detail": {
+            "min": -9,
+            "max": 90,
+            "liste": [9, 18, 27],
+            "vide": {}
+        }
+    },
+    {
+        "id": 10,
+        "nom": "lot-10",
+        "actif": false,
+        "annule": null,
+        "poids": 2.5,
+        "rapport": 2e-1,
+        "mesures": [10, 2.5, -10, 10000000],
+        "texte": "description \"10\" avec \u00e9 et \t",
+        "detail": {
+            "min": -10,
+            "max": 100,
+            "liste": [10, 20, 30],
+            "vide": {}
+        }
+    },
+    {
+        "id": 11,
+        "nom": "lot-11",
+        "actif": true,
+        "annule": null,
+        "poids": 2.75,
+        "rapport": 3e-2,
+        "mesures": [11, 2.75, -11, 11000000],
+        "texte": "description \"11\" avec \u00e9 et \t",
+        "detail": {
+            "min": -11,
+            "max": 110,
+            "liste": [11, 22, 33],
+            "vide": {}
+        }
+    },
+    {
+        "id": 12,
+        "nom": "lot-12",
+        "actif": false,
+        "annule": null,
+        "poids": 3.0,
+        "rapport": 4e-3,
+        "mesures": [12, 3.0, -12, 12000000],
+        "texte": "description \"12\" avec \u00e9 et \t",
+        "detail": {
+            "min": -12,
+            "max": 120,
+            "liste": [12, 24, 36],
+            "vide": {}
+        }
+    },
+    {
+        "id": 13,
+        "nom": "lot-13",
+        "actif": true,
+        "annule": null,
+        "poids": 3.25,
+        "rapport": 5e-4,
+        "mesures": [13, 3.25, -13, 13000000],
+        "texte": "description \"13\" avec \u00e9 et \t",
+        "detail": {
+            "min": -13,
+            "max": 130,
+            "liste": [13, 26, 39],
+            "vide": {}
+        }
+    },
+    {
+        "id": 14,
+        "nom": "lot-14",
+        "actif": false,
+        "annule": null,
+        "poids": 3.5,
+        "rapport": 6e-5,
+        "mesures": [14, 3.5, -14, 14000000],
+        "texte": "description \"14\" avec \u00e9 et \t",
+        "detail": {
+            "min": -14,
+            "max": 140,
+            "liste": [14, 28, 42],
+            "vide": {}
+        }
+    },
+    {
+        "id": 15,
+        "nom": "lot-15",
+        "actif": true,
+        "annule": null,
+        "poids": 3.75,
+        "rapport": 7e-1,
+        "mesures": [15, 3.75, -15, 15000000],
+        "texte": "description \"15\" avec \u00e9 et \t",
+        "detail": {
+            "min": -15,
+            "max": 150,
+            "liste": [15, 30, 45],
+            "vide": {}
+        }
+    },
+    {
+        "id": 16,
+        "nom": "lot-16",
+        "actif": false,
+        "annule": null,
+        "poids": 4.0,
+        "rapport": 8e-2,
+        "mesures": [16, 4.0, -16, 16000000],
+        "texte": "description \"16\" avec \u00e9 et \t",
+        "detail": {
+            "min": -16,
+            "max": 160,
+            "liste": [16, 32, 48],
+            "vide": {}
+        }
+    },
+    {
+        "id": 17,
+        "nom": "lot-17",
+        "actif": true,
+        "annule": null,
+        "poids": 4.25,
+        "rapport": 9e-3,
+        "mesures": [17, 4.25, -17, 17000000],
+        "texte": "description \"17\" avec \u00e9 et \t",
+        "detail": {
+            "min": -17,
+            "max": 170,
+            "liste": [17, 34, 51],
+            "vide": {}
+        }
+    },
+    {
+        "id": 18,
+        "nom": "lot-18",
+        "actif": false,
+        "annule": null,
+        "poids": 4.5,
+        "rapport": 1e-4,
+        "mesures": [18, 4.5, -18, 18000000],
+        "texte": "description \"18\" avec \u00e9 et \t",
+        "detail": {
+            "min": -18,
+            "max": 180,
+            "liste": [18, 36, 54],
+            "vide": {}
+        }
+    },
+    {
+        "id": 19,
+        "nom": "lot-19",
+        "actif": true,
+        "annule": null,
+        "poids": 4.75,
+        "rapport": 2e-5,
+        "mesures": [19, 4.75, -19, 19000000],
+        "texte": "description \"19\" avec \u00e9 et \t",
+        "detail": {
+            "min": -19,
+            "max": 190,
+            "liste": [19, 38, 57],
+            "vide": {}
+        }
+    },
+    {
+        "id": 20,
+        "nom": "lot-20",
+        "actif": false,
+        "annule": null,
+        "poids": 5.0,
+        "rapport": 3e-1,
+        "mesures": [20, 5.0, -20, 20000000],
+        "texte": "description \"20\" avec \u00e9 et \t",
+        "detail": {
+            "min": -20,
+            "max": 200,
+            "liste": [20, 40, 60],
+            "vide": {}
+        }
+    },
+    {
+        "id": 21,
+        "nom": "lot-21",
+        "actif": true,
+        "annule": null,
+        "poids": 5.25,
+        "rapport": 4e-2,
+        "mesures": [21, 5.25, -21, 21000000],
+        "texte": "description \"21\" avec \u00e9 et \t",
+        "detail": {
+            "min": -21,
+            "max": 210,
+            "liste": [21, 42, 63],
+            "vide": {}
+        }
+    },
+    {
+        "id": 22,
+        "nom": "lot-22",
+        "actif": false,
+        "annule": null,
+        "poids": 5.5,
+        "rapport": 5e-3,
+        "mesures": [22, 5.5, -22, 22000000],
+        "texte": "description \"22\" avec \u00e9 et \t",
+        "detail": {
+            "min": -22,
+            "max": 220,
+            "liste": [22, 44, 66],
+            "vide": {}
+        }
+    },
+    {
+        "id": 23,
+        "nom": "lot-23",
+        "actif": true,
+        "annule": null,
+        "poids": 5.75,
+        "rapport": 6e-4,
+        "mesures": [23, 5.75, -23, 23000000],
+        "texte": "description \"23\" avec \u00e9 et \t",
+        "detail": {
+            "min": -23,
+            "max": 230,
+            "liste": [23, 46, 69],
+            "vide": {}
+        }
+    },
+    {
+        "id": 24,
+        "nom": "lot-24",
+        "actif": false,
+        "annule": null,
+        "poids": 6.0,
+        "rapport": 7e-5,
+        "mesures": [24, 6.0, -24, 24000000],
+        "texte": "description \"24\" avec \u00e9 et \t",
+        "detail": {
+            "min": -24,
+            "max": 240,
+            "liste": [24, 48, 72],
+            "vide": {}
+        }
+    },
+    {
+        "id": 25,
+        "nom": "lot-25",
+        "actif": true,
+        "annule": null,
+        "poids": 6.25,
+        "rapport": 8e-1,
+        "mesures": [25, 6.25, -25, 25000000],
+        "texte": "description \"25\" avec \u00e9 et \t",
+        "detail": {
+            "min": -25,
+            "max": 250,
+            "liste": [25, 50, 75],
+            "vide": {}
+        }
+    },
+    {
+        "id": 26,
+        "nom": "lot-26",
+        "actif": false,
+        "annule": null,
+        "poids": 6.5,
+        "rapport": 9e-2,
+        "mesures": [26, 6.5, -26, 26000000],
+        "texte": "description \"26\" avec \u00e9 et \t",
+        "detail": {
+            "min": -26,
+            "max": 260,
+            "liste": [26, 52, 78],
+            "vide": {}
+        }
+    },
+    {
+        "id": 27,
+        "nom": "lot-27",
+        "actif": true,
+        "annule": null,
+        "poids": 6.75,
+        "rapport": 1e-3,
+        "mesures": [27, 6.75, -27, 27000000],
+        "texte": "description \"27\" avec \u00e9 et \t",
+        "detail": {
+            "min": -27,
+            "max": 270,
+            "liste": [27, 54, 81],
+            "vide": {}
+        }
+    },
+    {
+        "id": 28,
+        "nom": "lot-28",
+        "actif": false,
+        "annule": null,
+        "poids": 7.0,
+        "rapport": 2e-4,
+        "mesures": [28, 7.0, -28, 28000000],
+        "texte": "description \"28\" avec \u00e9 et \t",
+        "detail": {
+            "min": -28,
+            "max": 280,
+            "liste": [28, 56, 84],
+            "vide": {}
+        }
+    },
+    {
+        "id": 29,
+        "nom": "lot-29",
+        "actif": true,
+        "annule": null,
+        "poids": 7.25,
+        "rapport": 3e-5,
+        "mesures": [29, 7.25, -29, 29000000],
+        "texte": "description \"29\" avec \u00e9 et \t",
+        "detail": {
+            "min": -29,
+            "max": 290,
+            "liste": [29, 58, 87],
+            "vide": {}
+        }
+    },
+    {
+        "id": 30,
+        "nom": "lot-30",
+        "actif": false,
+        "annule": null,
+        "poids": 7.5,
+        "rapport": 4e-1,
+        "mesures": [30, 7.5, -30, 30000000],
+        "texte": "description \"30\" avec \u00e9 et \t",
+        "detail": {
+            "min": -30,
+            "max": 300,
+            "liste": [30, 60, 90],
+            "vide": {}
+        }
+    },
+    {
+        "id": 31,
+        "nom": "lot-31",
+        "actif": true,
+        "annule": null,
+        "poids": 7.75,
+        "rapport": 5e-2,
+        "mesures": [31, 7.75, -31, 31000000],
+        "texte": "description \"31\" avec \u00e9 et \t",
+        "detail": {
+            "min": -31,
+            "max": 310,
+            "liste": [31, 62, 93],
+            "vide": {}
+        }
+    },
+    {
+        "id": 32,
+        "nom": "lot-32",
+        "actif": false,
+        "annule": null,
+        "poids": 8.0,
+        "rapport": 6e-3,
+        "mesures": [32, 8.0, -32, 32000000],
+        "texte": "description \"32\" avec \u00e9 et \t",
+        "detail": {
+            "min": -32,
+            "max": 320,
+            "liste": [32, 64, 96],
+            "vide": {}
+        }
+    },
+    {
+        "id": 33,
+        "nom": "lot-33",
+        "actif": true,
+        "annule": null,
+        "poids": 8.25,
+        "rapport": 7e-4,
+        "mesures": [33, 8.25, -33, 33000000],
+        "texte": "description \"33\" avec \u00e9 et \t",
+        "detail": {
+            "min": -33,
+            "max": 330,
+            "liste": [33, 66, 99],
+            "vide": {}
+        }
+    },
+    {
+        "id": 34,
+        "nom": "lot-34",
+        "actif": false,
+        "annule": null,
+        "poids": 8.5,
+        "rapport": 8e-5,
+        "mesures": [34, 8.5, -34, 34000000],
+        "texte": "description \"34\" avec \u00e9 et \t",
+        "detail": {
+            "min": -34,
+            "max": 340,
+            "liste": [34, 68, 102],
+            "vide": {}
+        }
+    },
+    {
+        "id": 35,
+        "nom": "lot-35",
+        "actif": true,
+        "annule": null,
+        "poids": 8.75,
+        "rapport": 9e-1,
+        "mesures": [35, 8.75, -35, 35000000],
+        "texte": "description \"35\" avec \u00e9 et \t",
+        "detail": {
+            "min": -35,
+            "max": 350,
+            "liste": [35, 70, 105],
+            "vide": {}
+        }
+    },
+    {
+        "id": 36,
+        "nom": "lot-36",
+        "actif": false,
+        "annule": null,
+        "poids": 9.0,
+        "rapport": 1e-2,
+        "mesures": [36, 9.0, -36, 36000000],
+        "texte": "description \"36\" avec \u00e9 et \t",
+        "detail": {
+            "min": -36,
+            "max": 360,
+            "liste": [36, 72, 108],
+            "vide": {}
+        }
+    },
+    {
+        "id": 37,
+        "nom": "lot-37",
+        "actif": true,
+        "annule": null,
+        "poids": 9.25,
+        "rapport": 2e-3,
+        "mesures": [37, 9.25, -37, 37000000],
+        "texte": "description \"37\" avec \u00e9 et \t",
+        "detail": {
+            "min": -37,
+            "max": 370,
+            "liste": [37, 74, 111],
+            "vide": {}
+        }
+    },
+    {
+        "id": 38,
+        "nom": "lot-38",
+        "actif": false,
+        "annule": null,
+        "poids": 9.5,
+        "rapport": 3e-4,
+        "mesures": [38, 9.5, -38, 38000000],
+        "texte": "description \"38\" avec \u00e9 et \t",
+        "detail": {
+            "min": -38,
+            "max": 380,
+            "liste": [38, 76, 114],
+            "vide": {}
+        }
+    },
+    {
+        "id": 39,
+        "nom": "lot-39",
+        "actif": true,
+        "annule": null,
+        "poids": 9.75,
+        "rapport": 4e-5,
+        "mesures": [39, 9.75, -39, 39000000],
+        "texte": "description \"39\" avec \u00e9 et \t",
+        "detail": {
+            "min": -39,
+            "max": 390,
+            "liste": [39, 78, 117],
+            "vide": {}
+        }
+    },
+    {
+        "id": 40,
+        "nom": "lot-40",
+        "actif": false,
+        "annule": null,
+        "poids": 10.0,
+        "rapport": 5e-1,
+        "mesures": [40, 10.0, -40, 40000000],
+        "texte": "description \"40\" avec \u00e9 et \t",
+        "detail": {
+            "min": -40,
+            "max": 400,
+            "liste": [40, 80, 120],
+            "vide": {}
+        }
+    },
+    {
+        "id": 41,
+        "nom": "lot-41",
+        "actif": true,
+        "annule": null,
+        "poids": 10.25,
+        "rapport": 6e-2,
+        "mesures": [41, 10.25, -41, 41000000],
+        "texte": "description \"41\" avec \u00e9 et \t",
+        "detail": {
+            "min": -41,
+            "max": 410,
+            "liste": [41, 82, 123],
+            "vide": {}
+        }
+    },
+    {
+        "id": 42,
+        "nom": "lot-42",
+        "actif": false,
+        "annule": null,
+        "poids": 10.5,
+        "rapport": 7e-3,
+        "mesures": [42, 10.5, -42, 42000000],
+        "texte": "description \"42\" avec \u00e9 et \t",
+        "detail": {
+            "min": -42,
+            "max": 420,
+            "liste": [42, 84, 126],
+            "vide": {}
+        }
+    },
+    {
+        "id": 43,
+        "nom": "lot-43",
+        "actif": true,
+        "annule": null,
+        "poids": 10.75,
+        "rapport": 8e-4,
+        "mesures": [43, 10.75, -43, 43000000],
+        "texte": "description \"43\" avec \u00e9 et \t",
+        "detail": {
+            "min": -43,
+            "max": 430,
+            "liste": [43, 86, 129],
+            "vide": {}
+        }
+    },
+    {
+        "id": 44,
+        "nom": "lot-44",
+        "actif": false,
+        "annule": null,
+        "poids": 11.0,
+        "rapport": 9e-5,
+        "mesures": [44, 11.0, -44, 44000000],
+        "texte": "description \"44\" avec \u00e9 et \t",
+        "detail": {
+            "min": -44,
+            "max": 440,
+            "liste": [44, 88, 132],
+            "vide": {}
+        }
+    },
+    {
+        "id": 45,
+        "nom": "lot-45",
+        "actif": true,
+        "annule": null,
+        "poids": 11.25,
+        "rapport": 1e-1,
+        "mesures": [45, 11.25, -45, 45000000],
+        "texte": "description \"45\" avec \u00e9 et \t",
+        "detail": {
+            "min": -45,
+            "max": 450,
+            "liste": [45, 90, 135],
+            "vide": {}
+        }
+    },
+    {
+        "id": 46,
+        "nom": "lot-46",
+        "actif": false,
+        "annule": null,
+        "poids": 11.5,
+        "rapport": 2e-2,
+        "mesures": [46, 11.5, -46, 46000000],
+        "texte": "description \"46\" avec \u00e9 et \t",
+        "detail": {
+            "min": -46,
+            "max": 460,
+            "liste": [46, 92, 138],
+            "vide": {}
+        }
+    },
+    {
+        "id": 47,
+        "nom": "lot-47",
+        "actif": true,
+        "annule": null,
+        "poids": 11.75,
+        "rapport": 3e-3,
+        "mesures": [47, 11.75, -47, 47000000],
+        "texte": "description \"47\" avec \u00e9 et \t",
+        "detail": {
+            "min": -47,
+            "max": 470,
+            "liste": [47, 94, 141],
+            "vide": {}
+        }
+    },
+    {
+        "id": 48,
+        "nom": "lot-48",
+        "actif": false,
+        "annule": null,
+        "poids": 12.0,
+        "rapport": 4e-4,
+        "mesures": [48, 12.0, -48, 48000000],
+        "texte": "description \"48\" avec \u00e9 et \t",
+        "detail": {
+            "min": -48,
+            "max": 480,
+            "liste": [48, 96, 144],
+            "vide": {}
+        }
+    },
+    {
+        "id": 49,
+        "nom": "lot-49",
+        "actif": true,
+        "annule": null,
+        "poids": 12.25,
+        "rapport": 5e-5,
+        "mesures": [49, 12.25, -49, 49000000],
+        "texte": "description \"49\" avec \u00e9 et \t",
+        "detail": {
+            "min": -49,
+            "max": 490,
+            "liste": [49, 98, 147],
+            "vide": {}
+        }
+    },
+    {
+        "id": 50,
+        "nom": "lot-50",
+        "actif": false,
+        "annule": null,
+        "poids": 12.5,
+        "rapport": 6e-1,
+        "mesures": [50, 12.5, -50, 50000000],
+        "texte": "description \"50\" avec \u00e9 et \t",
+        "detail": {
+            "min": -50,
+            "max": 500,
+            "liste": [50, 100, 150],
+            "vide": {}
+        }
+    },
+    {
+        "id": 51,
+        "nom": "lot-51",
+        "actif": true,
+        "annule": null,
+        "poids": 12.75,
+        "rapport": 7e-2,
+        "mesures": [51, 12.75, -51, 51000000],
+        "texte": "description \"51\" avec \u00e9 et \t",
+        "detail": {
+            "min": -51,
+            "max": 510,
+            "liste": [51, 102, 153],
+            "vide": {}
+        }
+    },
+    {
+        "id": 52,
+        "nom": "lot-52",
+        "actif": false,
+        "annule": null,
+        "poids": 13.0,
+        "rapport": 8e-3,
+        "mesures": [52, 13.0, -52, 52000000],
+        "texte": "description \"52\" avec \u00e9 et \t",
+        "detail": {
+            "min": -52,
+            "max": 520,
+            "liste": [52, 104, 156],
+            "vide": {}
+        }
+    },
+    {
+        "id": 53,
+        "nom": "lot-53",
+        "actif": true,
+        "annule": null,
+        "poids": 13.25,
+        "rapport": 9e-4,
+        "mesures": [53, 13.25, -53, 53000000],
+        "texte": "description \"53\" avec \u00e9 et \t",
+        "detail": {
+            "min": -53,
+            "max": 530,
+            "liste": [53, 106, 159],
+            "vide": {}
+        }
+    },
+    {
+        "id": 54,
+        "nom": "lot-54",
+        "actif": false,
+        "annule": null,
+        "poids": 13.5,
+        "rapport": 1e-5,
+        "mesures": [54, 13.5, -54, 54000000],
+        "texte": "description \"54\" avec \u00e9 et \t",
+        "detail": {
+            "min": -54,
+            "max": 540,
+            "liste": [54, 108, 162],
+            "vide": {}
+        }
+    },
+    {
+        "id": 55,
+        "nom": "lot-55",
+        "actif": true,
+        "annule": null,
+        "poids": 13.75,
+        "rapport": 2e-1,
+        "mesures": [55, 13.75, -55, 55000000],
+        "texte": "description \"55\" avec \u00e9 et \t",
+        "detail": {
+            "min": -55,
+            "max": 550,
+            "liste": [55, 110, 165],
+            "vide": {}
+        }
+    },
+    {
+        "id": 56,
+        "nom": "lot-56",
+        "actif": false,
+        "annule": null,
+        "poids": 14.0,
+        "rapport": 3e-2,
+        "mesures": [56, 14.0, -56, 56000000],
+        "texte": "description \"56\" avec \u00e9 et \t",
+        "detail": {
+            "min": -56,
+            "max": 560,
+            "liste": [56, 112, 168],
+            "vide": {}
+        }
+    },
+    {
+        "id": 57,
+        "nom": "lot-57",
+        "actif": true,
+        "annule": null,
+        "poids": 14.25,
+        "rapport": 4e-3,
+        "mesures": [57, 14.25, -57, 57000000],
+        "texte": "description \"57\" avec \u00e9 et \t",
+        "detail": {
+            "min": -57,
+            "max": 570,
+            "liste": [57, 114, 171],
+            "vide": {}
+        }
+    },
+    {
+        "id": 58,
+        "nom": "lot-58",
+        "actif": false,
+        "annule": null,
+        "poids": 14.5,
+        "rapport": 5e-4,
+        "mesures": [58, 14.5, -58, 58000000],
+        "texte": "description \"58\" avec \u00e9 et \t",
+        "detail": {
+            "min": -58,
+            "max": 580,
+            "liste": [58, 116, 174],
+            "vide": {}
+        }
+    },
+    {
+        "id": 59,
+        "nom": "lot-59",
+        "actif": true,
+        "annule": null,
+        "poids": 14.75,
+        "rapport": 6e-5,
+        "mesures": [59, 14.75, -59, 59000000],
+        "texte": "description \"59\" avec \u00e9 et \t",
+        "detail": {
+            "min": -59,
+            "max": 590,
+            "liste": [59, 118, 177],
+            "vide": {}
+        }
+    },
+    {
+        "id": 60,
+        "nom": "lot-60",
+        "actif": false,
+        "annule": null,
+        "poids": 15.0,
+        "rapport": 7e-1,
+        "mesures": [60, 15.0, -60, 60000000],
+        "texte": "description \"60\" avec \u00e9 et \t",
+        "detail": {
+            "min": -60,
+            "max": 600,
+            "liste": [60, 120, 180],
+            "vide": {}
+        }
+    },
+    {
+        "id": 61,
+        "nom": "lot-61",
+        "actif": true,
+        "annule": null,
+        "poids": 15.25,
+        "rapport": 8e-2,
+        "mesures": [61, 15.25, -61, 61000000],
+        "texte": "description \"61\" avec \u00e9 et \t",
+        "detail": {
+            "min": -61,
+            "max": 610,
+            "liste": [61, 122, 183],
+            "vide": {}
+        }
+    },
+    {
+        "id": 62,
+        "nom": "lot-62",
+        "actif": false,
+        "annule": null,
+        "poids": 15.5,
+        "rapport": 9e-3,
+        "mesures": [62, 15.5, -62, 62000000],
+        "texte": "description \"62\" avec \u00e9 et \t",
+        "detail": {
+            "min": -62,
+            "max": 620,
+            "liste": [62, 124, 186],
+            "vide": {}
+        }
+    },
+    {
+        "id": 63,
+        "nom": "lot-63",
+        "actif": true,
+        "annule": null,
+        "poids": 15.75,
+        "rapport": 1e-4,
+        "mesures": [63, 15.75, -63, 63000000],
+        "texte": "description \"63\" avec \u00e9 et \t",
+        "detail": {
+            "min": -63,
+            "max": 630,
+            "liste": [63, 126, 189],
+            "vide": {}
+        }
+    },
+    {
+        "id": 64,
+        "nom": "lot-64",
+        "actif": false,
+        "annule": null,
+        "poids": 16.0,
+        "rapport": 2e-5,
+        "mesures": [64, 16.0, -64, 64000000],
+        "texte": "description \"64\" avec \u00e9 et \t",
+        "detail": {
+            "min": -64,
+            "max": 640,
+            "liste": [64, 128, 192],
+            "vide": {}
+        }
+    },
+    {
+        "id": 65,
+        "nom": "lot-65",
+        "actif": true,
+        "annule": null,
+        "poids": 16.25,
+        "rapport": 3e-1,
+        "mesures": [65, 16.25, -65, 65000000],
+        "texte": "description \"65\" avec \u00e9 et \t",
+        "detail": {
+            "min": -65,
+            "max": 650,
+            "liste": [65, 130, 195],
+            "vide": {}
+        }
+    },
+    {
+        "id": 66,
+        "nom": "lot-66",
+        "actif": false,
+        "annule": null,
+        "poids": 16.5,
+        "rapport": 4e-2,
+        "mesures": [66, 16.5, -66, 66000000],
+        "texte": "description \"66\" avec \u00e9 et \t",
+        "detail": {
+            "min": -66,
+            "max": 660,
+            "liste": [66, 132, 198],
+            "vide": {}
+        }
+    },
+    {
+        "id": 67,
+        "nom": "lot-67",
+        "actif": true,
+        "annule": null,
+        "poids": 16.75,
+        "rapport": 5e-3,
+        "mesures": [67, 16.75, -67, 67000000],
+        "texte": "description \"67\" avec \u00e9 et \t",
+        "detail": {
+            "min": -67,
+            "max": 670,
+            "liste": [67, 134, 201],
+            "vide": {}
+        }
+    },
+    {
+        "id": 68,
+        "nom": "lot-68",
+        "actif": false,
+        "annule": null,
+        "poids": 17.0,
+        "rapport": 6e-4,
+        "mesures": [68, 17.0, -68, 68000000],
+        "texte": "description \"68\" avec \u00e9 et \t",
+        "detail": {
+            "min": -68,
+            "max": 680,
+            "liste": [68, 136, 204],
+            "vide": {}
+        }
+    },
+    {
+        "id": 69,
+        "nom": "lot-69",
+        "actif": true,
+        "annule": null,
+        "poids": 17.25,
+        "rapport": 7e-5,
+        "mesures": [69, 17.25, -69, 69000000],
+        "texte": "description \"69\" avec \u00e9 et \t",
+        "detail": {
+            "min": -69,
+            "max": 690,
+            "liste": [69, 138, 207],
+            "vide": {}
+        }
+    },
+    {
+        "id": 70,
+        "nom": "lot-70",
+        "actif": false,
+        "annule": null,
+        "poids": 17.5,
+        "rapport": 8e-1,
+        "mesures": [70, 17.5, -70, 70000000],
+        "texte": "description \"70\" avec \u00e9 et \t",
+        "detail": {
+            "min": -70,
+            "max": 700,
+            "liste": [70, 140, 210],
+            "vide": {}
+        }
+    },
+    {
+        "id": 71,
+        "nom": "lot-71",
+        "actif": true,
+        "annule": null,
+        "poids": 17.75,
+        "rapport": 9e-2,
+        "mesures": [71, 17.75, -71, 71000000],
+        "texte": "description \"71\" avec \u00e9 et \t",
+        "detail": {
+            "min": -71,
+            "max": 710,
+            "liste": [71, 142, 213],
+            "vide": {}
+        }
+    },
+    {
+        "id": 72,
+        "nom": "lot-72",
+        "actif": false,
+        "annule": null,
+        "poids": 18.0,
+        "rapport": 1e-3,
+        "mesures": [72, 18.0, -72, 72000000],
+        "texte": "description \"72\" avec \u00e9 et \t",
+        "detail": {
+            "min": -72,
+            "max": 720,
+            "liste": [72, 144, 216],
+            "vide": {}
+        }
+    },
+    {
+        "id": 73,
+        "nom": "lot-73",
+        "actif": true,
+        "annule": null,
+        "poids": 18.25,
+        "rapport": 2e-4,
+        "mesures": [73, 18.25, -73, 73000000],
+        "texte": "description \"73\" avec \u00e9 et \t",
+        "detail": {
+            "min": -73,
+            "max": 730,
+            "liste": [73, 146, 219],
+            "vide": {}
+        }
+    },
+    {
+        "id": 74,
+        "nom": "lot-74",
+        "actif": false,
+        "annule": null,
+        "poids": 18.5,
+        "rapport": 3e-5,
+        "mesures": [74, 18.5, -74, 74000000],
+        "texte": "description \"74\" avec \u00e9 et \t",
+        "detail": {
+            "min": -74,
+            "max": 740,
+            "liste": [74, 148, 222],
+            "vide": {}
+        }
+    },
+    {
+        "id": 75,
+        "nom": "lot-75",
+        "actif": true,
+        "annule": null,
+        "poids": 18.75,
+        "rapport": 4e-1,
+        "mesures": [75, 18.75, -75, 75000000],
+        "texte": "description \"75\" avec \u00e9 et \t",
+        "detail": {
+            "min": -75,
+            "max": 750,
+            "liste": [75, 150, 225],
+            "vide": {}
+        }
+    },
+    {
+        "id": 76,
+        "nom": "lot-76",
+        "actif": false,
+        "annule": null,
+        "poids": 19.0,
+        "rapport": 5e-2,
+        "mesures": [76, 19.0, -76, 76000000],
+        "texte": "description \"76\" avec \u00e9 et \t",
+        "detail": {
+            "min": -76,
+            "max": 760,
+            "liste": [76, 152, 228],
+            "vide": {}
+        }
+    },
+    {
+        "id": 77,
+        "nom": "lot-77",
+        "actif": true,
+        "annule": null,
+        "poids": 19.25,
+        "rapport": 6e-3,
+        "mesures": [77, 19.25, -77, 77000000],
+        "texte": "description \"77\" avec \u00e9 et \t",
+        "detail": {
+            "min": -77,
+            "max": 770,
+            "liste": [77, 154, 231],
+            "vide": {}
+        }
+    },
+    {
+        "id": 78,
+        "nom": "lot-78",
+        "actif": false,
+        "annule": null,
+        "poids": 19.5,
+        "rapport": 7e-4,
+        "mesures": [78, 19.5, -78, 78000000],
+        "texte": "description \"78\" avec \u00e9 et \t",
+        "detail": {
+            "min": -78,
+            "max": 780,
+            "liste": [78, 156, 234],
+            "vide": {}
+        }
+    },
+    {
+        "id": 79,
+        "nom": "lot-79",
+        "actif": true,
+        "annule": null,
+        "poids": 19.75,
+        "rapport": 8e-5,
+        "mesures": [79, 19.75, -79, 79000000],
+        "texte": "description \"79\" avec \u00e9 et \t",
+        "detail": {
+            "min": -79,
+            "max": 790,
+            "liste": [79, 158, 237],
+            "vide": {}
+        }
+    },
+    {
+        "id": 80,
+        "nom": "lot-80",
+        "actif": false,
+        "annule": null,
+        "poids": 20.0,
+        "rapport": 9e-1,
+        "mesures": [80, 20.0, -80, 80000000],
+        "texte": "description \"80\" avec \u00e9 et \t",
+        "detail": {
+            "min": -80,
+            "max": 800,
+            "liste": [80, 160, 240],
+            "vide": {}
+        }
+    },
+    {
+        "id": 81,
+        "nom": "lot-81",
+        "actif": true,
+        "annule": null,
+        "poids": 20.25,
+        "rapport": 1e-2,
+        "mesures": [81, 20.25, -81, 81000000],
+        "texte": "description \"81\" avec \u00e9 et \t",
+        "detail": {
+            "min": -81,
+            "max": 810,
+            "liste": [81, 162, 243],
+            "vide": {}
+        }
+    },
+    {
+        "id": 82,
+        "nom": "lot-82",
+        "actif": false,
+        "annule": null,
+        "poids": 20.5,
+        "rapport": 2e-3,
+        "mesures": [82, 20.5, -82, 82000000],
+        "texte": "description \"82\" avec \u00e9 et \t",
+        "detail": {
+            "min": -82,
+            "max": 820,
+            "liste": [82, 164, 246],
+            "vide": {}
+        }
+    },
+    {
+        "id": 83,
+        "nom": "lot-83",
+        "actif": true,
+        "annule": null,
+        "poids": 20.75,
+        "rapport": 3e-4,
+        "mesures": [83, 20.75, -83, 83000000],
+        "texte": "description \"83\" avec \u00e9 et \t",
+        "detail": {
+            "min": -83,
+            "max": 830,
+            "liste": [83, 166, 249],
+            "vide": {}
+        }
+    },
+    {
+        "id": 84,
+        "nom": "lot-84",
+        "actif": false,
+        "annule": null,
+        "poids": 21.0,
+        "rapport": 4e-5,
+        "mesures": [84, 21.0, -84, 84000000],
+        "texte": "description \"84\" avec \u00e9 et \t",
+        "detail": {
+            "min": -84,
+            "max": 840,
+            "liste": [84, 168, 252],
+            "vide": {}
+        }
+    },
+    {
+        "id": 85,
+        "nom": "lot-85",
+        "actif": true,
+        "annule": null,
+        "poids": 21.25,
+        "rapport": 5e-1,
+        "mesures": [85, 21.25, -85, 85000000],
+        "texte": "description \"85\" avec \u00e9 et \t",
+        "detail": {
+            "min": -85,
+            "max": 850,
+            "liste": [85, 170, 255],
+            "vide": {}
+        }
+    },
+    {
+        "id": 86,
+        "nom": "lot-86",
+        "actif": false,
+        "annule": null,
+        "poids": 21.5,
+        "rapport": 6e-2,
+        "mesures": [86, 21.5, -86, 86000000],
+        "texte": "description \"86\" avec \u00e9 et \t",
+        "detail": {
+            "min": -86,
+            "max": 860,
+            "liste": [86, 172, 258],
+            "vide": {}
+        }
+    },
+    {
+        "id": 87,
+        "nom": "lot-87",
+        "actif": true,
+        "annule": null,
+        "poids": 21.75,
+        "rapport": 7e-3,
+        "mesures": [87, 21.75, -87, 87000000],
+        "texte": "description \"87\" avec \u00e9 et \t",
+        "detail": {
+            "min": -87,
+            "max": 870,
+            "liste": [87, 174, 261],
+            "vide": {}
+        }
+    },
+    {
+        "id": 88,
+        "nom": "lot-88",
+        "actif": false,
+        "annule": null,
+        "poids": 22.0,
+        "rapport": 8e-4,
+        "mesures": [88, 22.0, -88, 88000000],
+        "texte": "description \"88\" avec \u00e9 et \t",
+        "detail": {
+            "min": -88,
+            "max": 880,
+            "liste": [88, 176, 264],
+            "vide": {}
+        }
+    },
+    {
+        "id": 89,
+        "nom": "lot-89",
+        "actif": true,
+        "annule": null,
+        "poids": 22.25,
+        "rapport": 9e-5,
+        "mesures": [89, 22.25, -89, 89000000],
+        "texte": "description \"89\" avec \u00e9 et \t",
+        "detail": {
+            "min": -89,
+            "max": 890,
+            "liste": [89, 178, 267],
+            "vide": {}
+        }
+    },
+    {
+        "id": 90,
+        "nom": "lot-90",
+        "actif": false,
+        "annule": null,
+        "poids": 22.5,
+        "rapport": 1e-1,
+        "mesures": [90, 22.5, -90, 90000000],
+        "texte": "description \"90\" avec \u00e9 et \t",
+        "detail": {
+            "min": -90,
+            "max": 900,
+            "liste": [90, 180, 270],
+            "vide": {}
+        }
+    },
+    {
+        "id": 91,
+        "nom": "lot-91",
+        "actif": true,
+        "annule": null,
+        "poids": 22.75,
+        "rapport": 2e-2,
+        "mesures": [91, 22.75, -91, 91000000],
+        "texte": "description \"91\" avec \u00e9 et \t",
+        "detail": {
+            "min": -91,
+            "max": 910,
+            "liste": [91, 182, 273],
+            "vide": {}
+        }
+    },
+    {
+        "id": 92,
+        "nom": "lot-92",
+        "actif": false,
+        "annule": null,
+        "poids": 23.0,
+        "rapport": 3e-3,
+        "mesures": [92, 23.0, -92, 92000000],
+        "texte": "description \"92\" avec \u00e9 et \t",
+        "detail": {
+            "min": -92,
+            "max": 920,
+            "liste": [92, 184, 276],
+            "vide": {}
+        }
+    },
+    {
+        "id": 93,
+        "nom": "lot-93",
+        "actif": true,
+        "annule": null,
+        "poids": 23.25,
+        "rapport": 4e-4,
+        "mesures": [93, 23.25, -93, 93000000],
+        "texte": "description \"93\" avec \u00e9 et \t",
+        "detail": {
+            "min": -93,
+            "max": 930,
+            "liste": [93, 186, 279],
+            "vide": {}
+        }
+    },
+    {
+        "id": 94,
+        "nom": "lot-94",
+        "actif": false,
+        "annule": null,
+        "poids": 23.5,
+        "rapport": 5e-5,
+        "mesures": [94, 23.5, -94, 94000000],
+        "texte": "description \"94\" avec \u00e9 et \t",
+        "detail": {
+            "min": -94,
+            "max": 940,
+            "liste": [94, 188, 282],
+            "vide": {}
+        }
+    },
+    {
+        "id": 95,
+        "nom": "lot-95",
+        "actif": true,
+        "annule": null,
+        "poids": 23.75,
+        "rapport": 6e-1,
+        "mesures": [95, 23.75, -95, 95000000],
+        "texte": "description \"95\" avec \u00e9 et \t",
+        "detail": {
+            "min": -95,
+            "max": 950,
+            "liste": [95, 190, 285],
+            "vide": {}
+        }
+    },
+    {
+        "id": 96,
+        "nom": "lot-96",
+        "actif": false,
+        "annule": null,
+        "poids": 24.0,
+        "rapport": 7e-2,
+        "mesures": [96, 24.0, -96, 96000000],
+        "texte": "description \"96\" avec \u00e9 et \t",
+        "detail": {
+            "min": -96,
+            "max": 960,
+            "liste": [96, 192, 288],
+            "vide": {}
+        }
+    },
+    {
+        "id": 97,
+        "nom": "lot-97",
+        "actif": true,
+        "annule": null,
+        "poids": 24.25,
+        "rapport": 8e-3,
+        "mesures": [97, 24.25, -97, 97000000],
+        "texte": "description \"97\" avec \u00e9 et \t",
+        "detail": {
+            "min": -97,
+            "max": 970,
+            "liste": [97, 194, 291],
+            "vide": {}
+        }
+    },
+    {
+        "id": 98,
+        "nom": "lot-98",
+        "actif": false,
+        "annule": null,
+        "poids": 24.5,
+        "rapport": 9e-4,
+        "mesures": [98, 24.5, -98, 98000000],
+        "texte": "description \"98\" avec \u00e9 et \t",
+        "detail": {
+            "min": -98,
+            "max": 980,
+            "liste": [98, 196, 294],
+            "vide": {}
+        }
+    },
+    {
+        "id": 99,
+        "nom": "lot-99",
+        "actif": true,
+        "annule": null,
+        "poids": 24.75,
+        "rapport": 1e-5,
+        "mesures": [99, 24.75, -99, 99000000],
+        "texte": "description \"99\" avec \u00e9 et \t",
+        "detail": {
+            "min": -99,
+            "max": 990,
+            "liste": [99, 198, 297],
+            "vide": {}
+        }
+    },
+    {
+        "id": 100,
+        "nom": "lot-100",
+        "actif": false,
+        "annule": null,
+        "poids": 25.0,
+        "rapport": 2e-1,
+        "mesures": [100, 25.0, -100, 100000000],
+        "texte": "description \"100\" avec \u00e9 et \t",
+        "detail": {
+            "min": -100,
+            "max": 1000,
+            "liste": [100, 200, 300],
+            "vide": {}
+        }
+    },
+    {
+        "id": 101,
+        "nom": "lot-101",
+        "actif": true,
+        "annule": null,
+        "poids": 25.25,
+        "rapport": 3e-2,
+        "mesures": [101, 25.25, -101, 101000000],
+        "texte": "description \"101\" avec \u00e9 et \t",
+        "detail": {
+            "min": -101,
+            "max": 1010,
+            "liste": [101, 202, 303],
+            "vide": {}
+        }
+    },
+    {
+        "id": 102,
+        "nom": "lot-102",
+        "actif": false,
+        "annule": null,
+        "poids": 25.5,
+        "rapport": 4e-3,
+        "mesures": [102, 25.5, -102, 102000000],
+        "texte": "description \"102\" avec \u00e9 et \t",
+        "detail": {
+            "min": -102,
+            "max": 1020,
+            "liste": [102, 204, 306],
+            "vide": {}
+        }
+    },
+    {
+        "id": 103,
+        "nom": "lot-103",
+        "actif": true,
+        "annule": null,
+        "poids": 25.75,
+        "rapport": 5e-4,
+        "mesures": [103, 25.75, -103, 103000000],
+        "texte": "description \"103\" avec \u00e9 et \t",
+        "detail": {
+            "min": -103,
+            "max": 1030,
+            "liste": [103, 206, 309],
+            "vide": {}
+        }
+    },
+    {
+        "id": 104,
+        "nom": "lot-104",
+        "actif": false,
+        "annule": null,
+        "poids": 26.0,
+        "rapport": 6e-5,
+        "mesures": [104, 26.0, -104, 104000000],
+        "texte": "description \"104\" avec \u00e9 et \t",
+        "detail": {
+            "min": -104,
+            "max": 1040,
+            "liste": [104, 208, 312],
+            "vide": {}
+        }
+    },
+    {
+        "id": 105,
+        "nom": "lot-105",
+        "actif": true,
+        "annule": null,
+        "poids": 26.25,
+        "rapport": 7e-1,
+        "mesures": [105, 26.25, -105, 105000000],
+        "texte": "description \"105\" avec \u00e9 et \t",
+        "detail": {
+            "min": -105,
+            "max": 1050,
+            "liste": [105, 210, 315],
+            "vide": {}
+        }
+    },
+    {
+        "id": 106,
+        "nom": "lot-106",
+        "actif": false,
+        "annule": null,
+        "poids": 26.5,
+        "rapport": 8e-2,
+        "mesures": [106, 26.5, -106, 106000000],
+        "texte": "description \"106\" avec \u00e9 et \t",
+        "detail": {
+            "min": -106,
+            "max": 1060,
+            "liste": [106, 212, 318],
+            "vide": {}
+        }
+    },
+    {
+        "id": 107,
+        "nom": "lot-107",
+        "actif": true,
+        "annule": null,
+        "poids": 26.75,
+        "rapport": 9e-3,
+        "mesures": [107, 26.75, -107, 107000000],
+        "texte": "description \"107\" avec \u00e9 et \t",
+        "detail": {
+            "min": -107,
+            "max": 1070,
+            "liste": [107, 214, 321],
+            "vide": {}
+        }
+    },
+    {
+        "id": 108,
+        "nom": "lot-108",
+        "actif": false,
+        "annule": null,
+        "poids": 27.0,
+        "rapport": 1e-4,
+        "mesures": [108, 27.0, -108, 108000000],
+        "texte": "description \"108\" avec \u00e9 et \t",
+        "detail": {
+            "min": -108,
+            "max": 1080,
+            "liste": [108, 216, 324],
+            "vide": {}
+        }
+    },
+    {
+        "id": 109,
+        "nom": "lot-109",
+        "actif": true,
+        "annule": null,
+        "poids": 27.25,
+        "rapport": 2e-5,
+        "mesures": [109, 27.25, -109, 109000000],
+        "texte": "description \"109\" avec \u00e9 et \t",
+        "detail": {
+            "min": -109,
+            "max": 1090,
+            "liste": [109, 218, 327],
+            "vide": {}
+        }
+    },
+    {
+        "id": 110,
+        "nom": "lot-110",
+        "actif": false,
+        "annule": null,
+        "poids": 27.5,
+        "rapport": 3e-1,
+        "mesures": [110, 27.5, -110, 110000000],
+        "texte": "description \"110\" avec \u00e9 et \t",
+        "detail": {
+            "min": -110,
+            "max": 1100,
+            "liste": [110, 220, 330],
+            "vide": {}
+        }
+    },
+    {
+        "id": 111,
+        "nom": "lot-111",
+        "actif": true,
+        "annule": null,
+        "poids": 27.75,
+        "rapport": 4e-2,
+        "mesures": [111, 27.75, -111, 111000000],
+        "texte": "description \"111\" avec \u00e9 et \t",
+        "detail": {
+            "min": -111,
+            "max": 1110,
+            "liste": [111, 222, 333],
+            "vide": {}
+        }
+    },
+    {
+        "id": 112,
+        "nom": "lot-112",
+        "actif": false,
+        "annule": null,
+        "poids": 28.0,
+        "rapport": 5e-3,
+        "mesures": [112, 28.0, -112, 112000000],
+        "texte": "description \"112\" avec \u00e9 et \t",
+        "detail": {
+            "min": -112,
+            "max": 1120,
+            "liste": [112, 224, 336],
+            "vide": {}
+        }
+    },
+    {
+        "id": 113,
+        "nom": "lot-113",
+        "actif": true,
+        "annule": null,
+        "poids": 28.25,
+        "rapport": 6e-4,
+        "mesures": [113, 28.25, -113, 113000000],
+        "texte": "description \"113\" avec \u00e9 et \t",
+        "detail": {
+            "min": -113,
+            "max": 1130,
+            "liste": [113, 226, 339],
+            "vide": {}
+        }
+    },
+    {
+        "id": 114,
+        "nom": "lot-114",
+        "actif": false,
+        "annule": null,
+        "poids": 28.5,
+        "rapport": 7e-5,
+        "mesures": [114, 28.5, -114, 114000000],
+        "texte": "description \"114\" avec \u00e9 et \t",
+        "detail": {
+            "min": -114,
+            "max": 1140,
+            "liste": [114, 228, 342],
+            "vide": {}
+        }
+    },
+    {
+        "id": 115,
+        "nom": "lot-115",
+        "actif": true,
+        "annule": null,
+        "poids": 28.75,
+        "rapport": 8e-1,
+        "mesures": [115, 28.75, -115, 115000000],
+        "texte": "description \"115\" avec \u00e9 et \t",
+        "detail": {
+            "min": -115,
+            "max": 1150,
+            "liste": [115, 230, 345],
+            "vide": {}
+        }
+    },
+    {
+        "id": 116,
+        "nom": "lot-116",
+        "actif": false,
+        "annule": null,
+        "poids": 29.0,
+        "rapport": 9e-2,
+        "mesures": [116, 29.0, -116, 116000000],
+        "texte": "description \"116\" avec \u00e9 et \t",
+        "detail": {
+            "min": -116,
+            "max": 1160,
+            "liste": [116, 232, 348],
+            "vide": {}
+        }
+    },
+    {
+        "id": 117,
+        "nom": "lot-117",
+        "actif": true,
+        "annule": null,
+        "poids": 29.25,
+        "rapport": 1e-3,
+        "mesures": [117, 29.25, -117, 117000000],
+        "texte": "description \"117\" avec \u00e9 et \t",
+        "detail": {
+            "min": -117,
+            "max": 1170,
+            "liste": [117, 234, 351],
+            "vide": {}
+        }
+    },
+    {
+        "id": 118,
+        "nom": "lot-118",
+        "actif": false,
+        "annule": null,
+        "poids": 29.5,
+        "rapport": 2e-4,
+        "mesures": [118, 29.5, -118, 118000000],
+        "texte": "description \"118\" avec \u00e9 et \t",
+        "detail": {
+            "min": -118,
+            "max": 1180,
+            "liste": [118, 236, 354],
+            "vide": {}
+        }
+    },
+    {
+        "id": 119,
+        "nom": "lot-119",
+        "actif": true,
+        "annule": null,
+        "poids": 29.75,
+        "rapport": 3e-5,
+        "mesures": [119, 29.75, -119, 119000000],
+        "texte": "description \"119\" avec \u00e9 et \t",
+        "detail": {
+            "min": -119,
+            "max": 1190,
+            "liste": [119, 238, 357],
+            "vide": {}
+        }
+    },
+    {
+        "id": 120,
+        "nom": "lot-120",
+        "actif": false,
+        "annule": null,
+        "poids": 30.0,
+        "rapport": 4e-1,
+        "mesures": [120, 30.0, -120, 120000000],
+        "texte": "description \"120\" avec \u00e9 et \t",
+        "detail": {
+            "min": -120,
+            "max": 1200,
+            "liste": [120, 240, 360],
+            "vide": {}
+        }
+    },
+    {
+        "id": 121,
+        "nom": "lot-121",
+        "actif": true,
+        "annule": null,
+        "poids": 30.25,
+        "rapport": 5e-2,
+        "mesures": [121, 30.25, -121, 121000000],
+        "texte": "description \"121\" avec \u00e9 et \t",
+        "detail": {
+            "min": -121,
+            "max": 1210,
+            "liste": [121, 242, 363],
+            "vide": {}
+        }
+    },
+    {
+        "id": 122,
+        "nom": "lot-122",
+        "actif": false,
+        "annule": null,
+        "poids": 30.5,
+        "rapport": 6e-3,
+        "mesures": [122, 30.5, -122, 122000000],
+        "texte": "description \"122\" avec \u00e9 et \t",
+        "detail": {
+            "min": -122,
+            "max": 1220,
+            "liste": [122, 244, 366],
+            "vide": {}
+        }
+    },
+    {
+        "id": 123,
+        "nom": "lot-123",
+        "actif": true,
+        "annule": null,
+        "poids": 30.75,
+        "rapport": 7e-4,
+        "mesures": [123, 30.75, -123, 123000000],
+        "texte": "description \"123\" avec \u00e9 et \t",
+        "detail": {
+            "min": -123,
+            "max": 1230,
+            "liste": [123, 246, 369],
+            "vide": {}
+        }
+    },
+    {
+        "id": 124,
+        "nom": "lot-124",
+        "actif": false,
+        "annule": null,
+        "poids": 31.0,
+        "rapport": 8e-5,
+        "mesures": [124, 31.0, -124, 124000000],
+        "texte": "description \"124\" avec \u00e9 et \t",
+        "detail": {
+            "min": -124,
+            "max": 1240,
+            "liste": [124, 248, 372],
+            "vide": {}
+        }
+    },
+    {
+        "id": 125,
+        "nom": "lot-125",
+        "actif": true,
+        "annule": null,
+        "poids": 31.25,
+        "rapport": 9e-1,
+        "mesures": [125, 31.25, -125, 125000000],
+        "texte": "description \"125\" avec \u00e9 et \t",
+        "detail": {
+            "min": -125,
+            "max": 1250,
+            "liste": [125, 250, 375],
+            "vide": {}
+        }
+    }
+]

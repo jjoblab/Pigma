@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""Contrôle d'à-jour du code généré des lexeurs.
+
+Le code des lexeurs générés vit versionné (décision du propriétaire) :
+chaque description de syntax/src/main/lexers doit produire
+exactement le fichier versionné correspondant de syntax/src/main/java.
+Ce contrôle régénère chaque description dans un répertoire temporaire
+et compare : un écart signifie qu'une description a changé sans que le
+code généré soit régénéré (ou l'inverse) — les deux doivent voyager
+ensemble.
+
+Sans JFlex disponible (variable JFLEX_CP, ou TOOLS pointant un
+répertoire avec jflex.jar et son cup), le contrôle s'ignore en le
+disant : le build sur téléphone ne doit pas échouer pour un outil de
+génération absent. Passer la sortie en argument permet de garder le
+détail silencieux des fichiers comparés.
+"""
+
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+FLEX_DIR = ROOT / "syntax" / "src" / "main" / "lexers"
+GENERATED_DIR = ROOT / "syntax" / "src" / "main" / "java" / "jo" / "pigma" / "syntax" / "lexers" / "generated"
+
+
+def jflex_command():
+    """La commande java qui lance JFlex, ou aucune si l'outil manque."""
+    explicit = os.environ.get("JFLEX_CP", "").strip()
+    if explicit:
+        classpath = explicit
+    else:
+        tools = Path(os.environ.get("TOOLS", "/home/z/my-project/tools"))
+        main = tools / "jflex.jar"
+        cup = tools / "java-cup-runtime-11b-20160615-3.jar"
+        if not (main.is_file() and cup.is_file()):
+            return None
+        classpath = f"{main}:{cup}"
+    java_home = os.environ.get("JAVA_HOME", "").strip()
+    java = f"{java_home}/bin/java" if java_home else "java"
+    return [java, "-cp", classpath, "jflex.Main"]
+
+
+def generated_name(flex_path):
+    """java.flex -> JavaLexer.java (majuscule initiale + Lexer)."""
+    stem = flex_path.stem
+    return stem[0].upper() + stem[1:] + "Lexer.java"
+
+
+def first_difference(left, right):
+    """Première ligne divergente de deux textes, ou aucune."""
+    left_lines = left.splitlines()
+    right_lines = right.splitlines()
+    count = max(len(left_lines), len(right_lines))
+    for index in range(count):
+        a = left_lines[index] if index < len(left_lines) else "<absente>"
+        b = right_lines[index] if index < len(right_lines) else "<absente>"
+        if a != b:
+            return index + 1
+    return None
+
+
+def main():
+    command = jflex_command()
+    descriptions = sorted(FLEX_DIR.glob("*.flex")) if FLEX_DIR.is_dir() else []
+    if not descriptions:
+        print("check-lexers-fresh : ÉCHEC aucune description de lexeur trouvée")
+        return 1
+    if command is None:
+        print("check-lexers-fresh : IGNORÉ (JFlex introuvable : définir JFLEX_CP "
+              "ou TOOLS pour l'activer)")
+        return 0
+    violations = []
+    fresh_dir = Path(tempfile.mkdtemp(prefix="pigma-lexers-"))
+    try:
+        for flex in descriptions:
+            target = GENERATED_DIR / generated_name(flex)
+            if not target.is_file():
+                violations.append(f"généré absent : {target.relative_to(ROOT)}")
+                continue
+            run = subprocess.run(
+                command + ["--nobak", "-d", str(fresh_dir), str(flex)],
+                capture_output=True, text=True, check=False)
+            if run.returncode != 0:
+                violations.append(f"génération en échec : {flex.name}")
+                continue
+            produced = fresh_dir / generated_name(flex)
+            if not produced.is_file():
+                violations.append(f"sortie inattendue : {generated_name(flex)}")
+                continue
+            line = first_difference(target.read_text(encoding="utf-8"),
+                                    produced.read_text(encoding="utf-8"))
+            if line is not None:
+                violations.append(
+                    f"code généré périmé : {target.relative_to(ROOT)} "
+                    f"(première divergence ligne {line})")
+    finally:
+        shutil.rmtree(fresh_dir, ignore_errors=True)
+    if violations:
+        print("check-lexers-fresh : ÉCHEC")
+        for violation in violations:
+            print("  - " + violation)
+        print("Régénérer : java -cp $JFLEX_CP jflex.Main --nobak "
+              "-d syntax/src/main/java/jo/pigma/syntax/lexers/generated "
+              "syntax/src/main/lexers/<langage>.flex")
+        return 1
+    print(f"check-lexers-fresh : OK ({len(descriptions)} lexeur(s) à jour)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

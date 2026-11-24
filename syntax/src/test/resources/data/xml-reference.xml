@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE config SYSTEM "config.dtd">
+<!-- fichier de reference du lexeur XML du banc E0 -->
+<?instructions mode="reference" ?>
+<config id="ref-1" version='2'>
+    <owner name="Pigma" role="editor"/>
+    <limits min="0" max="1000000" ratio="0.5" negative="-12"/>
+    <entities amp="&amp;" lt="&lt;" gt="&gt;" quote="&quot;" code="&#169;" hex="&#x263A;"/>
+    <description>
+        texte simple avec ponctuation, virgules et points.
+    </description>
+    <raw><![CDATA[donnée brute <non> &interprétée, ponctuation «» et tiret -- simple]]></raw>
+    <list>
+        <item position="1" actif="true"/>
+        <item position='2' actif='false'/>
+        <item position="3"/>
+    </list>
+    <empty/>
+    <!-- commentaire
+         qui traverse
+         les lignes -->
+    <mesures consolidation="vrai"
+             unite="ko"
+             seuil="10">
+        12, 34, 56
+    </mesures>
+    <brut><![CDATA[contenu
+    sur deux lignes]]></brut>
+    <nested>
+        <deep>
+            <deeper attribut="valeur">contenu profond</deeper>
+        </deep>
+    </nested>
+</config>
+<!-- fin du fichier de reference -->
