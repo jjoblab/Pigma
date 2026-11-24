@@ -630,6 +630,10 @@ public final class MainActivity extends Activity {
         File resources = new File(workspace, "resources");
         File document = new File(workspace, "demo.lua");
         try {
+            // l'espace de travail naît ici (le cache le laisse absent au
+            // premier lancement) — sans lui l'écriture du démo échoue et
+            // le serveur ne part jamais
+            java.nio.file.Files.createDirectories(resources.toPath());
             java.nio.file.Files.writeString(document.toPath(), DemoTexts.LUA,
                     java.nio.charset.StandardCharsets.UTF_8);
         } catch (java.io.IOException noFile) {

@@ -5,6 +5,8 @@ import jo.pigma.editor.gutter.Gutter;
 import jo.pigma.editor.input.EditorContract;
 import jo.pigma.editor.input.EditorInputConnection;
 import jo.pigma.editor.selection.SelectionRenderer;
+import jo.pigma.editor.selection.SelectionState;
+
 
 import jo.pigma.editor.popups.InfoPopup;
 import jo.pigma.editor.render.RenderCache;
@@ -112,12 +114,11 @@ public final class EditorView extends View {
     private SyntaxTheme theme = EditorThemes.LIGHT;
     private int themeBackground = EditorThemes.LIGHT_BACKGROUND;
 
-    private int caretOffset;
     private int composingStart = -1;
     private int composingEnd = -1;
 
-    /** L'ancre de sélection (-1 : pas de sélection, le curseur seul). */
-    private int selectionAnchor = -1;
+    /** L'état de sélection — le curseur et l'ancre au paquet selection/. */
+    private final SelectionState selection = new SelectionState();
 
     /** La requête de recherche courante (null : pas de recherche). */
     private String searchQuery;
@@ -452,7 +453,7 @@ public final class EditorView extends View {
      * @return l'indice de la ligne du curseur
      */
     public int caretLine() {
-        return buffer.lineOfOffset(Math.min(caretOffset, buffer.length()));
+        return buffer.lineOfOffset(Math.min(selection.caret(), buffer.length()));
     }
 
     /**
@@ -464,8 +465,8 @@ public final class EditorView extends View {
      * @param offset la position visée
      */
     public void caretTo(int offset) {
-        caretOffset = Math.max(0, Math.min(offset, buffer.length()));
-        selectionAnchor = -1;
+        selection.setCaret(Math.max(0, Math.min(offset, buffer.length())));
+        selection.setAnchor(-1);
         ensureCaretVisible();
         invalidate();
     }
@@ -694,7 +695,7 @@ public final class EditorView extends View {
         suggestionWordStart = -1;
         // autre document : la sélection n'y désigne plus rien, la
         // recherche et la popup d'info non plus
-        selectionAnchor = -1;
+        selection.setAnchor(-1);
         searchQuery = null;
         searchMatches = new int[0];
         searchCurrent = -1;
@@ -738,7 +739,7 @@ public final class EditorView extends View {
      * court encore, continue : il remplit déjà ce document.
      */
     private void reopenSameDocument() {
-        selectionAnchor = -1;
+        selection.setAnchor(-1);
         selectionDragBound = 0;
         searchQuery = null;
         searchMatches = new int[0];
@@ -792,7 +793,7 @@ public final class EditorView extends View {
      * @return la position du curseur dans le texte
      */
     public int getCaretOffset() {
-        return caretOffset;
+        return selection.caret();
     }
 
     /**
@@ -812,7 +813,7 @@ public final class EditorView extends View {
      * @return vrai si du texte est sélectionné
      */
     public boolean hasSelection() {
-        return selectionAnchor >= 0 && selectionAnchor != caretOffset;
+        return selection.hasSelection();
     }
 
     /**
@@ -822,8 +823,7 @@ public final class EditorView extends View {
      *         curseur sans sélection
      */
     public int selectionStart() {
-        return selectionAnchor < 0
-                ? caretOffset : Math.min(selectionAnchor, caretOffset);
+        return selection.start();
     }
 
     /**
@@ -833,8 +833,7 @@ public final class EditorView extends View {
      *         curseur sans sélection
      */
     public int selectionEnd() {
-        return selectionAnchor < 0
-                ? caretOffset : Math.max(selectionAnchor, caretOffset);
+        return selection.end();
     }
 
     /**
@@ -862,9 +861,9 @@ public final class EditorView extends View {
         int to = clampToRange(end, 0, buffer.length());
         // l'ancre se pose APRÈS le curseur : poser le curseur range la
         // sélection, l'ancre la rouvre
-        selectionAnchor = -1;
+        selection.setAnchor(-1);
         caretTo(to);
-        selectionAnchor = from == to ? -1 : from;
+        selection.setAnchor(from == to ? -1 : from);
         invalidate();
     }
 
@@ -907,7 +906,7 @@ public final class EditorView extends View {
         if (searchMatches.length > 0) {
             searchCurrent = 0;
             for (int m = 0; m < searchMatches.length; m++) {
-                if (searchMatches[m] >= caretOffset) {
+                if (searchMatches[m] >= selection.caret()) {
                     searchCurrent = m;
                     break;
                 }
@@ -1015,8 +1014,8 @@ public final class EditorView extends View {
                 transaction.replace(start, end, replacement);
             }
         }
-        selectionAnchor = -1;
-        caretOffset = Math.min(firstStart + replacement.length(), buffer.length());
+        selection.setAnchor(-1);
+        selection.setCaret(Math.min(firstStart + replacement.length(), buffer.length()));
         search(searchQuery);
         return count;
     }
@@ -1156,8 +1155,8 @@ public final class EditorView extends View {
     private void gotoSearchMatch(int index) {
         searchCurrent = index;
         int offset = searchMatches[index];
-        selectionAnchor = -1;
-        caretOffset = Math.min(offset + searchQuery.length(), buffer.length());
+        selection.setAnchor(-1);
+        selection.setCaret(Math.min(offset + searchQuery.length(), buffer.length()));
         ensureCaretVisible();
         invalidate();
     }
@@ -1224,7 +1223,7 @@ public final class EditorView extends View {
         return new EditorContract() {
             @Override
             public int caret() {
-                return caretOffset;
+                return selection.caret();
             }
 
             @Override
@@ -1548,11 +1547,11 @@ public final class EditorView extends View {
         dragFingerY = y;
         int offset = offsetNearest(x, y);
         if (selectionDragBound == 1) {
-            caretOffset = Math.min(offset, dragFixedBound);
-            selectionAnchor = dragFixedBound;
+            selection.setCaret(Math.min(offset, dragFixedBound));
+            selection.setAnchor(dragFixedBound);
         } else {
-            caretOffset = Math.max(offset, dragFixedBound);
-            selectionAnchor = dragFixedBound;
+            selection.setCaret(Math.max(offset, dragFixedBound));
+            selection.setAnchor(dragFixedBound);
         }
         invalidate();
     }
@@ -1646,12 +1645,12 @@ public final class EditorView extends View {
      * déplacement ne paie les marches qu'une fois).
      */
     private void updateStructureCaches() {
-        if (caretOffset == pairCaret && buffer.getRevision() == pairRevision) {
+        if (selection.caret() == pairCaret && buffer.getRevision() == pairRevision) {
             return;
         }
-        pairCaret = caretOffset;
+        pairCaret = selection.caret();
         pairRevision = buffer.getRevision();
-        int caret = Math.min(caretOffset, buffer.length());
+        int caret = Math.min(selection.caret(), buffer.length());
         bracketPair = structure.pairAt(caret);
         scopeRange = structure.scopeAt(caret);
     }
@@ -1871,9 +1870,9 @@ public final class EditorView extends View {
             // le curseur dans la région repliée : il remonte à la fin de
             // l'en-tête (juste après l'ouvrant, la paire s'y encadre)
             int end = structure.foldEndLine(line);
-            int caretLine = buffer.lineOfOffset(Math.min(caretOffset, buffer.length()));
+            int caretLine = buffer.lineOfOffset(Math.min(selection.caret(), buffer.length()));
             if (caretLine > line && caretLine <= end) {
-                caretOffset = buffer.getLineEnd(line);
+                selection.setCaret(buffer.getLineEnd(line));
             }
         }
         rebuildFoldLayout();
@@ -1926,7 +1925,7 @@ public final class EditorView extends View {
         if (!folds.hasFolds()) {
             return;
         }
-        int line = buffer.lineOfOffset(Math.min(caretOffset, buffer.length()));
+        int line = buffer.lineOfOffset(Math.min(selection.caret(), buffer.length()));
         // la reconstruction peut annuler les plis (dernier ouvert) :
         // la garde se relit à chaque tour
         while (folds.isHidden(line)) {
@@ -2085,7 +2084,7 @@ public final class EditorView extends View {
      * indication (les noms, pas les positions).
      */
     private void updateSuggestions() {
-        int caret = Math.min(caretOffset, buffer.length());
+        int caret = Math.min(selection.caret(), buffer.length());
         int wordStart = wordStartAt(caret);
         if (wordStart < 0) {
             suggestionBand.set(List.of());
@@ -2254,7 +2253,7 @@ public final class EditorView extends View {
             float next = at + 1 < suggestionBand.drawnCount()
                     ? suggestionBand.xAt(at + 1) : getWidth();
             if (x >= suggestionBand.xAt(at) && x < next) {
-                applyEdit(suggestionWordStart, Math.min(caretOffset, buffer.length()),
+                applyEdit(suggestionWordStart, Math.min(selection.caret(), buffer.length()),
                         suggestionBand.words().get(at));
                 return;
             }
@@ -2314,7 +2313,7 @@ public final class EditorView extends View {
     private void drawCaret(Canvas canvas) {
         // le temps du traîné-déposé, le curseur se dessine au point de
         // dépôt : le doigt y voit où le texte se posera
-        int offset = Math.min(textDragging ? dropOffset : caretOffset, buffer.length());
+        int offset = Math.min(textDragging ? dropOffset : selection.caret(), buffer.length());
         int line = buffer.lineOfOffset(offset);
         if (line < firstVisibleLine() || line > lastVisibleLine() || isHidden(line)) {
             return;
@@ -2366,7 +2365,7 @@ public final class EditorView extends View {
         if (textDragging && dropOffset < 0) {
             return;
         }
-        int offset = Math.min(textDragging ? dropOffset : caretOffset,
+        int offset = Math.min(textDragging ? dropOffset : selection.caret(),
                 buffer.length());
         int line = buffer.lineOfOffset(offset);
         if (isHidden(line)) {
@@ -2546,9 +2545,9 @@ public final class EditorView extends View {
 
     private void placeCaretAt(float x, float y) {
         int offset = offsetNearest(x, y);
-        caretOffset = offset;
+        selection.setCaret(offset);
         // un tap pose le curseur : la sélection se range
-        selectionAnchor = -1;
+        selection.setAnchor(-1);
         invalidate();
     }
 
@@ -2579,7 +2578,7 @@ public final class EditorView extends View {
             ensureCaretVisible();
         }
         // la sélection se range : le texte déposé s'achève au curseur
-        selectionAnchor = -1;
+        selection.setAnchor(-1);
         invalidate();
     }
 
@@ -2596,11 +2595,11 @@ public final class EditorView extends View {
         int wordEnd = wordBoundsEnd(offset, lineEnd);
         // le curseur d'abord (le poser range la sélection), l'ancre
         // ensuite la rouvre
-        selectionAnchor = -1;
+        selection.setAnchor(-1);
         caretTo(offset);
         if (wordEnd > wordStart) {
-            selectionAnchor = wordStart;
-            caretOffset = wordEnd;
+            selection.setAnchor(wordStart);
+            selection.setCaret(wordEnd);
             showSymbolInfo(wordStart, wordEnd, line, offset - lineStart);
             invalidate();
         }
@@ -2663,7 +2662,7 @@ public final class EditorView extends View {
     /** Amène le curseur dans la fenêtre visible (frappe en bord bas) ; un pli qui le cache s'ouvre. */
     private void ensureCaretVisible() {
         revealCaret();
-        int line = buffer.lineOfOffset(Math.min(caretOffset, buffer.length()));
+        int line = buffer.lineOfOffset(Math.min(selection.caret(), buffer.length()));
         float top = getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
         float bottom = top + lineHeight;
         if (top < 0.0f) {
@@ -2760,10 +2759,10 @@ public final class EditorView extends View {
         try (TextTransaction transaction = undoStack.newTransaction()) {
             transaction.replace(start, end, text);
         }
-        caretOffset = Math.min(start + text.length(), buffer.length());
+        selection.setCaret(Math.min(start + text.length(), buffer.length()));
         // toute édition directe réduit la sélection (le curseur porte
         // la fin, l'ancre ne survit pas à ce qu'elle désignait)
-        selectionAnchor = -1;
+        selection.setAnchor(-1);
         invalidate();
     }
 
@@ -2778,16 +2777,16 @@ public final class EditorView extends View {
      * @param insertedLength caractères insérés
      */
     private void shiftSelection(int start, int removedLength, int insertedLength) {
-        if (selectionAnchor < 0) {
+        if (selection.anchor() < 0) {
             return;
         }
-        if (selectionAnchor <= start) {
+        if (selection.anchor() <= start) {
             return;
         }
-        if (selectionAnchor >= start + removedLength) {
-            selectionAnchor += insertedLength - removedLength;
+        if (selection.anchor() >= start + removedLength) {
+            selection.setAnchor(selection.anchor() + insertedLength - removedLength);
         } else {
-            selectionAnchor = start;
+            selection.setAnchor(start);
         }
     }
 
@@ -2805,8 +2804,8 @@ public final class EditorView extends View {
             applyEdit(selectionStart(), selectionEnd(), "");
             return;
         }
-        int start = Math.max(0, caretOffset - leftLength);
-        int end = Math.min(buffer.length(), caretOffset + rightLength);
+        int start = Math.max(0, selection.caret() - leftLength);
+        int end = Math.min(buffer.length(), selection.caret() + rightLength);
         if (end > start) {
             applyEdit(start, end, "");
         }
@@ -2814,13 +2813,13 @@ public final class EditorView extends View {
 
     /** Déplace le curseur d'un caractère (les flèches du clavier). */
     void moveCaret(int delta) {
-        caretTo(clampToRange(caretOffset + delta, 0, buffer.length()));
+        caretTo(clampToRange(selection.caret() + delta, 0, buffer.length()));
     }
 
     /** Déplace le curseur d'une ligne, colonne conservée au plus près. */
     void moveCaretVertically(int lines) {
-        int current = buffer.lineOfOffset(Math.min(caretOffset, buffer.length()));
-        int column = caretOffset - buffer.getLineStart(current);
+        int current = buffer.lineOfOffset(Math.min(selection.caret(), buffer.length()));
+        int column = selection.caret() - buffer.getLineStart(current);
         int line = clampToRange(current + lines, 0, buffer.getLineCount() - 1);
         int lineStart = buffer.getLineStart(line);
         caretTo(lineStart + Math.min(column, buffer.getLineEnd(line) - lineStart));
@@ -2836,8 +2835,8 @@ public final class EditorView extends View {
     }
 
     private void clampCaret() {
-        if (caretOffset > buffer.length()) {
-            caretOffset = buffer.length();
+        if (selection.caret() > buffer.length()) {
+            selection.setCaret(buffer.length());
         }
     }
 
