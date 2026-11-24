@@ -96,17 +96,17 @@ public final class DiagnosticsDocument {
             for (int line = Math.max(nextLine, from); line < toExclusive
                     && line < syntax.lineCount(); line++) {
                 int depth = line == 0 ? 0 : structure.structureOf(line - 1).depthOut();
-                SyntaxDocument.Token[] tokens = syntax.lineTokens(line).tokens();
+                SyntaxDocument.LineTokens entry = syntax.lineTokens(line);
                 int lineStart = buffer.getLineStart(line);
                 CharSequence text = buffer.getText(lineStart, buffer.getLineEnd(line));
-                for (SyntaxDocument.Token token : tokens) {
-                    char c = singleSign(token, text);
+                for (int token = 0; token < entry.tokenCount(); token++) {
+                    char c = singleSign(entry, token, text);
                     if (c == 0) {
                         continue;
                     }
-                    int at = lineStart + token.start();
+                    int at = lineStart + entry.startAt(token);
                     if (c == '(' || c == '{' || c == '[') {
-                        openers.add(new int[] {line, token.start()});
+                        openers.add(new int[] {line, entry.startAt(token)});
                         depth++;
                     } else if (depth == 0) {
                         // la profondeur tolérante refuse de passer sous
@@ -178,11 +178,12 @@ public final class DiagnosticsDocument {
         return buffer.lineOfOffset(diagnostic.start());
     }
 
-    private static char singleSign(SyntaxDocument.Token token, CharSequence text) {
-        if (token.end() - token.start() != 1) {
+    private static char singleSign(SyntaxDocument.LineTokens entry, int token,
+            CharSequence text) {
+        if (entry.endAt(token) - entry.startAt(token) != 1) {
             return 0;
         }
-        char c = text.charAt(token.start());
+        char c = text.charAt(entry.startAt(token));
         return c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']'
                 ? c : 0;
     }

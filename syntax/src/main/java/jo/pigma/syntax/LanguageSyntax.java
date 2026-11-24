@@ -54,6 +54,17 @@ public final class LanguageSyntax {
     }
 
     /**
+     * La table des portées par type, l'instance du descripteur : les
+     * jetons compacts d'une ligne la portent par référence (une par
+     * ligne, pas une par jeton — la compaction du chantier 40).
+     *
+     * @return la table, indexée par type, jamais {@code null}
+     */
+    Scope[] scopeTable() {
+        return scopesByType;
+    }
+
+    /**
      * Le nom affichable du langage.
      *
      * @return le nom, jamais {@code null}

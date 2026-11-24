@@ -118,11 +118,13 @@ public final class SymbolIndex {
                     symbols.add(new Symbol(name, note.nature(), note.start(), line));
                     bump(words, name, note.nature());
                 }
-                for (SyntaxDocument.Token token : entry.tokens()) {
-                    if (token.scope() != null || token.end() - token.start() < 2) {
+                for (int token = 0; token < entry.tokenCount(); token++) {
+                    if (entry.scopeAt(token) != null
+                            || entry.endAt(token) - entry.startAt(token) < 2) {
                         continue;
                     }
-                    String word = text.subSequence(token.start(), token.end()).toString();
+                    String word = text.subSequence(
+                            entry.startAt(token), entry.endAt(token)).toString();
                     if (!isWord(word)) {
                         continue;
                     }

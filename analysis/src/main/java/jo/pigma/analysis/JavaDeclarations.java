@@ -33,37 +33,35 @@ public final class JavaDeclarations implements SemanticAnnotator {
     public List<SemanticAnnotation> annotateLine(int line, int depthIn,
             SyntaxDocument.LineTokens entry, CharSequence text, int lineStart) {
         List<SemanticAnnotation> notes = new ArrayList<>();
-        SyntaxDocument.Token[] tokens = entry.tokens();
         // l'état de la marche : le texte du jeton précédent, et s'il
         // était neutre (un identifiant — un type d'objet, par exemple)
         String previous = "";
         boolean previousNeutral = false;
-        for (int at = 0; at < tokens.length; at++) {
-            SyntaxDocument.Token token = tokens[at];
+        for (int at = 0; at < entry.tokenCount(); at++) {
             // les blancs (portée nulle, texte vide) ne comptent pas dans
             // l'adjacence : « class Demo » reste adjacent
-            if (isBlank(token, text)) {
+            if (isBlank(entry, at, text)) {
                 continue;
             }
-            String word = identifier(token, text);
+            String word = identifier(entry, at, text);
             if (word == null) {
-                previous = slice(token, text);
+                previous = slice(entry, at, text);
                 previousNeutral = false;
                 continue;
             }
-            String next = nextSignificant(tokens, at + 1, text);
+            String next = nextSignificant(entry, at + 1, text);
             if (isOneOf(previous, TYPE_KEYWORDS)) {
                 notes.add(new SemanticAnnotation(
-                        lineStart + token.start(), lineStart + token.end(),
+                        lineStart + entry.startAt(at), lineStart + entry.endAt(at),
                         "type", SemanticAnnotation.BOLD));
             } else if ("(".equals(next) && isTypeIsh(previous, previousNeutral)) {
                 notes.add(new SemanticAnnotation(
-                        lineStart + token.start(), lineStart + token.end(),
+                        lineStart + entry.startAt(at), lineStart + entry.endAt(at),
                         "méthode", 0));
             } else if (depthIn == 1 && (";".equals(next) || "=".equals(next))
                     && isTypeIsh(previous, previousNeutral)) {
                 notes.add(new SemanticAnnotation(
-                        lineStart + token.start(), lineStart + token.end(),
+                        lineStart + entry.startAt(at), lineStart + entry.endAt(at),
                         "champ", 0));
             }
             previous = word;
@@ -76,11 +74,12 @@ public final class JavaDeclarations implements SemanticAnnotator {
      * Le mot d'un jeton identifiant : neutre de L1 (portée nulle — un
      * mot-clé ne l'est pas) et de forme d'identifiant.
      */
-    private static String identifier(SyntaxDocument.Token token, CharSequence text) {
-        if (token.scope() != null || token.end() - token.start() < 1) {
+    private static String identifier(SyntaxDocument.LineTokens entry, int at,
+            CharSequence text) {
+        if (entry.scopeAt(at) != null || entry.endAt(at) - entry.startAt(at) < 1) {
             return null;
         }
-        String word = slice(token, text);
+        String word = slice(entry, at, text);
         if (!word.isEmpty() && !Character.isJavaIdentifierStart(word.charAt(0))) {
             return null;
         }
@@ -93,21 +92,23 @@ public final class JavaDeclarations implements SemanticAnnotator {
     }
 
     /** Le texte d'un jeton. */
-    private static String slice(SyntaxDocument.Token token, CharSequence text) {
-        return text.subSequence(token.start(), token.end()).toString();
+    private static String slice(SyntaxDocument.LineTokens entry, int at,
+            CharSequence text) {
+        return text.subSequence(entry.startAt(at), entry.endAt(at)).toString();
     }
 
     /** Un jeton blanc (les lexeurs émettent les espaces, portée nulle). */
-    private static boolean isBlank(SyntaxDocument.Token token, CharSequence text) {
-        return token.scope() == null && slice(token, text).isBlank();
+    private static boolean isBlank(SyntaxDocument.LineTokens entry, int at,
+            CharSequence text) {
+        return entry.scopeAt(at) == null && slice(entry, at, text).isBlank();
     }
 
     /** Le texte du premier jeton non blanc à partir de l'indice donné. */
-    private static String nextSignificant(SyntaxDocument.Token[] tokens,
+    private static String nextSignificant(SyntaxDocument.LineTokens entry,
             int from, CharSequence text) {
-        for (int at = from; at < tokens.length; at++) {
-            if (!isBlank(tokens[at], text)) {
-                return slice(tokens[at], text);
+        for (int at = from; at < entry.tokenCount(); at++) {
+            if (!isBlank(entry, at, text)) {
+                return slice(entry, at, text);
             }
         }
         return "";

@@ -440,11 +440,11 @@ public final class StructureDocument {
                 buffer.getLineStart(line), buffer.getLineEnd(line));
         int depth = depthIn;
         int mismatches = 0;
-        for (SyntaxDocument.Token token : entry.tokens()) {
-            if (token.end() - token.start() != 1) {
+        for (int at = 0; at < entry.tokenCount(); at++) {
+            if (entry.endAt(at) - entry.startAt(at) != 1) {
                 continue;
             }
-            char sign = text.charAt(token.start());
+            char sign = text.charAt(entry.startAt(at));
             if (sign == '(' || sign == '{' || sign == '[') {
                 depth++;
             } else if (sign == ')' || sign == '}' || sign == ']') {
@@ -476,15 +476,15 @@ public final class StructureDocument {
      * position comptent, ceux d'après non.
      */
     private int depthAtOffset(int line, int rel) {
-        SyntaxDocument.Token[] tokens = syntax.lineTokens(line).tokens();
+        SyntaxDocument.LineTokens entry = syntax.lineTokens(line);
         CharSequence text = buffer.getText(
                 buffer.getLineStart(line), buffer.getLineEnd(line));
         int depth = depthInOf(line);
-        for (SyntaxDocument.Token token : tokens) {
-            if (token.start() >= rel) {
+        for (int at = 0; at < entry.tokenCount(); at++) {
+            if (entry.startAt(at) >= rel) {
                 break;
             }
-            char c = singleSign(token, text);
+            char c = singleSign(entry, at, text);
             if (c == 0) {
                 continue;
             }
@@ -511,19 +511,18 @@ public final class StructureDocument {
         int line = buffer.lineOfOffset(offset);
         ensureAnalyzed(line + 1);
         int rel = offset - buffer.getLineStart(line);
-        SyntaxDocument.Token[] tokens = syntax.lineTokens(line).tokens();
+        SyntaxDocument.LineTokens entry = syntax.lineTokens(line);
         CharSequence text = buffer.getText(
                 buffer.getLineStart(line), buffer.getLineEnd(line));
         int depth = line == 0 ? 0 : lines[line - 1].depthOut();
         int signIndex = -1;
         char sign = 0;
-        for (int at = 0; at < tokens.length; at++) {
-            SyntaxDocument.Token token = tokens[at];
-            char c = singleSign(token, text);
+        for (int at = 0; at < entry.tokenCount(); at++) {
+            char c = singleSign(entry, at, text);
             if (c == 0) {
                 continue;
             }
-            if (token.start() == rel) {
+            if (entry.startAt(at) == rel) {
                 signIndex = at;
                 sign = c;
                 break;
@@ -584,19 +583,18 @@ public final class StructureDocument {
         int bound = Math.max(line - MATCH_WALK_MAX_LINES, -1);
         int counter = 0;
         for (int m = line; m > bound; m--) {
-            SyntaxDocument.Token[] tokens = syntax.lineTokens(m).tokens();
+            SyntaxDocument.LineTokens entry = syntax.lineTokens(m);
             CharSequence text = buffer.getText(
                     buffer.getLineStart(m), buffer.getLineEnd(m));
-            int from = m == line ? signIndex - 1 : tokens.length - 1;
+            int from = m == line ? signIndex - 1 : entry.tokenCount() - 1;
             for (int at = from; at >= 0; at--) {
-                SyntaxDocument.Token token = tokens[at];
-                char c = singleSign(token, text);
+                char c = singleSign(entry, at, text);
                 if (c == 0) {
                     continue;
                 }
                 if (c == '(' || c == '{' || c == '[') {
                     if (counter == 0) {
-                        return new BracketPair(line, rel, m, token.start());
+                        return new BracketPair(line, rel, m, entry.startAt(at));
                     }
                     counter--;
                 } else {
@@ -620,12 +618,11 @@ public final class StructureDocument {
         int running = sameLine
                 ? depthAtSign + 1
                 : lines[matchLine - 1].depthOut();
-        SyntaxDocument.Token[] tokens = syntax.lineTokens(matchLine).tokens();
+        SyntaxDocument.LineTokens entry = syntax.lineTokens(matchLine);
         CharSequence text = buffer.getText(
                 buffer.getLineStart(matchLine), buffer.getLineEnd(matchLine));
-        for (int at = from; at < tokens.length; at++) {
-            SyntaxDocument.Token token = tokens[at];
-            char c = singleSign(token, text);
+        for (int at = from; at < entry.tokenCount(); at++) {
+            char c = singleSign(entry, at, text);
             if (c == 0) {
                 continue;
             }
@@ -634,7 +631,7 @@ public final class StructureDocument {
             } else if (running > 0) {
                 running--;
                 if (running == depthAtSign) {
-                    return token.start();
+                    return entry.startAt(at);
                 }
             }
         }
@@ -646,11 +643,12 @@ public final class StructureDocument {
      * n'est pas un signe (une parenthèse dans une chaîne ou un
      * commentaire vit dans un jeton plus long, elle n'apparie pas).
      */
-    private static char singleSign(SyntaxDocument.Token token, CharSequence text) {
-        if (token.end() - token.start() != 1) {
+    private static char singleSign(SyntaxDocument.LineTokens entry, int at,
+            CharSequence text) {
+        if (entry.endAt(at) - entry.startAt(at) != 1) {
             return 0;
         }
-        char c = text.charAt(token.start());
+        char c = text.charAt(entry.startAt(at));
         if (c == '(' || c == ')' || c == '{' || c == '}'
                 || c == '[' || c == ']') {
             return c;

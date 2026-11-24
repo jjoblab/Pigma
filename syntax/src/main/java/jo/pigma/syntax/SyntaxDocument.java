@@ -65,17 +65,69 @@ public final class SyntaxDocument implements TextListener {
     /** Une ligne sur ce nombre reçoit un point de contrôle d'état. */
     static final int CHECKPOINT_INTERVAL = 256;
 
-    /** Un jeton d'une ligne : type, portée, bornes relatives à la ligne. */
-    public record Token(int type, Scope scope, int start, int end) {
+    /**
+     * Les jetons d'une ligne, compactés : les types en {@code short[]}
+     * et les bornes de fin en {@code int[]} — un jeton n'est plus un
+     * objet (624 002 jetons par passe du hors normes faisaient ~23 Mo
+     * d'objets à recycler par remplissage ; six octets par jeton et
+     * deux tableaux par ligne les tiennent). Le début du jeton
+     * d'indice i est la fin du précédent — les jetons tapissent la
+     * ligne sans trou. La portée se résout par la table du langage,
+     * portée par référence : une par ligne, pas une par jeton. Les
+     * tableaux se partagent tels quels — ne pas les muter.
+     */
+    public record LineTokens(short[] types, int[] ends, Scope[] scopeTable,
+            int endState, int revision) {
+
+        /** Le nombre de jetons de la ligne. */
+        public int tokenCount() {
+            return types.length;
+        }
+
+        /** Le type du jeton d'indice donné (entier du lexeur, positif). */
+        public int typeAt(int index) {
+            return types[index];
+        }
+
+        /** La borne de FIN du jeton, relative à la ligne. */
+        public int endAt(int index) {
+            return ends[index];
+        }
+
+        /** La borne de DÉBUT du jeton : la fin du précédent (zéro au premier). */
+        public int startAt(int index) {
+            return index == 0 ? 0 : ends[index - 1];
+        }
+
+        /** La portée du jeton (nulle : le jeton est neutre). */
+        public Scope scopeAt(int index) {
+            int type = types[index];
+            return type < scopeTable.length ? scopeTable[type] : null;
+        }
+
+        /**
+         * La vue jeton par jeton : les chemins de production (dessin,
+         * analyse, appariement) y vont par indice — aucun objet par
+         * jeton ; la vue ne vit que pour les tests, qui la
+         * matérialisent à la lecture.
+         *
+         * @return les jetons de la ligne, vus en objets
+         */
+        public Token[] tokens() {
+            Token[] view = new Token[types.length];
+            for (int at = 0; at < view.length; at++) {
+                view[at] = new Token(typeAt(at), scopeAt(at), startAt(at), endAt(at));
+            }
+            return view;
+        }
     }
 
-    /** Les jetons d'une ligne : état de fin ouvrant la ligne suivante. */
-    public record LineTokens(Token[] tokens, int endState, int revision) {
-
-        /** Jetons de la ligne, éventuellement aucun. */
-        public Token[] tokens() {
-            return tokens.clone();
-        }
+    /**
+     * Un jeton d'une ligne, la vue de lecture : type, portée, bornes
+     * relatives à la ligne (jamais allouée en production — cf.
+     * {@link LineTokens#tokens()}).
+     */
+    public record Token(int type, Scope scope, int start, int end) {
     }
 
     /** Point de contrôle : l'état qui ouvre la ligne, à cette révision. */
@@ -420,7 +472,7 @@ public final class SyntaxDocument implements TextListener {
         int total = 0;
         for (LineTokens entry : lines) {
             if (entry != null) {
-                total += entry.tokens.length;
+                total += entry.tokenCount();
             }
         }
         return total;
@@ -679,6 +731,16 @@ public final class SyntaxDocument implements TextListener {
         return breaks;
     }
 
+    /** Les jetons d'une passe de lexeur, compactés (types, bornes de fin). */
+    private record Run(short[] types, int[] ends) {
+    }
+
+    /** Types vides partagés (la ligne monstre, hors plafond, n'émet rien). */
+    private static final short[] NO_TYPES = new short[0];
+
+    /** Bornes vides partagées (la ligne monstre, hors plafond, n'émet rien). */
+    private static final int[] NO_ENDS = new int[0];
+
     private LineTokens lexLine(int line, int state, int revision) {
         if (line % CHECKPOINT_INTERVAL == 0) {
             checkpoints.put(line, new Checkpoint(state, revision));
@@ -689,10 +751,13 @@ public final class SyntaxDocument implements TextListener {
             // ligne monstre : pas de coloration, l'état se reporte tel
             // quel (approximation documentée — la couche L1 ne s'y
             // arrête jamais, elle s'y contente de ne rien découper)
-            return new LineTokens(new Token[0], state, revision);
+            return new LineTokens(NO_TYPES, NO_ENDS, language.scopeTable(),
+                    state, revision);
         }
         lexer.start(buffer, start, end, state);
-        return new LineTokens(collectTokens(lexer, start), lexer.state(), revision);
+        Run run = collectTokens(lexer, start);
+        return new LineTokens(run.types(), run.ends(), language.scopeTable(),
+                lexer.state(), revision);
     }
 
     /**
@@ -703,27 +768,36 @@ public final class SyntaxDocument implements TextListener {
     private LineTokens lexWindow(Lexer own, CharSequence text, int start, int end,
             int state, int revision) {
         if (end - start > MAX_COLORED_COLUMNS) {
-            return new LineTokens(new Token[0], state, revision);
+            return new LineTokens(NO_TYPES, NO_ENDS, language.scopeTable(),
+                    state, revision);
         }
         own.start(text, start, end, state);
-        return new LineTokens(collectTokens(own, start), own.state(), revision);
+        Run run = collectTokens(own, start);
+        return new LineTokens(run.types(), run.ends(), language.scopeTable(),
+                own.state(), revision);
     }
 
-    /** Collecte les jetons du lexeur prêt, en bornes relatives à la ligne. */
-    private Token[] collectTokens(Lexer ready, int start) {
-        Token[] collected = new Token[4];
+    /**
+     * Collecte les jetons du lexeur prêt, en bornes relatives à la
+     * ligne — types et bornes en tableaux primitifs, sans objet par
+     * jeton (la compaction : la croissance double, la coupe finale
+     * ajuste).
+     */
+    private Run collectTokens(Lexer ready, int start) {
+        short[] types = new short[8];
+        int[] ends = new int[8];
         int count = 0;
         ready.advance();
         while (ready.tokenType() != Lexer.NO_TOKEN) {
-            if (count == collected.length) {
-                collected = Arrays.copyOf(collected, count * 2);
+            if (count == types.length) {
+                types = Arrays.copyOf(types, count * 2);
+                ends = Arrays.copyOf(ends, count * 2);
             }
-            collected[count++] = new Token(ready.tokenType(),
-                    language.scopeOf(ready.tokenType()),
-                    ready.tokenStart() - start,
-                    ready.tokenEnd() - start);
+            types[count] = (short) ready.tokenType();
+            ends[count] = ready.tokenEnd() - start;
+            count++;
             ready.advance();
         }
-        return Arrays.copyOf(collected, count);
+        return new Run(Arrays.copyOf(types, count), Arrays.copyOf(ends, count));
     }
 }

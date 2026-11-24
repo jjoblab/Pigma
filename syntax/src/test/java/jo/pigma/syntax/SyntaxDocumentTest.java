@@ -38,9 +38,9 @@ public class SyntaxDocumentTest {
         assertEquals(buffer.getRevision(), first.revision());
         // ligne 0 : « int a = 1; » — mot, blanc, identifiant, blanc,
         // opérateur, blanc, nombre, ponctuation.
-        assertEquals(8, first.tokens().length);
-        assertEquals("keyword", first.tokens()[0].scope().name());
-        assertNull(first.tokens()[1].scope());
+        assertEquals(8, first.tokenCount());
+        assertEquals("keyword", first.scopeAt(0).name());
+        assertNull(first.scopeAt(1));
         // ligne 1 ouvre le commentaire : la ligne 2 s'y chaîne
         assertEquals(JavaLexer.BLOCK, document.lineTokens(1).endState());
         assertEquals(JavaLexer.BLOCK, document.lineTokens(2).endState());
@@ -64,18 +64,17 @@ public class SyntaxDocumentTest {
         edit(undo, 0, 0, "/*");
         assertEquals(3, document.lastRelexedLines());
         for (int line = 0; line < 3; line++) {
-            SyntaxDocument.Token[] tokens = document.lineTokens(line).tokens();
-            for (SyntaxDocument.Token token : tokens) {
-                assertEquals("ligne " + line, "comment", token.scope().name());
+            SyntaxDocument.LineTokens entry = document.lineTokens(line);
+            for (int at = 0; at < entry.tokenCount(); at++) {
+                assertEquals("ligne " + line, "comment", entry.scopeAt(at).name());
             }
         }
         // fermeture en fin de fichier : seule la ligne finale relit
         edit(undo, buffer.length(), buffer.length(), "*/");
         assertEquals(1, document.lastRelexedLines());
         assertEquals(0, document.lineTokens(2).endState());
-        assertEquals("comment",
-                document.lineTokens(2).tokens()
-                        [document.lineTokens(2).tokens().length - 1].scope().name());
+        SyntaxDocument.LineTokens closed = document.lineTokens(2);
+        assertEquals("comment", closed.scopeAt(closed.tokenCount() - 1).name());
         document.detach();
     }
 
@@ -95,10 +94,10 @@ public class SyntaxDocumentTest {
         assertEquals(1, document.lastRelexedLines());
         // les lignes suivantes se colorent en commentaire en enchaînant
         for (int line = 0; line < 3; line++) {
-            SyntaxDocument.Token[] tokens = document.lineTokens(line).tokens();
-            assertTrue("ligne " + line + " vide", tokens.length > 0);
-            for (SyntaxDocument.Token token : tokens) {
-                assertEquals("ligne " + line, "comment", token.scope().name());
+            SyntaxDocument.LineTokens entry = document.lineTokens(line);
+            assertTrue("ligne " + line + " vide", entry.tokenCount() > 0);
+            for (int at = 0; at < entry.tokenCount(); at++) {
+                assertEquals("ligne " + line, "comment", entry.scopeAt(at).name());
             }
         }
         assertEquals(3, document.lexedLineCount());
@@ -116,12 +115,11 @@ public class SyntaxDocumentTest {
         SyntaxDocument document = SyntaxDocument.open(buffer, Languages.JAVA);
         document.lineTokens(0);
         SyntaxDocument.LineTokens tail = document.lineTokens(4);
-        SyntaxDocument.Token[] tailTokens = tail.tokens();
         int tailRevision = tail.revision();
         // renommage dans la ligne 0 sans changement d'état de fin
         edit(undo, 4, 5, "z");
         assertEquals(tailRevision, document.lineTokens(4).revision());
-        assertEquals(tokenTexts(tailTokens), tokenTexts(document.lineTokens(4).tokens()));
+        assertEquals(tokenTexts(tail), tokenTexts(document.lineTokens(4)));
         assertEquals(1, document.lastRelexedLines());
         document.detach();
     }
@@ -139,9 +137,9 @@ public class SyntaxDocumentTest {
         edit(undo, 2, 2, "x\ny\n");
         assertEquals(5, document.lineCount());
         // ligne 0 : « a » seul, identifiant neutre
-        assertNull(document.lineTokens(0).tokens()[0].scope());
+        assertNull(document.lineTokens(0).scopeAt(0));
         // la queue (c) garde ses jetons : identifiant neutre aussi
-        assertNull(document.lineTokens(4).tokens()[0].scope());
+        assertNull(document.lineTokens(4).scopeAt(0));
         document.detach();
     }
 
@@ -151,13 +149,13 @@ public class SyntaxDocumentTest {
         TextBuffer buffer = TextBuffer.create("int a;\n");
         UndoStack undo = new UndoStack(buffer);
         SyntaxDocument document = SyntaxDocument.open(buffer, Languages.JAVA);
-        SyntaxDocument.Token[] before = document.lineTokens(0).tokens();
+        SyntaxDocument.LineTokens before = document.lineTokens(0);
         edit(undo, 4, 5, "/*");
         // le commentaire ouvert s'étend au reste de la ligne
-        SyntaxDocument.Token[] after = document.lineTokens(0).tokens();
-        assertEquals("comment", after[after.length - 1].scope().name());
+        SyntaxDocument.LineTokens after = document.lineTokens(0);
+        assertEquals("comment", after.scopeAt(after.tokenCount() - 1).name());
         undo.undo();
-        assertEquals(tokenTexts(before), tokenTexts(document.lineTokens(0).tokens()));
+        assertEquals(tokenTexts(before), tokenTexts(document.lineTokens(0)));
         document.detach();
     }
 
@@ -166,9 +164,9 @@ public class SyntaxDocumentTest {
     public void genericLanguageServesEngine() {
         TextBuffer buffer = TextBuffer.create("SELECT nom\nFROM usagers\n");
         SyntaxDocument document = SyntaxDocument.open(buffer, Languages.SQL);
-        SyntaxDocument.Token[] tokens = document.lineTokens(0).tokens();
-        assertEquals("keyword", tokens[0].scope().name());
-        assertNull(tokens[2].scope());
+        SyntaxDocument.LineTokens entry = document.lineTokens(0);
+        assertEquals("keyword", entry.scopeAt(0).name());
+        assertNull(entry.scopeAt(2));
         document.detach();
     }
 
@@ -178,11 +176,11 @@ public class SyntaxDocumentTest {
         }
     }
 
-    private static String tokenTexts(SyntaxDocument.Token[] tokens) {
+    private static String tokenTexts(SyntaxDocument.LineTokens entry) {
         StringBuilder text = new StringBuilder();
-        for (SyntaxDocument.Token token : tokens) {
-            text.append(token.type()).append(':').append(token.start())
-                    .append('-').append(token.end()).append(' ');
+        for (int at = 0; at < entry.tokenCount(); at++) {
+            text.append(entry.typeAt(at)).append(':').append(entry.startAt(at))
+                    .append('-').append(entry.endAt(at)).append(' ');
         }
         return text.toString();
     }

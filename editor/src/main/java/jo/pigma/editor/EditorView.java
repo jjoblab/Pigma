@@ -2000,8 +2000,8 @@ public final class EditorView extends View {
      * (ligne monstre, hors plafond moteur) se cuit en texte brut.
      */
     private LinePlan bakeLine(int line, Object stamp, CharSequence content) {
-        SyntaxDocument.Token[] tokens = ((SyntaxDocument.LineTokens) stamp).tokens();
-        if (tokens.length == 0) {
+        SyntaxDocument.LineTokens entry = (SyntaxDocument.LineTokens) stamp;
+        if (entry.tokenCount() == 0) {
             int drawn = Math.min(content.length(), MAX_DRAWN_COLUMNS);
             return new LinePlan(
                     new String[] {content.subSequence(0, drawn).toString()},
@@ -2015,11 +2015,13 @@ public final class EditorView extends View {
                 ? List.of() : semantic.annotationsAt(line);
         int lineStart = buffer.getLineStart(line);
         int kept = 0;
-        for (SyntaxDocument.Token token : tokens) {
-            if (token.end() <= token.start()) {
+        for (int at = 0; at < entry.tokenCount(); at++) {
+            int start = entry.startAt(at);
+            int end = entry.endAt(at);
+            if (end <= start) {
                 continue;
             }
-            if (token.start() >= MAX_DRAWN_COLUMNS) {
+            if (start >= MAX_DRAWN_COLUMNS) {
                 break;
             }
             kept++;
@@ -2029,23 +2031,26 @@ public final class EditorView extends View {
         float[] xs = new float[kept];
         boolean[] bolds = new boolean[kept];
         int at = 0;
-        for (SyntaxDocument.Token token : tokens) {
-            if (token.end() <= token.start()) {
+        for (int token = 0; token < entry.tokenCount(); token++) {
+            int start = entry.startAt(token);
+            int end = entry.endAt(token);
+            if (end <= start) {
                 continue;
             }
-            if (token.start() >= MAX_DRAWN_COLUMNS) {
+            if (start >= MAX_DRAWN_COLUMNS) {
                 break;
             }
-            int endColumn = Math.min(token.end(), MAX_DRAWN_COLUMNS);
-            texts[at] = content.subSequence(token.start(), endColumn).toString();
-            colors[at] = token.scope() == null
-                    ? theme.defaultColor() : theme.colorOf(token.scope());
-            xs[at] = token.start() * charWidth;
-            if (token.scope() == null && !notes.isEmpty()) {
+            int endColumn = Math.min(end, MAX_DRAWN_COLUMNS);
+            jo.pigma.syntax.Scope scope = entry.scopeAt(token);
+            texts[at] = content.subSequence(start, endColumn).toString();
+            colors[at] = scope == null
+                    ? theme.defaultColor() : theme.colorOf(scope);
+            xs[at] = start * charWidth;
+            if (scope == null && !notes.isEmpty()) {
                 // fusion L3 > L2 > L1 : seul un neutre peut se colorer —
                 // une couleur L1 affichée ne change jamais
                 for (SemanticAnnotation note : notes) {
-                    if (note.covers(lineStart + token.start(), lineStart + endColumn)) {
+                    if (note.covers(lineStart + start, lineStart + endColumn)) {
                         colors[at] = EditorThemes.semanticColor(theme, note.nature());
                         bolds[at] = (note.modifiers() & SemanticAnnotation.BOLD) != 0;
                         break;
