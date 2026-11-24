@@ -123,13 +123,15 @@ public final class LspSession {
             aware.connect(serverSide.getRemoteProxy());
         }
         LspSession session = new LspSession(clientSide, new ArrayList<>());
-        // les tubes se ferment à l'arrêt : les lectures des deux côtés
-        // s'arrêtent, le serveur meurt avec la liaison
+        // l'arrêt ferme d'abord les écritures : chaque lecteur voit la
+        // fin de flux (pas de tube cassé), puis les lectures se
+        // ferment — les tubes meurent avec la liaison
         session.toClose.add(() -> {
-            clientIn.close();
-            clientOut.close();
-            serverIn.close();
             serverOut.close();
+            clientOut.close();
+            Thread.sleep(50L);
+            clientIn.close();
+            serverIn.close();
         });
         return session;
     }
@@ -166,9 +168,13 @@ public final class LspSession {
                 new ClientEndpoint(listener), input, output);
         launcher.startListening();
         LspSession session = new LspSession(launcher, new ArrayList<>());
+        // l'écriture se ferme la première (le serveur voit la fin de
+        // flux), la lecture ensuite — notre lecteur ne subit pas de
+        // tube cassé
         session.toClose.add(() -> {
-            input.close();
             output.close();
+            Thread.sleep(50L);
+            input.close();
         });
         return session;
     }

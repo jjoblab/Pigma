@@ -136,6 +136,16 @@ public final class EditorView extends View {
     private float touchStartY;
     private boolean dragging;
 
+    /**
+     * La poignée traînée (0 : aucune, 1 : la borne de début, 2 : la
+     * borne de fin — l'appui long qui glisse s'y raccorde : la borne
+     * la plus proche du doigt).
+     */
+    private int selectionDragBound;
+
+    /** La borne fixe du traînement (l'autre bout de la sélection). */
+    private int dragFixedBound = -1;
+
     /** Le fil de fond du remplissage (clichés révision-vérifiés). */
     private BackgroundFill backgroundFill;
 
@@ -221,6 +231,12 @@ public final class EditorView extends View {
     private final Paint scopePaint = new Paint();
 
     private final Paint selectionPaint = new Paint();
+
+    /** Le corps d'une poignée de sélection (le cercle sous la borne). */
+    private final Paint handlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** Le cœur blanc d'une poignée (le point de visibilité). */
+    private final Paint handleCorePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     /** La teinte des correspondances de recherche. */
     private final Paint searchPaint = new Paint();
@@ -309,6 +325,10 @@ public final class EditorView extends View {
         scopePaint.setColor(0x0D2962FF);
         selectionPaint.setStyle(Paint.Style.FILL);
         selectionPaint.setColor(0x332979FF);
+        handlePaint.setStyle(Paint.Style.FILL);
+        handlePaint.setColor(0xE62979FF);
+        handleCorePaint.setStyle(Paint.Style.FILL);
+        handleCorePaint.setColor(0xFFFFFFFF);
         searchPaint.setStyle(Paint.Style.FILL);
         searchPaint.setColor(0x38FFC107);
         searchCurrentPaint.setStyle(Paint.Style.FILL);
@@ -1012,8 +1032,35 @@ public final class EditorView extends View {
                 // pourra en rouvrir une sur le mot touché)
                 dismissInfoPopup();
                 dragging = false;
+                selectionDragBound = 0;
+                dragFixedBound = -1;
+                // une sélection vivante se saisit d'abord par ses
+                // poignées (le défilement n'y a pas droit)
+                grabSelectionHandle(event.getX(), event.getY());
                 break;
             case MotionEvent.ACTION_MOVE:
+                if (selectionDragBound != 0) {
+                    dragSelectionBound(event.getX(), event.getY());
+                    break;
+                }
+                if (!dragging && heldLongEnough()
+                        && (Math.abs(event.getX() - touchStartX) > touchSlop()
+                                || Math.abs(event.getY() - touchStartY) > touchSlop())) {
+                    // l'appui long qui glisse : la sélection s'étend au
+                    // doigt — le mot sous l'appui sème la sélection
+                    // s'il n'y en a pas, la borne la plus proche du
+                    // doigt suit ensuite (le défilement n'y a pas
+                    // droit non plus)
+                    requestFocus();
+                    clearComposing();
+                    if (!hasSelection()) {
+                        selectWordAt(touchStartX, touchStartY);
+                    }
+                    dismissInfoPopup();
+                    engageSelectionDrag(event.getX(), event.getY());
+                    dragSelectionBound(event.getX(), event.getY());
+                    break;
+                }
                 if (!dragging && Math.abs(event.getY() - touchStartY) > touchSlop()) {
                     dragging = true;
                 }
@@ -1026,6 +1073,15 @@ public final class EditorView extends View {
                 }
                 break;
             case MotionEvent.ACTION_UP:
+                if (selectionDragBound != 0) {
+                    // la poignée se lâche : la sélection reste posée,
+                    // l'appui ne compte pas pour un tap (le suivant ne
+                    // serait pas un double-tap)
+                    selectionDragBound = 0;
+                    dragFixedBound = -1;
+                    lastTapNanos = 0L;
+                    break;
+                }
                 if (dragging) {
                     dragging = false;
                 } else if (event.getX() < getPaddingLeft()) {
@@ -1079,6 +1135,120 @@ public final class EditorView extends View {
                 && Math.abs(y - lastTapY) < touchSlop();
     }
 
+    /**
+     * L'offset le plus proche d'un point de vue : la ligne par la
+     * position défilée, la colonne par la largeur de caractère (la
+     * colonne se borne à la ligne — un doigt sous la dernière ligne
+     * y reste).
+     */
+    private int offsetNearest(float x, float y) {
+        int line = buffer.getLineCount() - 1;
+        if (lineHeight > 0.0f) {
+            line = lineOfVisibleIndex(
+                    (int) ((y - getPaddingTop() + scrollY) / lineHeight));
+        }
+        int lineStart = buffer.getLineStart(line);
+        int lineEnd = buffer.getLineEnd(line);
+        int column = charWidth > 0.0f
+                ? clampToRange((int) ((x - getPaddingLeft()) / charWidth), 0, lineEnd - lineStart)
+                : 0;
+        return buffer.offsetOfPosition(line, column);
+    }
+
+    /**
+     * Le centre d'une poignée de sélection : sous la borne (le cercle
+     * du bas de ligne), au-dessus si la ligne touche le bas de la vue
+     * — le dessin et la saisie partagent la géométrie.
+     */
+    private float[] handleCenter(int offset) {
+        int line = buffer.lineOfOffset(offset);
+        int column = offset - buffer.getLineStart(line);
+        float x = getPaddingLeft() + column * charWidth;
+        float top = getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
+        float y = top + lineHeight + dp(5);
+        if (y + dp(7) > getHeight() - getPaddingBottom()) {
+            y = top - dp(5);
+        }
+        return new float[] {x, y};
+    }
+
+    /**
+     * La poignée sous le doigt se saisit : la borne la plus proche
+     * devient la borne traînée, l'autre se fixe. Une cible de
+     * 24 dp de rayon (48 dp de diamètre — la consigne d'ergonomie).
+     */
+    private void grabSelectionHandle(float x, float y) {
+        if (!hasSelection()) {
+            return;
+        }
+        float[] start = handleCenter(selectionStart());
+        float[] end = handleCenter(selectionEnd());
+        float toStart = distanceTo(x, y, start[0], start[1]);
+        float toEnd = distanceTo(x, y, end[0], end[1]);
+        float radius = dp(24);
+        if (Math.min(toStart, toEnd) > radius) {
+            return;
+        }
+        requestFocus();
+        clearComposing();
+        selectionDragBound = toStart <= toEnd ? 1 : 2;
+        dragFixedBound = selectionDragBound == 1 ? selectionEnd() : selectionStart();
+    }
+
+    /**
+     * L'engagement du traînement sans poignée saisie (l'appui long
+     * qui glisse) : la borne la plus proche du doigt devient la borne
+     * traînée.
+     */
+    private void engageSelectionDrag(float x, float y) {
+        float[] start = handleCenter(selectionStart());
+        float[] end = handleCenter(selectionEnd());
+        selectionDragBound = distanceTo(x, y, start[0], start[1])
+                <= distanceTo(x, y, end[0], end[1]) ? 1 : 2;
+        dragFixedBound = selectionDragBound == 1 ? selectionEnd() : selectionStart();
+    }
+
+    /**
+     * La borne traînée suit le doigt : l'offset sous le doigt borne
+     * la sélection côté traîné, la borne fixe la garde de l'autre
+     * côté — la sélection ne s'inverse pas en cours de traînement.
+     * Le doigt près des bords fait défiler (une ligne par événement).
+     */
+    private void dragSelectionBound(float x, float y) {
+        autoScrollNearEdges(y);
+        int offset = offsetNearest(x, y);
+        if (selectionDragBound == 1) {
+            caretOffset = Math.min(offset, dragFixedBound);
+            selectionAnchor = dragFixedBound;
+        } else {
+            caretOffset = Math.max(offset, dragFixedBound);
+            selectionAnchor = dragFixedBound;
+        }
+        invalidate();
+    }
+
+    /**
+     * Le défilement de suivi : le doigt dans la bande du haut ou du
+     * bas fait défiler d'une ligne (la saisie suit alors le texte
+     * révélé).
+     */
+    private void autoScrollNearEdges(float y) {
+        float band = dp(24);
+        float top = getPaddingTop();
+        float bottom = getHeight() - getPaddingBottom();
+        if (y < top + band) {
+            scrollY = clampToRange(scrollY - lineHeight, 0.0f, maxScroll());
+        } else if (y > bottom - band) {
+            scrollY = clampToRange(scrollY + lineHeight, 0.0f, maxScroll());
+        }
+    }
+
+    private static float distanceTo(float x, float y, float toX, float toY) {
+        float dx = x - toX;
+        float dy = y - toY;
+        return (float) Math.sqrt(dx * dx + dy * dy);
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         long frameBegin = System.nanoTime();
@@ -1112,6 +1282,7 @@ public final class EditorView extends View {
         }
         drawStructure(canvas, first, last, count);
         drawCaret(canvas);
+        drawSelectionHandles(canvas);
         // les candidats AVANT leur dessin (un déplacement de curseur
         // rend ses candidats dans la même trame), les soulignés de
         // diagnostic par-dessus le texte, le bandeau par-dessus tout,
@@ -1897,18 +2068,33 @@ public final class EditorView extends View {
         canvas.drawRect(x, top + dp(2), x + caretWidth, top + lineHeight - dp(2), caretPaint);
     }
 
-    private void placeCaretAt(float x, float y) {
-        int line = buffer.getLineCount() - 1;
-        if (lineHeight > 0.0f) {
-            line = lineOfVisibleIndex(
-                    (int) ((y - getPaddingTop() + scrollY) / lineHeight));
+    /**
+     * Les poignées de sélection : un cercle sous chaque borne (au-
+     * dessus de la ligne si elle touche le bas de la vue), un cœur
+     * blanc pour la visibilité — les bornes hors fenêtre ne portent
+     * pas de poignée (on n'y toucherait pas).
+     */
+    private void drawSelectionHandles(Canvas canvas) {
+        if (!hasSelection()) {
+            return;
         }
-        int lineStart = buffer.getLineStart(line);
-        int lineEnd = buffer.getLineEnd(line);
-        int column = charWidth > 0.0f
-                ? clampToRange((int) ((x - getPaddingLeft()) / charWidth), 0, lineEnd - lineStart)
-                : 0;
-        caretOffset = buffer.offsetOfPosition(line, column);
+        drawHandle(canvas, selectionStart());
+        drawHandle(canvas, selectionEnd());
+    }
+
+    private void drawHandle(Canvas canvas, int offset) {
+        int line = buffer.lineOfOffset(offset);
+        if (line < firstVisibleLine() || line > lastVisibleLine() || isHidden(line)) {
+            return;
+        }
+        float[] center = handleCenter(offset);
+        canvas.drawCircle(center[0], center[1], dp(7), handlePaint);
+        canvas.drawCircle(center[0], center[1], dp(3), handleCorePaint);
+    }
+
+    private void placeCaretAt(float x, float y) {
+        int offset = offsetNearest(x, y);
+        caretOffset = offset;
         // un tap pose le curseur : la sélection se range
         selectionAnchor = -1;
         invalidate();
@@ -1919,17 +2105,10 @@ public final class EditorView extends View {
      * dans la fenêtre de la ligne (jamais le document pour un mot).
      */
     private void selectWordAt(float x, float y) {
-        int line = buffer.getLineCount() - 1;
-        if (lineHeight > 0.0f) {
-            line = lineOfVisibleIndex(
-                    (int) ((y - getPaddingTop() + scrollY) / lineHeight));
-        }
+        int offset = offsetNearest(x, y);
+        int line = buffer.lineOfOffset(Math.min(offset, buffer.length()));
         int lineStart = buffer.getLineStart(line);
         int lineEnd = buffer.getLineEnd(line);
-        int column = charWidth > 0.0f
-                ? clampToRange((int) ((x - getPaddingLeft()) / charWidth), 0, lineEnd - lineStart)
-                : 0;
-        int offset = buffer.offsetOfPosition(line, column);
         int wordStart = wordBoundsStart(offset, lineStart);
         int wordEnd = wordBoundsEnd(offset, lineEnd);
         // le curseur d'abord (le poser range la sélection), l'ancre
@@ -1939,7 +2118,7 @@ public final class EditorView extends View {
         if (wordEnd > wordStart) {
             selectionAnchor = wordStart;
             caretOffset = wordEnd;
-            showSymbolInfo(wordStart, wordEnd, line, column);
+            showSymbolInfo(wordStart, wordEnd, line, offset - lineStart);
             invalidate();
         }
     }
