@@ -5,6 +5,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.graphics.Typeface;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
@@ -13,6 +14,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -36,8 +38,8 @@ import jo.pigma.syntax.SyntaxTheme;
  * Écran principal : l'éditeur coloré au-dessus du modèle de texte du
  * cœur et du moteur de coloration.
  *
- * <p>Deux rangées de sélecteurs : le langage (Java, XML, JSON et
- * Kotlin générés, SQL par la famille générique — le texte de
+ * <p>Deux rangées de sélecteurs : le langage (Java, XML, JSON, Kotlin
+ * et Lua générés, SQL par la famille générique — le texte de
  * démonstration change avec) puis le gros fichier Java de la fenêtre
  * paresseuse et le thème (clair, sombre — changer ne retokenise rien,
  * la mesure de première coloration ne bouge pas). Le panneau de
@@ -79,10 +81,19 @@ public final class MainActivity extends Activity {
     /** Le bouton LSP : branche (et débranche) le serveur de démonstration. */
     private Button lspButton;
 
+    /** Le bouton LSP Lua : branche le serveur EmmyLua réel par processus. */
+    private Button lspLuaButton;
+
     /** La liaison LSP branchée (null : aucune). */
     private LspSession lspSession;
 
-    /** Le document courant côté serveur (l'URI stable du protocole). */
+    /** Le document courant côté serveur (l'URI du protocole, la démo ou le fichier Lua). */
+    private String lspUri;
+
+    /** L'étiquette du serveur branché (le panneau la lit). */
+    private String lspLabel;
+
+    /** Le document de la démo Java (l'URI stable du protocole). */
     private static final String DOC_URI = "file:///demo.java";
 
     /** Les diagnostics du dernier avis du serveur (le panneau les lit). */
@@ -193,6 +204,9 @@ public final class MainActivity extends Activity {
         lspButton = new Button(this);
         lspButton.setText("LSP");
         lspButton.setOnClickListener(this::onLspToggleClicked);
+        lspLuaButton = new Button(this);
+        lspLuaButton.setText("LSP Lua");
+        lspLuaButton.setOnClickListener(this::onLspLuaClicked);
         queryField = new EditText(this);
         // la recherche est incrémentale : chaque frappe du champ
         // relance la recherche (amortie de 150 ms — les frappes
@@ -254,7 +268,8 @@ public final class MainActivity extends Activity {
                 themeButton("Sombre", EditorThemes.DARK, EditorThemes.DARK_BACKGROUND),
                 undoButton, redoButton));
 
-        root.addView(row(margin, copyButton, selectButton, copyTextButton, searchButton, lspButton));
+        root.addView(row(margin, copyButton, selectButton, copyTextButton,
+                searchButton, lspButton, lspLuaButton));
 
         // la feuille du bas (masquée au départ) : la recherche et le
         // remplacement — elle descend sous la rangée d'actions, la
@@ -550,19 +565,12 @@ public final class MainActivity extends Activity {
      * l'initialisation, le document part au serveur, ses diagnostics
      * arrivent au panneau, la popup d'info interroge le survol (la
      * réponse du serveur prime sur l'index local — le fournisseur
-     * rend null quand le serveur ne sait pas). Débrancher coupe tout.
+     * rend null quand le serveur ne sait pas). Débrancher coupe tout
+     * (le même détachement que le serveur Lua).
      */
     private void onLspToggleClicked(View button) {
         if (lspSession != null) {
-            editorView.setInfoProvider(null);
-            editorView.setSuggestionProvider(null);
-            lspSession.shutdown();
-            lspSession = null;
-            lspDiagnosticCount = -1;
-            completionPrefix = null;
-            completionCache.clear();
-            lspButton.setText("LSP");
-            updateDiagnostics();
+            detachLsp();
             return;
         }
         // la liaison monte le serveur au même processus : lsp4j porte
@@ -570,32 +578,148 @@ public final class MainActivity extends Activity {
         // quittent pas la machine
         try {
             lspSession = LspSession.beside(new DemoLanguageServer(DOC_URI),
-                    new LspSession.Listener() {
-                        @Override
-                        public void onDiagnostics(String uri,
-                                java.util.List<LspDiagnostic> diagnostics) {
-                            lspDiagnosticCount = diagnostics.size();
-                            runOnUiThread(MainActivity.this::updateDiagnostics);
-                        }
-                    });
+                    sessionListener());
         } catch (java.io.IOException noPipe) {
             Toast.makeText(this, "la liaison LSP ne monte pas : " + noPipe.getMessage(),
                     Toast.LENGTH_SHORT).show();
             return;
         }
+        lspUri = DOC_URI;
+        lspLabel = "serveur de démo";
         lspSession.initialize("pigma-sample");
         pushDocumentToServer();
+        attachProviders();
+        lspButton.setText("LSP ✔");
+        updateDiagnostics();
+    }
+
+    /**
+     * Branche le serveur Lua RÉEL — EmmyLua 0.25.1, un exécutable
+     * indépendant embarqué dans l'application (le paquetage Android
+     * l'extrait vers {@code nativeLibraryDir}, seul répertoire où un
+     * exécutable vit depuis l'appareil) : la liaison le lance par
+     * processus, lsp4j cadre les messages sur son entrée et sa sortie
+     * standard, la négociation y apprend la synchronisation intégrale
+     * (le texte entier part à chaque changement amorti). L'espace de
+     * travail vit dans le cache : la bibliothèque standard Lua s'y
+     * extrait, le document y est un vrai fichier. Débrancher coupe le
+     * processus.
+     */
+    private void onLspLuaClicked(View button) {
+        if (lspSession != null) {
+            detachLsp();
+            return;
+        }
+        // l'éditeur passe au Lua : le serveur analyse ce que l'écran
+        // montre, la coloration suit (le lexeur Lua du chantier 38)
+        editorView.setLanguage(Languages.LUA, DemoTexts.LUA);
+        editorView.getUndoStack().clear();
+        currentScenario = "Lua (démo)";
+        loggedFirstColoration = false;
+        updateStatus();
+        watchDiagnostics();
+
+        File executable = new File(getApplicationInfo().nativeLibraryDir,
+                "libemmylua_ls.so");
+        if (!executable.canExecute()) {
+            Toast.makeText(this, "le serveur EmmyLua manque pour cette architecture ("
+                            + Build.SUPPORTED_ABIS[0] + ")", Toast.LENGTH_LONG).show();
+            return;
+        }
+        File workspace = new File(getCacheDir(), "emmylua");
+        File resources = new File(workspace, "resources");
+        File document = new File(workspace, "demo.lua");
+        try {
+            java.nio.file.Files.writeString(document.toPath(), DemoTexts.LUA,
+                    java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException noFile) {
+            Toast.makeText(this, "l'espace de travail ne s'écrit pas : "
+                    + noFile.getMessage(), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Process server;
+        try {
+            server = new ProcessBuilder(executable.getAbsolutePath(),
+                            "--resources-path", resources.getAbsolutePath())
+                    .directory(workspace)
+                    .redirectError(new File(resources, "stderr.log"))
+                    .start();
+        } catch (java.io.IOException noProcess) {
+            Toast.makeText(this, "le serveur ne part pas : " + noProcess.getMessage(),
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        lspSession = LspSession.overProcess(server, sessionListener());
+        lspUri = document.toURI().toString();
+        lspLabel = "EmmyLua hors processus";
+        lspSession.initialize("pigma-sample");
+        lspSession.didOpen(lspUri, DemoTexts.LUA, "lua");
+        attachProviders();
+        lspLuaButton.setText("LSP Lua ✔");
+        updateDiagnostics();
+    }
+
+    /**
+     * L'écouteur commun des sessions : les diagnostics du serveur
+     * montent au panneau (le compte se rafraîchit sur le fil de
+     * l'interface).
+     *
+     * @return l'écouteur branché à la session
+     */
+    private LspSession.Listener sessionListener() {
+        return new LspSession.Listener() {
+            @Override
+            public void onDiagnostics(String uri,
+                    java.util.List<LspDiagnostic> diagnostics) {
+                lspDiagnosticCount = diagnostics.size();
+                runOnUiThread(MainActivity.this::updateDiagnostics);
+            }
+        };
+    }
+
+    /**
+     * Débranche la session vivante (le serveur de démo ou le processus
+     * EmmyLua) : les fournisseurs se retirent, la liaison s'arrête (le
+     * processus meurt), le panneau oublie.
+     */
+    private void detachLsp() {
+        editorView.setInfoProvider(null);
+        editorView.setSuggestionProvider(null);
+        lspSession.shutdown();
+        lspSession = null;
+        lspUri = null;
+        lspLabel = null;
+        lspDiagnosticCount = -1;
+        completionPrefix = null;
+        completionCache.clear();
+        lspButton.setText("LSP");
+        lspLuaButton.setText("LSP Lua");
+        updateDiagnostics();
+    }
+
+    /**
+     * Les fournisseurs de la session branchée : la popup d'info
+     * interroge le survol (la réponse du serveur prime sur l'index
+     * local — le fournisseur rend null quand le serveur ne sait pas,
+     * il attend au plus 200 ms) ; la complétion du serveur monte au
+     * bandeau (la vue tire à chaque trame — le fournisseur cache par
+     * préfixe, la réponse revient asynchrone sur le fil du lecteur :
+     * la neuve évince l'ancienne si le préfixe n'a pas bougé, la
+     * trame suivante la porte).
+     */
+    private void attachProviders() {
+        final String uri = lspUri;
         // le survol du serveur prime : la réponse attend au plus
         // 200 ms — le serveur de démonstration répond dans le
-        // processus, instantanément ; un serveur réel demanderait la
+        // processus, instantanément ; le serveur réel demandera la
         // voie asynchrone (la réponse remplace la popup quand elle
-        // arrive)
+        // arrive — le chantier suivant)
         editorView.setInfoProvider((line, column, word) -> {
             if (lspSession == null) {
                 return null;
             }
             try {
-                return lspSession.hover(DOC_URI, new LspPosition(line, column))
+                return lspSession.hover(uri, new LspPosition(line, column))
                         .get(200, java.util.concurrent.TimeUnit.MILLISECONDS);
             } catch (Exception noAnswer) {
                 return null;
@@ -615,7 +739,7 @@ public final class MainActivity extends Activity {
                 completionPrefix = prefix;
                 completionCache.clear();
                 final String asked = prefix;
-                lspSession.completion(DOC_URI, new LspPosition(line, column))
+                lspSession.completion(uri, new LspPosition(line, column))
                         .whenComplete((words, failure) -> {
                             if (asked.equals(completionPrefix) && words != null) {
                                 completionCache.clear();
@@ -626,8 +750,6 @@ public final class MainActivity extends Activity {
             }
             return java.util.List.copyOf(completionCache);
         });
-        lspButton.setText("LSP ✔");
-        updateDiagnostics();
     }
 
     /**
@@ -637,8 +759,8 @@ public final class MainActivity extends Activity {
      * rapides n'envoient qu'un delta, le dernier.
      */
     private void pushDocumentToServer() {
-        if (lspSession != null) {
-            lspSession.didChange(DOC_URI, editorView.getBuffer().toString());
+        if (lspSession != null && lspUri != null) {
+            lspSession.didChange(lspUri, editorView.getBuffer().toString());
             // le document a changé côté serveur : les complétions reçues
             // décrivent l'ancien texte — le cache se range et la trame
             // suivante redemande (l'ordre du canal porte le didChange
@@ -799,7 +921,7 @@ public final class MainActivity extends Activity {
                     editorView.foldedCount(), editorView.hiddenLineCount());
         }
         if (lspDiagnosticCount >= 0) {
-            text += " · LSP : " + lspDiagnosticCount + " diagnostic(s) du serveur de démo";
+            text += " · LSP : " + lspDiagnosticCount + " diagnostic(s) — " + lspLabel;
         }
         text += String.format(" · L3 : %d annotation(s) (fenêtre)"
                         + " · symboles : %d (%d mots) · diagnostics : %d",

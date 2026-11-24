@@ -68,6 +68,11 @@ public final class TestServerMain {
         public CompletableFuture<InitializeResult> initialize(InitializeParams params) {
             ServerCapabilities capabilities = new ServerCapabilities();
             capabilities.setHoverProvider(true);
+            // l'incrémental déclaré : ce sous-processus porte le test du
+            // delta par processus (les serveurs intégraux reçoivent le
+            // texte entier)
+            capabilities.setTextDocumentSync(
+                    org.eclipse.lsp4j.TextDocumentSyncKind.Incremental);
             return CompletableFuture.completedFuture(new InitializeResult(capabilities));
         }
 

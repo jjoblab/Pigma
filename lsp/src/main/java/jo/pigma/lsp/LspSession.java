@@ -26,6 +26,7 @@ import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
+import org.eclipse.lsp4j.InitializedParams;
 import org.eclipse.lsp4j.MarkedString;
 import org.eclipse.lsp4j.MarkupContent;
 import org.eclipse.lsp4j.MessageActionItem;
@@ -33,10 +34,13 @@ import org.eclipse.lsp4j.MessageParams;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.Range;
+import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.ShowMessageRequestParams;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TextDocumentItem;
+import org.eclipse.lsp4j.TextDocumentSyncKind;
+import org.eclipse.lsp4j.TextDocumentSyncOptions;
 import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
 import org.eclipse.lsp4j.launch.LSPLauncher;
@@ -94,6 +98,15 @@ public final class LspSession {
 
     /** La version du document (le protocole y retrouve son ordre). */
     private final AtomicInteger documentVersion = new AtomicInteger();
+
+    /**
+     * Le genre de synchronisation négocié à l'initialisation : vrai —
+     * le serveur déclare l'incrémental, les changements partent par
+     * plage ; faux — le serveur veut le texte entier (EmmyLua, le
+     * serveur de démonstration du sample) ou ne dit rien (le défaut
+     * sûr : la notification sans plage est légale partout).
+     */
+    private volatile boolean incrementalSync;
 
     /**
      * L'ombre du dernier texte synchronisé par document : la base du
@@ -195,9 +208,12 @@ public final class LspSession {
     }
 
     /**
-     * L'ouverture du protocole : la négociation des capacités. La
-     * réponse porte le {@link InitializeResult} de lsp4j (le client
-     * n'impose pas de sous-ensemble).
+     * L'ouverture du protocole : la négociation des capacités, puis la
+     * notification {@code initialized} qui la conclut — la poignée de
+     * main complète du protocole (les serveurs réels l'exigent : sans
+     * elle, EmmyLua refuse le premier document). La réponse porte le
+     * {@link InitializeResult} de lsp4j (le client n'impose pas de
+     * sous-ensemble).
      *
      * @param clientName le nom du client (le serveur l'affiche)
      * @return le futur des capacités du serveur
@@ -206,7 +222,37 @@ public final class LspSession {
         InitializeParams params = new InitializeParams();
         params.setClientInfo(new ClientInfo(clientName));
         params.setCapabilities(new ClientCapabilities());
-        return launcher.getRemoteProxy().initialize(params);
+        return launcher.getRemoteProxy().initialize(params).thenApply(result -> {
+            incrementalSync = declaresIncrementalSync(result);
+            launcher.getRemoteProxy().initialized(new InitializedParams());
+            return result;
+        });
+    }
+
+    /**
+     * Le serveur déclare-t-il la synchronisation incrémentale ? Les
+     * deux formes du protocole s'y lisent (l'entier ou les options) ;
+     * l'absence de déclaration vaut non (le texte entier part, la
+     * notification sans plage reste légale pour tout serveur).
+     *
+     * @param result la réponse d'initialisation
+     * @return vrai si le serveur accepte les changements par plage
+     */
+    private static boolean declaresIncrementalSync(InitializeResult result) {
+        ServerCapabilities capabilities = result == null ? null : result.getCapabilities();
+        if (capabilities == null) {
+            return false;
+        }
+        Either<TextDocumentSyncKind, TextDocumentSyncOptions> sync =
+                capabilities.getTextDocumentSync();
+        if (sync == null) {
+            return false;
+        }
+        if (sync.isLeft()) {
+            return sync.getLeft() == TextDocumentSyncKind.Incremental;
+        }
+        TextDocumentSyncOptions options = sync.getRight();
+        return options != null && options.getChange() == TextDocumentSyncKind.Incremental;
     }
 
     /**
@@ -227,29 +273,29 @@ public final class LspSession {
     }
 
     /**
-     * Annonce un changement : la synchronisation par delta. La liaison
-     * garde l'ombre du dernier texte synchronisé et n'envoie que la
-     * plage remplacée (préfixe et suffixe communs, une seule plage par
-     * notification) — le texte entier ne repart plus : sur un document
-     * d'un million de caractères, quelques octets le remplacent. Sans
-     * ombre (un changement sans ouverture), le texte entier repart (le
-     * repli du protocole) ; sans écart, rien ne part du tout.
+     * Annonce un changement. Le genre suit la négociation : le serveur
+     * incrémental reçoit la plage remplacée (préfixe et suffixe communs
+     * — sur un document d'un million de caractères, quelques octets le
+     * remplacent), le serveur intégral ou silencieux reçoit le texte
+     * entier (la notification sans plage, légale partout — un serveur
+     * intégral qui reçoit une plage désynchronise : EmmyLua y perd son
+     * document). La liaison garde l'ombre du dernier texte synchronisé
+     * dans les deux cas — la plage s'y différencie. Sans ombre (un
+     * changement sans ouverture), le texte entier repart (le repli du
+     * protocole) ; sans écart, rien ne part du tout.
      *
      * @param uri  le document changé
      * @param text le texte complet après le changement
      */
     public void didChange(String uri, String text) {
-        String shadow = documentShadows.get(uri);
-        documentShadows.put(uri, text);
+        String shadow = documentShadows.put(uri, text);
         if (shadow != null && shadow.equals(text)) {
             // l'écart net des événements amortis est nul : le serveur
             // tient déjà le document exact, la version ne bouge pas
             return;
         }
         TextDocumentContentChangeEvent change = new TextDocumentContentChangeEvent();
-        if (shadow == null) {
-            change.setText(text);
-        } else {
+        if (incrementalSync && shadow != null) {
             // la plage de l'écart dans les coordonnées de l'ombre (le
             // document AVANT le changement — le protocole l'exige),
             // le texte inséré entre préfixe et suffixe communs
@@ -258,6 +304,9 @@ public final class LspSession {
             change.setRange(new Range(positionIn(shadow, prefix),
                     positionIn(shadow, shadow.length() - suffix)));
             change.setText(text.substring(prefix, text.length() - suffix));
+        } else {
+            // le texte entier : ce que le serveur a déclaré vouloir
+            change.setText(text);
         }
         DidChangeTextDocumentParams params = new DidChangeTextDocumentParams();
         params.setTextDocument(new VersionedTextDocumentIdentifier(uri,

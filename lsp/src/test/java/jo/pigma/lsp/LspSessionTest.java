@@ -21,6 +21,8 @@ import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.ServerCapabilities;
+import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
+import org.eclipse.lsp4j.TextDocumentSyncKind;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageClientAware;
 import org.eclipse.lsp4j.services.LanguageServer;
@@ -52,8 +54,19 @@ public class LspSessionTest {
 
         private volatile String text = "";
 
+        /**
+         * Le genre de synchronisation déclaré à l'initialisation : la
+         * valeur par défaut (incrémental) porte les tests du delta ;
+         * null ne déclare rien (le défaut sûr du client) ; Full joue
+         * le serveur intégral.
+         */
+        volatile TextDocumentSyncKind declaredSync = TextDocumentSyncKind.Incremental;
+
         /** Les notifications de changement reçues (le delta s'y lit). */
         private volatile int changeCount;
+
+        /** La plage de la dernière notification (null : texte entier). */
+        volatile Range lastChangeRange;
 
         @Override
         public void connect(LanguageClient client) {
@@ -64,6 +77,9 @@ public class LspSessionTest {
         public CompletableFuture<InitializeResult> initialize(InitializeParams params) {
             ServerCapabilities capabilities = new ServerCapabilities();
             capabilities.setHoverProvider(true);
+            if (declaredSync != null) {
+                capabilities.setTextDocumentSync(declaredSync);
+            }
             return CompletableFuture.completedFuture(new InitializeResult(capabilities));
         }
 
@@ -105,10 +121,12 @@ public class LspSessionTest {
         @Override
         public void didChange(DidChangeTextDocumentParams params) {
             changeCount++;
+            TextDocumentContentChangeEvent single = params.getContentChanges().get(0);
+            lastChangeRange = single.getRange();
             // un vrai serveur applique les changements dans l'ordre :
             // la plage remplacée, ou le texte entier sans plage
             StringBuilder applied = new StringBuilder(text);
-            for (org.eclipse.lsp4j.TextDocumentContentChangeEvent change
+            for (TextDocumentContentChangeEvent change
                     : params.getContentChanges()) {
                 if (change.getRange() == null) {
                     applied = new StringBuilder(change.getText());
@@ -275,6 +293,46 @@ public class LspSessionTest {
         session.didChange("file:///demo.java", "texte entier");
         awaitServerText(server, "texte entier");
         assertEquals(1, server.changeCount);
+        session.shutdown();
+    }
+
+    /**
+     * Le serveur intégral (EmmyLua, la démo du sample) reçoit le texte
+     * entier : une plage envoyée à un serveur intégral le
+     * désynchroniserait — la négociation tranche.
+     */
+    @Test
+    public void fullSyncServerReceivesTheWholeText() throws Exception {
+        TrialServer server = new TrialServer();
+        server.declaredSync = TextDocumentSyncKind.Full;
+        LspSession session = LspSession.beside(server, null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        session.didOpen("file:///demo.java", "ligne1\nligne2\nligne3", "java");
+        session.didChange("file:///demo.java", "ligne1\nligneX\nligne3");
+        awaitServerText(server, "ligne1\nligneX\nligne3");
+        assertEquals("une notification sans plage", 1, server.changeCount);
+        assertEquals("la notification ne porte pas de plage",
+                null, server.lastChangeRange);
+        session.shutdown();
+    }
+
+    /**
+     * Le serveur silencieux (aucune capacité de synchronisation
+     * déclarée) reçoit le texte entier aussi — le défaut sûr : la
+     * notification sans plage reste légale pour tout serveur.
+     */
+    @Test
+    public void silentSyncServerReceivesTheWholeText() throws Exception {
+        TrialServer server = new TrialServer();
+        server.declaredSync = null;
+        LspSession session = LspSession.beside(server, null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        session.didOpen("file:///demo.java", "abc", "java");
+        session.didChange("file:///demo.java", "abd");
+        awaitServerText(server, "abd");
+        assertEquals("une notification sans plage", 1, server.changeCount);
+        assertEquals("la notification ne porte pas de plage",
+                null, server.lastChangeRange);
         session.shutdown();
     }
 
