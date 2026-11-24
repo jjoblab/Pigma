@@ -1,12 +1,20 @@
 package jo.pigma.sample;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 import jo.pigma.core.TextBuffer;
 import jo.pigma.core.TextListener;
@@ -27,21 +35,37 @@ import jo.pigma.syntax.SyntaxTheme;
  * (clair, sombre — changer ne retokenise rien, la mesure de première
  * coloration ne bouge pas). Le panneau de diagnostic suit les mesures
  * du moteur : première coloration (la fenêtre visible, pas le document
- * entier), coût de la dernière frappe, lignes relues, lignes lexées
- * sur le total — il se rafraîchit pendant que la pompe de remplissage
+ * entier), coût de la dernière demande (un saut lointain s'y lit),
+ * coût de la dernière frappe, lignes relues, lignes lexées sur le
+ * total — il se rafraîchit pendant que la pompe de remplissage
  * avance. La ligne d'état garde la révision, la position et la
  * longueur.</p>
+ *
+ * <p>Le bouton « Copier les mesures » collecte le journal du scénario
+ * (première coloration, remplissage fini, bascules de thème, relevés à
+ * la copie) dans le presse-papiers en tableau prêt à coller : c'est le
+ * relevé appareil de {@code docs/perf.md}, la machine de build n'a pas
+ * d'appareil.</p>
  */
 public final class MainActivity extends Activity {
 
     /** Délai entre deux rafraîchissements du panneau pendant le remplissage. */
     private static final long DIAGNOSTIC_WATCH_MS = 200L;
 
+    /** Lignes du journal au-delà desquelles les plus anciennes tombent. */
+    private static final int LOG_LIMIT = 24;
+
     private EditorView editorView;
     private TextView statusView;
     private TextView diagnosticsView;
     private Button undoButton;
     private Button redoButton;
+    private Button copyButton;
+
+    private final List<String> scenarioLog = new ArrayList<>();
+    private String currentScenario = "Java (démo)";
+    private boolean loggedFirstColoration;
+    private boolean filling;
 
     private final TextListener statusListener = new TextListener() {
         @Override
@@ -54,14 +78,19 @@ public final class MainActivity extends Activity {
 
     /**
      * Le veilleur du panneau : tant que la pompe de remplissage avance,
-     * il rafraîchit les mesures (lignes lexées qui montent).
+     * il rafraîchit les mesures (lignes lexées qui montent) ; la fin du
+     * remplissage s'inscrit au journal.
      */
     private final Runnable diagnosticsWatcher = new Runnable() {
         @Override
         public void run() {
             updateDiagnostics();
             if (editorView.getSyntaxDocument().remainingLines() > 0) {
+                filling = true;
                 editorView.postDelayed(this, DIAGNOSTIC_WATCH_MS);
+            } else if (filling) {
+                filling = false;
+                logScenario("remplissage fini - " + currentScenario);
             }
         }
     };
@@ -80,6 +109,9 @@ public final class MainActivity extends Activity {
         redoButton.setText("Rétablir");
         undoButton.setOnClickListener(this::onUndoClicked);
         redoButton.setOnClickListener(this::onRedoClicked);
+        copyButton = new Button(this);
+        copyButton.setText("Copier les mesures");
+        copyButton.setOnClickListener(this::onCopyClicked);
 
         setContentView(buildLayout());
         editorView.getBuffer().addListener(statusListener);
@@ -111,6 +143,8 @@ public final class MainActivity extends Activity {
                 themeButton("Sombre", SampleThemes.DARK, SampleThemes.DARK_BACKGROUND),
                 undoButton, redoButton));
 
+        root.addView(row(margin, copyButton));
+
         LinearLayout.LayoutParams diagnosticsParams =
                 new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -141,6 +175,8 @@ public final class MainActivity extends Activity {
         button.setText(label);
         button.setOnClickListener(view -> {
             editorView.setLanguage(language, text);
+            currentScenario = "Gros".equals(label) ? "gros fichier Java" : label + " (demo)";
+            loggedFirstColoration = false;
             updateStatus();
             watchDiagnostics();
         });
@@ -150,8 +186,12 @@ public final class MainActivity extends Activity {
     private Button themeButton(String label, SyntaxTheme theme, int background) {
         Button button = new Button(this);
         button.setText(label);
-        button.setOnClickListener(view ->
-                editorView.applyTheme(theme, background));
+        button.setOnClickListener(view -> {
+            editorView.applyTheme(theme, background);
+            // aucune retokenisation : la ligne au journal le prouve
+            // (la première coloration ne bouge pas)
+            logScenario("thème " + label);
+        });
         return button;
     }
 
@@ -163,6 +203,57 @@ public final class MainActivity extends Activity {
     private void onRedoClicked(View button) {
         editorView.getUndoStack().redo();
         updateStatus();
+    }
+
+    private void onCopyClicked(View button) {
+        logScenario("copie - " + currentScenario);
+        String measures = buildCopyText();
+        ClipboardManager clipboard =
+                (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        clipboard.setPrimaryClip(ClipData.newPlainText("mesures Pigma", measures));
+        Toast.makeText(this, "Mesures copiées (" + scenarioLog.size() + " lignes)",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    /**
+     * Le journal du scénario : une ligne par événement, les mesures du
+     * moteur au moment où il arrive (première coloration, remplissage
+     * fini, bascule de thème, copie).
+     */
+    private void logScenario(String event) {
+        SyntaxDocument syntax = editorView.getSyntaxDocument();
+        String row = String.format(Locale.ROOT,
+                "| %s | %.1f ms | %.2f ms (%d l.) | %.2f ms (%d l. relues) | %d/%d | %d |",
+                event,
+                syntax.firstLexNanos() / 1_000_000.0,
+                syntax.lastRequestNanos() / 1_000_000.0,
+                syntax.lastRequestLines(),
+                syntax.lastEditNanos() / 1_000_000.0,
+                syntax.lastRelexedLines(),
+                syntax.lexedLineCount(),
+                syntax.lineCount(),
+                syntax.tokenCount());
+        if (scenarioLog.size() >= LOG_LIMIT) {
+            scenarioLog.remove(0);
+        }
+        scenarioLog.add(row);
+    }
+
+    /**
+     * Le texte à coller : en-tête, tableau des lignes du journal — la
+     * colonne « premiere » ne doit pas bouger à une bascule de thème,
+     * « demande » porte le saut lointain, « frappe » les relues.
+     */
+    private String buildCopyText() {
+        StringBuilder text = new StringBuilder();
+        text.append("Relevés appareil Pigma (à coller dans docs/perf.md ou à renvoyer tel quel)\n");
+        text.append("appareil : à compléter (modèle, version d'Android)\n\n");
+        text.append("| événement | première | demande | frappe | lignes lexées | jetons |\n");
+        text.append("| --- | --- | --- | --- | --- | --- |\n");
+        for (String row : scenarioLog) {
+            text.append(row).append('\n');
+        }
+        return text.toString();
     }
 
     private void updateStatus() {
@@ -191,9 +282,12 @@ public final class MainActivity extends Activity {
     private void updateDiagnostics() {
         SyntaxDocument syntax = editorView.getSyntaxDocument();
         String text = String.format(
-                "coloration : première %.1f ms · dernière frappe %.2f ms "
-                        + "(%d ligne(s) relue(s)) · %d/%d lignes lexées · %d jetons",
+                "coloration : première %.1f ms · demande %.2f ms (%d l.) "
+                        + "· dernière frappe %.2f ms (%d ligne(s) relue(s)) · %d/%d lignes lexées "
+                        + "· %d jetons",
                 syntax.firstLexNanos() / 1_000_000.0,
+                syntax.lastRequestNanos() / 1_000_000.0,
+                syntax.lastRequestLines(),
                 syntax.lastEditNanos() / 1_000_000.0,
                 syntax.lastRelexedLines(),
                 syntax.lexedLineCount(),
@@ -203,6 +297,10 @@ public final class MainActivity extends Activity {
             text += " · mode gros fichier";
         }
         diagnosticsView.setText(text);
+        if (!loggedFirstColoration && syntax.firstLexNanos() > 0L) {
+            loggedFirstColoration = true;
+            logScenario("première coloration - " + currentScenario);
+        }
     }
 
     private int dp(int value) {

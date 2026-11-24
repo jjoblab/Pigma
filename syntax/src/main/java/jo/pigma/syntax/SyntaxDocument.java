@@ -87,6 +87,7 @@ public final class SyntaxDocument implements TextListener {
     private boolean measuredFirstRequest;
     private long firstLexNanos;
     private long lastEditNanos;
+    private long lastRequestNanos;
     private int lastRelexedLines;
     private int lastRequestLines;
 
@@ -138,6 +139,7 @@ public final class SyntaxDocument implements TextListener {
         }
         if (lines[line] != null) {
             lastRequestLines = 0;
+            lastRequestNanos = 0L;
             return lines[line];
         }
         long begin = System.nanoTime();
@@ -153,6 +155,7 @@ public final class SyntaxDocument implements TextListener {
             lexedUpto = line + 1;
         }
         lastRequestLines = line - from + 1;
+        lastRequestNanos = System.nanoTime() - begin;
         if (!measuredFirstRequest) {
             measuredFirstRequest = true;
             firstLexNanos = System.nanoTime() - begin;
@@ -275,6 +278,17 @@ public final class SyntaxDocument implements TextListener {
      */
     public long lastEditNanos() {
         return lastEditNanos;
+    }
+
+    /**
+     * Durée de la dernière demande (diagnostic) : la fenêtre payée au
+     * lexage à la demande — un saut lointain relancé depuis un point
+     * de contrôle s'y lit. 0 si la ligne demandée était calculée.
+     *
+     * @return la durée en nanosecondes, 0 si aucune demande n'a lexé
+     */
+    public long lastRequestNanos() {
+        return lastRequestNanos;
     }
 
     /**

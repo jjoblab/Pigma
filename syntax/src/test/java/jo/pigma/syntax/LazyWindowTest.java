@@ -187,6 +187,26 @@ public class LazyWindowTest {
         fresh.detach();
     }
 
+    /**
+     * La durée de la dernière demande se mesure : positive au lexage à
+     * la demande (le relevé appareil du saut lointain s'y lit),
+     * nulle sur une ligne déjà calculée.
+     *
+     * @throws IOException si le corpus ne se lit pas
+     */
+    @Test
+    public void requestNanosMeasured() throws IOException {
+        TextBuffer buffer = TextBuffer.create(corpus());
+        SyntaxDocument document = SyntaxDocument.open(buffer, Languages.JAVA);
+        document.lineTokens(5);
+        assertTrue("la demande doit se mesurer", document.lastRequestNanos() > 0L);
+        document.lineTokens(3);
+        assertEquals("une ligne calculée ne se paie plus", 0L, document.lastRequestNanos());
+        document.lineTokens(300);
+        assertTrue("un saut lointain se mesure", document.lastRequestNanos() > 0L);
+        document.detach();
+    }
+
     private static void edit(UndoStack undo, int start, int end, String replacement) {
         try (var transaction = undo.newTransaction()) {
             transaction.replace(start, end, replacement);
