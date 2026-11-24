@@ -14,7 +14,7 @@ conventions communes vivent dans le `build.gradle.kts` racine — aucun
 | `:syntax` | JVM pur | moteur de coloration : contrat du lexeur (états, redémarrage), lexeurs générés par langage (JFlex, code versionné — Java, XML, JSON, Kotlin avec pile de contextes internée dans l'entier d'état), famille générique paramétrable, portées, thème à repli, document ligne par ligne (règle d'arrêt, révisions), fenêtre paresseuse (points de contrôle, tranches, plafonds), fil de fond annulable (clichés, application révision-vérifiée) | **présent** |
 | `:analysis` | JVM pur | analyseur tolérant (L2), annotateurs sémantiques (L3), symboles, index, diagnostics, complétion de base | **présent** |
 | `:editor` | bibliothèque Android | vue d'édition (Canvas), saisie/IME, sélection et poignées, loupe de précision, défilement, gouttière, pliage, recherche/remplacement, popups, façade hôte | **présent** |
-| `:lsp` | optionnel | client LSP sur lsp4j (la seule dépendance extérieure du dépôt, `NOTICE.md` la consigne) : adaptateurs du domaine, liaison à corrélation de requêtes, raccordements en processus et par processus | **présent** |
+| `:lsp` | optionnel | client LSP sur lsp4j (la seule dépendance extérieure du dépôt, `NOTICE.md` la consigne) : adaptateurs du domaine, liaison à corrélation de requêtes, synchronisation du document par delta (l'ombre de la dernière synchronisation), raccordements en processus et par processus | **présent** |
 | `:sample` | application | instrument de test du projet, jamais publiée | **présent** |
 
 Aucun module n'est créé avant que la fonctionnalité qui le justifie

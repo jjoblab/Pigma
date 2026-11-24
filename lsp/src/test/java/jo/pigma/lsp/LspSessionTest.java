@@ -52,6 +52,9 @@ public class LspSessionTest {
 
         private volatile String text = "";
 
+        /** Les notifications de changement reçues (le delta s'y lit). */
+        private volatile int changeCount;
+
         @Override
         public void connect(LanguageClient client) {
             this.client = client;
@@ -101,8 +104,45 @@ public class LspSessionTest {
 
         @Override
         public void didChange(DidChangeTextDocumentParams params) {
-            text = params.getContentChanges().get(0).getText();
+            changeCount++;
+            // un vrai serveur applique les changements dans l'ordre :
+            // la plage remplacée, ou le texte entier sans plage
+            StringBuilder applied = new StringBuilder(text);
+            for (org.eclipse.lsp4j.TextDocumentContentChangeEvent change
+                    : params.getContentChanges()) {
+                if (change.getRange() == null) {
+                    applied = new StringBuilder(change.getText());
+                    continue;
+                }
+                int start = offsetOf(applied, change.getRange().getStart());
+                int end = offsetOf(applied, change.getRange().getEnd());
+                applied.replace(start, end, change.getText());
+            }
+            text = applied.toString();
             publish();
+        }
+
+        /** Le décalage d'une position (ligne, colonne) dans le texte. */
+        private static int offsetOf(CharSequence content, Position position) {
+            int offset = 0;
+            for (int line = 0; line < position.getLine() && offset < content.length(); line++) {
+                int jump = indexOfNewline(content, offset);
+                if (jump < 0) {
+                    return content.length();
+                }
+                offset = jump + 1;
+            }
+            return Math.min(content.length(), offset + position.getCharacter());
+        }
+
+        /** Le décalage du prochain saut de ligne, ou -1. */
+        private static int indexOfNewline(CharSequence content, int from) {
+            for (int at = from; at < content.length(); at++) {
+                if (content.charAt(at) == '\n') {
+                    return at;
+                }
+            }
+            return -1;
         }
 
         @Override
@@ -183,5 +223,74 @@ public class LspSessionTest {
         assertEquals("mot sous le curseur", first.get(5, TimeUnit.SECONDS));
         assertEquals("mot sous le curseur", second.get(5, TimeUnit.SECONDS));
         session.shutdown();
+    }
+
+    /**
+     * Le changement ne porte que la plage remplacée : l'ombre tient le
+     * reste — remplacement isolé, remplacement à la suite (l'ombre se
+     * met à jour), ajout en fin, suppression au travers des lignes.
+     */
+    @Test
+    public void didChangeSpeaksInDeltas() throws Exception {
+        TrialServer server = new TrialServer();
+        LspSession session = LspSession.beside(server, null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        session.didOpen("file:///demo.java", "ligne1\nligne2\nligne3", "java");
+        session.didChange("file:///demo.java", "ligne1\nligneX\nligne3");
+        awaitServerText(server, "ligne1\nligneX\nligne3");
+        assertEquals("la notification compte", 1, server.changeCount);
+        session.didChange("file:///demo.java", "ligne1\nligneXYZ\nligne3");
+        awaitServerText(server, "ligne1\nligneXYZ\nligne3");
+        assertEquals("le second delta s'applique sur l'ombre mise à jour",
+                2, server.changeCount);
+        session.didChange("file:///demo.java", "ligne1\nligneXYZ\nligne3\najout");
+        awaitServerText(server, "ligne1\nligneXYZ\nligne3\najout");
+        assertEquals("l'ajout en fin tient", 3, server.changeCount);
+        session.didChange("file:///demo.java", "ligne1\nligneXYZ");
+        awaitServerText(server, "ligne1\nligneXYZ");
+        assertEquals("la suppression au travers des lignes tient", 4, server.changeCount);
+        session.shutdown();
+    }
+
+    /** Aucun écart net (les événements amortis s'annulent) : rien ne part. */
+    @Test
+    public void didChangeSkipsWhenNothingMoved() throws Exception {
+        TrialServer server = new TrialServer();
+        LspSession session = LspSession.beside(server, null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        session.didOpen("file:///demo.java", "abc", "java");
+        session.didChange("file:///demo.java", "abc");
+        Thread.sleep(300L);
+        assertEquals("aucune notification n'est partie", 0, server.changeCount);
+        assertEquals("le serveur tient son texte", "abc", server.text);
+        session.shutdown();
+    }
+
+    /** Sans ouverture, l'ombre manque : le texte entier repart (le repli). */
+    @Test
+    public void didChangeWithoutOpenSendsTheWholeText() throws Exception {
+        TrialServer server = new TrialServer();
+        LspSession session = LspSession.beside(server, null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        session.didChange("file:///demo.java", "texte entier");
+        awaitServerText(server, "texte entier");
+        assertEquals(1, server.changeCount);
+        session.shutdown();
+    }
+
+    /**
+     * Attend que le serveur d'essai tienne le texte attendu (les
+     * notifications traversent les tubes, elles arrivent un peu plus
+     * tard que l'envoi).
+     */
+    private static void awaitServerText(TrialServer server, String expected)
+            throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 5_000L;
+        while (!expected.equals(server.text)) {
+            if (System.currentTimeMillis() > deadline) {
+                throw new AssertionError("le serveur ne tient pas : " + server.text);
+            }
+            Thread.sleep(20L);
+        }
     }
 }

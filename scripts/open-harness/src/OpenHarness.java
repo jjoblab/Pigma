@@ -488,6 +488,12 @@ public final class OpenHarness {
         }
         // la vérification de l'attribution : un ramasse-miettes forcé AU
         // MILIEU d'une trame de traînement — l'odomètre doit le nommer
+        // (des mémoires lâchées juste avant lui garantissent qu'il rend)
+        byte[][] junk = new byte[32][];
+        for (int at = 0; at < junk.length; at++) {
+            junk[at] = new byte[1_048_576];
+        }
+        junk = null;
         canvas.harnessDrawHook(System::gc);
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_MOVE,
                 editor.getPaddingLeft() + (column + steps) * editor.charWidth(), lineMidY));
@@ -554,6 +560,12 @@ public final class OpenHarness {
         View.harnessDrain(2000L);
         check("une parenthèse non appariée se diagnostique",
                 awaitText("LSP : 1", 8000L));
+        // le second delta s'applique sur l'ombre du premier : la paire
+        // se ferme, le compte revient à zéro
+        connection.commitText(")", 1);
+        View.harnessDrain(2000L);
+        check("la parenthèse fermée ramène le compte à zéro (deux deltas)",
+                awaitText("LSP : 0", 8000L));
         doubleTapOfWord("static");
         View.harnessDrain(2000L);
         String hover = editor.infoPopupText();
@@ -561,7 +573,9 @@ public final class OpenHarness {
                 hover != null && hover.contains("classe"));
         detail("survol : " + hover);
         click("Annuler");
-        check("l'annulation rend le texte", editor.getBuffer().toString().equals(original));
+        click("Annuler");
+        check("la double annulation rend le texte",
+                editor.getBuffer().toString().equals(original));
         click("LSP ✔");
         check("le débranchement rend le bouton",
                 findButton(activity.harnessRootView(), "LSP") != null

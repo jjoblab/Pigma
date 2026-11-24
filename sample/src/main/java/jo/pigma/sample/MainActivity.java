@@ -474,9 +474,10 @@ public final class MainActivity extends Activity {
     }
 
     /**
-     * Le document part au serveur en entier (la synchronisation
-     * intégrale) — chaque édition le reprogramme de 300 ms : les
-     * frappes rapides n'envoient qu'un texte, le dernier.
+     * Le document part au serveur — la liaison n'envoie que la plage
+     * qui a bougé (l'ombre de la dernière synchronisation tient le
+     * reste) ; chaque édition le reprogramme de 300 ms : les frappes
+     * rapides n'envoient qu'un delta, le dernier.
      */
     private void pushDocumentToServer() {
         if (lspSession != null) {

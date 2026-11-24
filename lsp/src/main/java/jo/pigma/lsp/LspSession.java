@@ -6,7 +6,9 @@ import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -24,7 +26,9 @@ import org.eclipse.lsp4j.MarkedString;
 import org.eclipse.lsp4j.MarkupContent;
 import org.eclipse.lsp4j.MessageActionItem;
 import org.eclipse.lsp4j.MessageParams;
+import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
+import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.ShowMessageRequestParams;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
@@ -42,7 +46,7 @@ import org.eclipse.lsp4j.jsonrpc.messages.Either;
  * par le proxy du serveur, les réponses y reviennent, le JSON-RPC et
  * gson vivent dessous), la liaison n'ajoute que le vocabulaire du
  * dépôt — les types du domaine, l'écouteur des notifications, la
- * synchronisation intégrale du document, l'arrêt propre. Trois
+ * synchronisation du document par delta, l'arrêt propre. Trois
  * raccordements : {@link #beside(LanguageServer, Listener)} (le
  * serveur dans le même processus — les tubes), {@link #overProcess}
  * (un serveur lancé, le cadrage vit dans lsp4j) et {@link #over}
@@ -86,6 +90,13 @@ public final class LspSession {
 
     /** La version du document (le protocole y retrouve son ordre). */
     private final AtomicInteger documentVersion = new AtomicInteger();
+
+    /**
+     * L'ombre du dernier texte synchronisé par document : la base du
+     * delta — la plage d'un changement s'y lit dans les coordonnées du
+     * document AVANT le changement (le protocole l'exige).
+     */
+    private final Map<String, String> documentShadows = new HashMap<>();
 
     private volatile boolean running;
 
@@ -196,32 +207,115 @@ public final class LspSession {
 
     /**
      * Annonce un document au serveur : le texte entier, le langage
-     * déclaré. Le serveur publiera ses diagnostics dessus.
+     * déclaré. Le serveur publiera ses diagnostics dessus. L'ombre de
+     * synchronisation naît ici — les changements suivants s'y
+     * différencieront.
      *
      * @param uri        l'identifiant du document (son URI)
      * @param text       le texte initial
      * @param languageId le langage déclaré
      */
     public void didOpen(String uri, String text, String languageId) {
+        documentShadows.put(uri, text);
         launcher.getRemoteProxy().getTextDocumentService().didOpen(
                 new DidOpenTextDocumentParams(
                         new TextDocumentItem(uri, languageId, 1, text)));
     }
 
     /**
-     * Annonce un changement : la synchronisation intégrale — le texte
-     * entier repart, le serveur refait son analyse dessus (la version
-     * monte, le protocole y retrouve son ordre).
+     * Annonce un changement : la synchronisation par delta. La liaison
+     * garde l'ombre du dernier texte synchronisé et n'envoie que la
+     * plage remplacée (préfixe et suffixe communs, une seule plage par
+     * notification) — le texte entier ne repart plus : sur un document
+     * d'un million de caractères, quelques octets le remplacent. Sans
+     * ombre (un changement sans ouverture), le texte entier repart (le
+     * repli du protocole) ; sans écart, rien ne part du tout.
      *
      * @param uri  le document changé
      * @param text le texte complet après le changement
      */
     public void didChange(String uri, String text) {
+        String shadow = documentShadows.get(uri);
+        documentShadows.put(uri, text);
+        if (shadow != null && shadow.equals(text)) {
+            // l'écart net des événements amortis est nul : le serveur
+            // tient déjà le document exact, la version ne bouge pas
+            return;
+        }
+        TextDocumentContentChangeEvent change = new TextDocumentContentChangeEvent();
+        if (shadow == null) {
+            change.setText(text);
+        } else {
+            // la plage de l'écart dans les coordonnées de l'ombre (le
+            // document AVANT le changement — le protocole l'exige),
+            // le texte inséré entre préfixe et suffixe communs
+            int prefix = commonPrefix(shadow, text);
+            int suffix = commonSuffix(shadow, text, prefix);
+            change.setRange(new Range(positionIn(shadow, prefix),
+                    positionIn(shadow, shadow.length() - suffix)));
+            change.setText(text.substring(prefix, text.length() - suffix));
+        }
         DidChangeTextDocumentParams params = new DidChangeTextDocumentParams();
         params.setTextDocument(new VersionedTextDocumentIdentifier(uri,
                 documentVersion.incrementAndGet()));
-        params.setContentChanges(List.of(new TextDocumentContentChangeEvent(text)));
+        params.setContentChanges(List.of(change));
         launcher.getRemoteProxy().getTextDocumentService().didChange(params);
+    }
+
+    /**
+     * La longueur du préfixe commun aux deux textes.
+     *
+     * @param before l'ancien texte
+     * @param after  le nouveau texte
+     * @return le nombre de caractères identiques depuis le début
+     */
+    private static int commonPrefix(String before, String after) {
+        int at = 0;
+        int limit = Math.min(before.length(), after.length());
+        while (at < limit && before.charAt(at) == after.charAt(at)) {
+            at++;
+        }
+        return at;
+    }
+
+    /**
+     * La longueur du suffixe commun, bornée pour ne pas recouvrir le
+     * préfixe.
+     *
+     * @param before l'ancien texte
+     * @param after  le nouveau texte
+     * @param prefix la longueur du préfixe commun
+     * @return le nombre de caractères identiques depuis la fin
+     */
+    private static int commonSuffix(String before, String after, int prefix) {
+        int at = 0;
+        int limit = Math.min(before.length(), after.length()) - prefix;
+        while (at < limit
+                && before.charAt(before.length() - 1 - at) == after.charAt(after.length() - 1 - at)) {
+            at++;
+        }
+        return at;
+    }
+
+    /**
+     * La position du protocole (ligne, colonne) d'un décalage dans un
+     * texte donné — les colonnes y sont en unités UTF-16, comme les
+     * index de {@link String}.
+     *
+     * @param text   le texte portant les coordonnées
+     * @param offset le décalage, 0 à la longueur du texte
+     * @return la position (ligne, colonne)
+     */
+    private static Position positionIn(String text, int offset) {
+        int line = 0;
+        int lineStart = 0;
+        for (int at = 0; at < offset; at++) {
+            if (text.charAt(at) == '\n') {
+                line++;
+                lineStart = at + 1;
+            }
+        }
+        return new Position(line, offset - lineStart);
     }
 
     /**

@@ -20,6 +20,7 @@ import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.ServerCapabilities;
+import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageClientAware;
@@ -119,11 +120,55 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
 
     @Override
     public void didChange(DidChangeTextDocumentParams params) {
-        if (params.getContentChanges() != null && !params.getContentChanges().isEmpty()
-                && params.getContentChanges().get(0).getText() != null) {
-            text = params.getContentChanges().get(0).getText();
+        if (params.getContentChanges() == null) {
+            return;
         }
+        // le protocole applique les changements dans l'ordre : une
+        // plage remplacée (le delta du client), ou le texte entier
+        // quand la plage manque (le repli)
+        StringBuilder applied = new StringBuilder(text);
+        for (TextDocumentContentChangeEvent change : params.getContentChanges()) {
+            if (change.getRange() == null) {
+                applied = new StringBuilder(change.getText());
+                continue;
+            }
+            int start = offsetOf(applied, change.getRange().getStart());
+            int end = offsetOf(applied, change.getRange().getEnd());
+            applied.replace(start, end, change.getText());
+        }
+        text = applied.toString();
         publishDiagnostics();
+    }
+
+    /**
+     * Le décalage d'une position du protocole dans le texte courant
+     * (les colonnes y sont en unités UTF-16, comme les index de
+     * {@code String}).
+     *
+     * @param text     le texte portant les coordonnées
+     * @param position la position (ligne, colonne)
+     * @return le décalage correspondant
+     */
+    private static int offsetOf(CharSequence text, Position position) {
+        int offset = 0;
+        for (int line = 0; line < position.getLine() && offset < text.length(); line++) {
+            int jump = indexOfNewline(text, offset);
+            if (jump < 0) {
+                return text.length();
+            }
+            offset = jump + 1;
+        }
+        return Math.min(text.length(), offset + position.getCharacter());
+    }
+
+    /** Le décalage du prochain saut de ligne, ou -1. */
+    private static int indexOfNewline(CharSequence text, int from) {
+        for (int at = from; at < text.length(); at++) {
+            if (text.charAt(at) == '\n') {
+                return at;
+            }
+        }
+        return -1;
     }
 
     @Override
