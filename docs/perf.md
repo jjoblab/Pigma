@@ -4,7 +4,10 @@ Ce document reçoit les mesures du plan : d'abord celles que la machine
 de build sait prendre (JVM, tests du module `:syntax`), puis celles de
 l'appareil, relevées avec le **panneau de diagnostic du sample** (le
 texte sous l'éditeur affiche première coloration, coût de la dernière
-frappe, lignes relues, lignes lexées sur le total, jetons). Les
+demande — le saut lointain s'y lit —, coût de la dernière frappe,
+lignes relues, lignes lexées sur le total, jetons) : le bouton
+**« Copier les mesures »** met le journal du scénario au presse-papiers
+en tableau prêt à coller ici. Les
 nombres JVM servent de plancher et de garde-fou ; seuls les nombres
 appareil décident des plafonds.
 
@@ -32,10 +35,13 @@ des jetons égaux à ceux d'un document neuf.
 
 Lexeurs seuls (banc E0, `bench/`, mêmes corpus, passes rechauffées) :
 1,7 à 3,5 ms pour ~2 000 lignes, 14 à 47 Mo/s selon le langage ; à JVM
-froide, 3 à 16 ms. Poids DEX par langage (d8, min-api 26) : 18 788
-octets (Java), 7 804 (XML), 7 420 (JSON) — l'APK de démonstration
-complet (moteur, trois lexeurs générés, famille générique, interface
-du sample avec défilement et pompe) tient en 83 Ko.
+froide, 3 à 16 ms. Le lexeur Kotlin (chantier 5, corpus de 1 982
+lignes / 73 155 caractères, meilleure passe rechauffée) : **0,95 ms**,
+73,6 Mo/s. Poids DEX par langage (d8, min-api 26) : 18 788 octets
+(Java), 7 804 (XML), 7 420 (JSON), **21 512 (Kotlin** — la pile de
+contextes est dans ce prix) — l'APK de démonstration complet (moteur,
+quatre lexeurs générés, famille générique, interface du sample avec
+défilement, pompe et copie des mesures) tient en 82 Ko.
 
 Changer de thème ne retokenise rien : les jetons portent des portées,
 la couleur se résout au dessin (le panneau le montre : la mesure de
