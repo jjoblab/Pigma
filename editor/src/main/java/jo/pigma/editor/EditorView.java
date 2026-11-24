@@ -150,6 +150,18 @@ public final class EditorView extends View {
     /** La borne fixe du traînement (l'autre bout de la sélection). */
     private int dragFixedBound = -1;
 
+    /**
+     * Le traîné-déposé : l'appui dans le texte d'une sélection vivante
+     * l'arme (le glissé qui suit déplacera le texte au doigt).
+     */
+    private boolean textDragArmed;
+
+    /** Le traîné-déposé engagé : le curseur de dépôt suit le doigt. */
+    private boolean textDragging;
+
+    /** Le décalage de dépôt courant du traîné-déposé (-1 : hors geste). */
+    private int dropOffset = -1;
+
     /** Le fil de fond du remplissage (clichés révision-vérifiés). */
     private BackgroundFill backgroundFill;
 
@@ -1125,10 +1137,40 @@ public final class EditorView extends View {
                 // une sélection vivante se saisit d'abord par ses
                 // poignées (le défilement n'y a pas droit)
                 grabSelectionHandle(event.getX(), event.getY());
+                // le traîné-déposé : un appui dans le TEXTE de la
+                // sélection (pas sur une poignée) l'arme — le glissé
+                // qui suit, avant le seuil de l'appui long, déplacera
+                // le texte au doigt
+                textDragArmed = selectionDragBound == 0
+                        && event.getX() >= getPaddingLeft()
+                        && hasSelection()
+                        && selectionStart() <= offsetNearest(event.getX(), event.getY())
+                        && offsetNearest(event.getX(), event.getY()) <= selectionEnd();
+                textDragging = false;
+                dropOffset = -1;
                 break;
             case MotionEvent.ACTION_MOVE:
                 if (selectionDragBound != 0) {
                     dragSelectionBound(event.getX(), event.getY());
+                    break;
+                }
+                if (textDragArmed && !textDragging && !heldLongEnough()
+                        && (Math.abs(event.getX() - touchStartX) > touchSlop()
+                                || Math.abs(event.getY() - touchStartY) > touchSlop())) {
+                    // le traîné s'engage : le texte de la sélection
+                    // suivra le doigt jusqu'au dépôt (l'appui long qui
+                    // glisse garde sa voie : l'étendue de sélection)
+                    requestFocus();
+                    clearComposing();
+                    dismissInfoPopup();
+                    textDragging = true;
+                }
+                if (textDragging) {
+                    // le curseur de dépôt suit le doigt : le caractère
+                    // le plus proche (il se dessine à la place du
+                    // curseur le temps du geste)
+                    dropOffset = offsetNearest(event.getX(), event.getY());
+                    invalidate();
                     break;
                 }
                 if (!dragging && heldLongEnough()
@@ -1167,6 +1209,17 @@ public final class EditorView extends View {
                     // serait pas un double-tap)
                     selectionDragBound = 0;
                     dragFixedBound = -1;
+                    lastTapNanos = 0L;
+                    break;
+                }
+                if (textDragging) {
+                    // le dépôt : le texte sélectionné se déplace au
+                    // curseur de dépôt — l'appui ne compte pas pour un
+                    // tap non plus
+                    dropTextAtSelection(dropOffset);
+                    textDragging = false;
+                    textDragArmed = false;
+                    dropOffset = -1;
                     lastTapNanos = 0L;
                     break;
                 }
@@ -2157,7 +2210,9 @@ public final class EditorView extends View {
     }
 
     private void drawCaret(Canvas canvas) {
-        int offset = Math.min(caretOffset, buffer.length());
+        // le temps du traîné-déposé, le curseur se dessine au point de
+        // dépôt : le doigt y voit où le texte se posera
+        int offset = Math.min(textDragging ? dropOffset : caretOffset, buffer.length());
         int line = buffer.lineOfOffset(offset);
         if (line < firstVisibleLine() || line > lastVisibleLine() || isHidden(line)) {
             return;
@@ -2248,6 +2303,37 @@ public final class EditorView extends View {
         int offset = offsetNearest(x, y);
         caretOffset = offset;
         // un tap pose le curseur : la sélection se range
+        selectionAnchor = -1;
+        invalidate();
+    }
+
+    /**
+     * Le dépôt du traîné-déposé : le texte sélectionné se déplace au
+     * point de dépôt, en une seule unité à défaire. Un dépôt dans la
+     * sélection (ou sur elle) ne déplace rien : le texte reste où il
+     * est, aucune unité ne naît.
+     *
+     * @param drop le décalage de dépôt, caractère le plus proche du
+     *             doigt au lâcher
+     */
+    private void dropTextAtSelection(int drop) {
+        int start = selectionStart();
+        int end = selectionEnd();
+        String moved = buffer.getText(start, end);
+        if (drop < start || drop > end) {
+            try (TextTransaction transaction = undoStack.newTransaction()) {
+                transaction.replace(start, end, "");
+                // un dépôt après la sélection : la suppression a
+                // décalé la cible d'autant
+                if (drop > end) {
+                    drop -= moved.length();
+                }
+                transaction.replace(drop, drop, moved);
+            }
+            caretTo(Math.min(drop + moved.length(), buffer.length()));
+            ensureCaretVisible();
+        }
+        // la sélection se range : le texte déposé s'achève au curseur
         selectionAnchor = -1;
         invalidate();
     }

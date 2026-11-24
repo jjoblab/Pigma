@@ -92,6 +92,7 @@ public final class OpenHarness {
         handleDrag();
         loupe();
         longPressDrag();
+        dragDropText();
         searchAndReplace();
         hugeFile();
         hugeFileCopyGesture();
@@ -368,6 +369,99 @@ public final class OpenHarness {
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
                 spot[0] + 40.0f, spot[1]));
         frame();
+    }
+
+    /**
+     * Le traîné-déposé : la sélection saisie dans son propre texte se
+     * déplace au doigt — une seule unité à défaire, le dépôt sur une
+     * autre ligne traverse les lignes.
+     */
+    private static void dragDropText() throws InterruptedException {
+        begin("traîné-déposé : la sélection se déplace au doigt");
+        openLanguage("Java", 10_000L);
+        doubleTapOfWord("graine");
+        frame();
+        TextBuffer buffer = editor.getBuffer();
+        int start = editor.selectionStart();
+        int end = editor.selectionEnd();
+        check("un mot est sélectionné", start < end);
+        String moved = buffer.getText(start, end);
+        String before = buffer.toString();
+        int line = buffer.lineOfOffset(start);
+        int column = start - buffer.getLineStart(line);
+        // saisir au milieu de la sélection, traîner de quatre
+        // colonnes vers la gauche : le dépôt précède la sélection
+        float grabX = editor.getPaddingLeft()
+                + (column + (end - start) / 2) * editor.charWidth();
+        float dropX = editor.getPaddingLeft()
+                + (column - 4) * editor.charWidth();
+        float lineMidY = lineTop(line) + LINE_HEIGHT / 2.0f;
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_DOWN, grabX, lineMidY));
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_MOVE, (grabX + dropX) / 2.0f, lineMidY));
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_MOVE, dropX, lineMidY));
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_UP, dropX, lineMidY));
+        frame();
+        int drop = start - 4;
+        check("le texte sélectionné s'est déplacé au point de dépôt",
+                buffer.getText(drop, drop + moved.length()).equals(moved)
+                        && buffer.length() == before.length());
+        check("le curseur se pose après le texte déposé",
+                editor.getCaretOffset() == drop + moved.length());
+        click("Annuler");
+        check("l'annulation rend le texte d'origine (une seule unité)",
+                buffer.toString().equals(before));
+        // deuxième traîné : une sélection LONGUE d'abord — l'appui
+        // long qui glit sème le mot et l'étend (son milieu est loin
+        // des poignées, un mot court y serait saisi par elles) — le
+        // dépôt se fait sur la ligne AU-DESSUS
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_DOWN, grabX, lineMidY));
+        Thread.sleep(600L);
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_MOVE, grabX + 3.5f * editor.charWidth(), lineMidY));
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_UP, grabX + 3.5f * editor.charWidth(), lineMidY));
+        frame();
+        start = editor.selectionStart();
+        end = editor.selectionEnd();
+        check("l'appui long qui glit a semé une sélection longue",
+                end - start >= 5);
+        moved = buffer.getText(start, end);
+        before = buffer.toString();
+        line = buffer.lineOfOffset(start);
+        column = start - buffer.getLineStart(line);
+        grabX = editor.getPaddingLeft()
+                + (column + (end - start) / 2) * editor.charWidth();
+        lineMidY = lineTop(line) + LINE_HEIGHT / 2.0f;
+        float upY = lineTop(line - 1) + LINE_HEIGHT / 2.0f;
+        // le point de dépôt attendu se calcule AVANT le geste : la
+        // ligne cible change au dépôt (elle reçoit le texte)
+        int upLineStart = buffer.getLineStart(line - 1);
+        int upDrop = upLineStart + Math.min(column + (end - start) / 2,
+                buffer.getLineEnd(line - 1) - upLineStart);
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_DOWN, grabX, lineMidY));
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_MOVE, grabX, (lineMidY + upY) / 2.0f));
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_MOVE, grabX, upY));
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_UP, grabX, upY));
+        frame();
+        detail("déplacement «" + moved + "» [" + start + "," + end + ") déposé à "
+                + upDrop + ", ligne " + (line - 1) + " après «"
+                + buffer.getText(upLineStart, buffer.getLineEnd(line - 1)) + "»");
+        check("le texte traverse les lignes au dépôt",
+                buffer.getText(upDrop, upDrop + moved.length()).equals(moved)
+                        && buffer.length() == before.length()
+                        && editor.getCaretOffset() == upDrop + moved.length());
+        click("Annuler");
+        check("l'annulation rend encore le texte",
+                buffer.toString().equals(before));
     }
 
     /** La feuille de recherche : chercher, naviguer, remplacer, tout. */
