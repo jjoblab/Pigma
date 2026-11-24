@@ -241,6 +241,7 @@ public final class MainActivity extends Activity {
         root.addView(row(margin,
                 languageButton("Gros", Languages.JAVA, DemoTexts.bigFile()),
                 languageButton("50k l.", Languages.JAVA, DemoTexts.hugeFile()),
+                hugeCycleButton(),
                 themeButton("Clair", EditorThemes.LIGHT, EditorThemes.LIGHT_BACKGROUND),
                 themeButton("Sombre", EditorThemes.DARK, EditorThemes.DARK_BACKGROUND),
                 undoButton, redoButton));
@@ -328,6 +329,55 @@ public final class MainActivity extends Activity {
             watchDiagnostics();
         });
         return button;
+    }
+
+    /** La consolidation : le cycle des langages du hors normes. */
+    private static final String[] HUGE_CYCLE = {"XML", "JSON", "KOTLIN", "SQL", "JAVA"};
+
+    /** La position dans le cycle du hors normes par langage. */
+    private int hugeCycleAt;
+
+    /**
+     * Le bouton du hors normes par langage : chaque clic ouvre le
+     * langage suivant du cycle (XML, JSON, Kotlin, SQL, Java…) — le
+     * texte se génère au clic (jamais à l'ouverture de
+     * l'application), la consolidation y éprouve le moteur sur
+     * chacun.
+     */
+    private Button hugeCycleButton() {
+        Button button = new Button(this);
+        button.setText("50k ⨯");
+        button.setOnClickListener(view -> {
+            String key = HUGE_CYCLE[hugeCycleAt % HUGE_CYCLE.length];
+            hugeCycleAt++;
+            editorView.setLanguage(languageOf(key), DemoTexts.hugeFile(key));
+            currentScenario = "fichier 52 000 lignes (" + key + ")";
+            loggedFirstColoration = false;
+            updateStatus();
+            watchDiagnostics();
+        });
+        return button;
+    }
+
+    /**
+     * Le langage d'une clef du cycle du hors normes.
+     *
+     * @param key la clef ("XML", "JSON", "KOTLIN", "SQL")
+     * @return le langage correspondant, Java par défaut
+     */
+    private LanguageSyntax languageOf(String key) {
+        switch (key) {
+            case "XML":
+                return Languages.XML;
+            case "JSON":
+                return Languages.JSON;
+            case "KOTLIN":
+                return Languages.KOTLIN;
+            case "SQL":
+                return Languages.SQL;
+            default:
+                return Languages.JAVA;
+        }
     }
 
     private Button themeButton(String label, SyntaxTheme theme, int background) {

@@ -156,34 +156,124 @@ public final class DemoTexts {
      * @return le texte de 52 000 lignes environ
      */
     public static synchronized String hugeFile() {
-        if (hugeFileCache == null) {
-            String block = "/* Bloc 0. */\n"
-                    + "public final class G0 {\n"
-                    + "    private static final double SEUIL = 0.125e-3;\n"
-                    + "    private static final int MAX = 0x1F_FF;\n\n"
-                    + "    static double total(int graine, int taille) {\n"
-                    + "        if (graine > MAX && taille != -1) {\n"
-                    + "            return graine * taille * SEUIL;\n"
-                    + "        }\n"
-                    + "        return (double) graine / taille;\n"
-                    + "    }\n"
-                    + "}\n\n";
-            int blockLines = 13;
-            int headerLines = 3;
-            int blocks = (52_000 - headerLines + blockLines - 1) / blockLines;
-            StringBuilder text = new StringBuilder(3_000_000);
-            text.append("// Fichier hors normes de demonstration : 52 000 lignes, mode gros fichier.\n");
-            text.append("// La fenetre visible se paie, le remplissage suit en arriere-plan.\n\n");
-            for (int at = 0; at < blocks; at++) {
-                text.append(block.replace("Bloc 0", "Bloc " + at)
-                        .replace("G0", "G" + at));
-            }
-            hugeFileCache = text.toString();
-        }
-        return hugeFileCache;
+        return hugeFile("JAVA");
     }
 
-    private static String hugeFileCache;
+    /**
+     * Le fichier hors normes pour chaque langage (la consolidation) :
+     * le bloc propre au langage répété jusqu'à 52 000 lignes — la
+     * fenêtre, les tranches et le mode gros fichier s'y éprouvent sur
+     * chacun. Chaque texte se génère au premier appel puis se cache.
+     *
+     * @param language la clef du langage : "JAVA", "XML", "JSON",
+     *                 "KOTLIN" ou "SQL"
+     * @return le texte de 52 000 lignes environ
+     */
+    public static synchronized String hugeFile(String language) {
+        String cached = hugeFileCaches.get(language);
+        if (cached != null) {
+            return cached;
+        }
+        String block;
+        String header;
+        switch (language) {
+            case "XML":
+                header = "<!-- Fichier hors normes : 52 000 lignes, mode gros fichier. -->\n\n";
+                block = "<!-- Bloc 0. -->\n"
+                        + "<bloc numero=\"0\">\n"
+                        + "  <seuil unite=\"e-3\">0.125</seuil>\n"
+                        + "  <max>8191</max>\n"
+                        + "  <total graine=\"12\" taille=\"24\">\n"
+                        + "    <calcule>graine * taille * seuil</calcule>\n"
+                        + "  </total>\n"
+                        + "</bloc>\n\n";
+                break;
+            case "JSON":
+                header = "[\n";
+                block = "{\n"
+                        + "  \"bloc\": 0,\n"
+                        + "  \"seuil\": 0.125e-3,\n"
+                        + "  \"max\": 8191,\n"
+                        + "  \"graine\": 12,\n"
+                        + "  \"taille\": 24,\n"
+                        + "  \"calcule\": \"graine * taille * seuil\",\n"
+                        + "  \"reparti\": [1, 2, 3, 5, 8],\n"
+                        + "  \"actif\": true\n"
+                        + "},\n";
+                break;
+            case "KOTLIN":
+                header = "// Fichier hors normes : 52 000 lignes, mode gros fichier.\n\n";
+                block = "/* Bloc 0. */\n"
+                        + "class G0 {\n"
+                        + "    private val seuil = 0.125e-3\n\n"
+                        + "    fun total(graine: Int, taille: Int): Double {\n"
+                        + "        if (graine > 8191 && taille != -1) {\n"
+                        + "            return graine * taille * seuil\n"
+                        + "        }\n"
+                        + "        return graine.toDouble() / taille\n"
+                        + "    }\n"
+                        + "}\n\n";
+                break;
+            case "SQL":
+                header = "-- Fichier hors normes : 52 000 lignes, mode gros fichier.\n\n";
+                block = "-- Bloc 0.\n"
+                        + "CREATE TABLE bloc_0 (\n"
+                        + "    id INTEGER PRIMARY KEY,\n"
+                        + "    seuil REAL DEFAULT 0.125e-3,\n"
+                        + "    graine INTEGER NOT NULL,\n"
+                        + "    taille INTEGER NOT NULL,\n"
+                        + "    calcule TEXT DEFAULT 'graine * taille'\n"
+                        + ");\n\n"
+                        + "INSERT INTO bloc_0 (graine, taille) VALUES (12, 24);\n\n";
+                break;
+            default:
+                header = "// Fichier hors normes de demonstration : 52 000 lignes, mode gros fichier.\n"
+                        + "// La fenetre visible se paie, le remplissage suit en arriere-plan.\n\n";
+                block = "/* Bloc 0. */\n"
+                        + "public final class G0 {\n"
+                        + "    private static final double SEUIL = 0.125e-3;\n"
+                        + "    private static final int MAX = 0x1F_FF;\n\n"
+                        + "    static double total(int graine, int taille) {\n"
+                        + "        if (graine > MAX && taille != -1) {\n"
+                        + "            return graine * taille * SEUIL;\n"
+                        + "        }\n"
+                        + "        return (double) graine / taille;\n"
+                        + "    }\n"
+                        + "}\n\n";
+                break;
+        }
+        int blockLines = countNewlines(block);
+        int headerLines = countNewlines(header);
+        int blocks = (52_000 - headerLines + blockLines - 1) / blockLines;
+        StringBuilder text = new StringBuilder(3_000_000);
+        text.append(header);
+        for (int at = 0; at < blocks; at++) {
+            text.append(block.replace("Bloc 0", "Bloc " + at)
+                    .replace("G0", "G" + at)
+                    .replace("bloc_0", "bloc_" + at)
+                    .replace("numero=\"0\"", "numero=\"" + at + "\"")
+                    .replace("\"bloc\": 0", "\"bloc\": " + at));
+        }
+        if ("JSON".equals(language)) {
+            text.append("]\n");
+        }
+        String built = text.toString();
+        hugeFileCaches.put(language, built);
+        return built;
+    }
+
+    private static int countNewlines(String text) {
+        int count = 0;
+        for (int at = 0; at < text.length(); at++) {
+            if (text.charAt(at) == '\n') {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static final java.util.Map<String, String> hugeFileCaches =
+            new java.util.HashMap<>();
 
     private DemoTexts() {
     }

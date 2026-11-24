@@ -97,6 +97,7 @@ public final class OpenHarness {
         hugeFile();
         hugeFileCopyGesture();
         replaceAllHugeFile();
+        hugeFileLanguages();
         folds();
         semanticFusion();
         languageServer();
@@ -706,6 +707,45 @@ public final class OpenHarness {
                 undoMs < 500L);
         detail("annulation : " + undoMs + " ms");
         click("Rechercher");
+    }
+
+    /**
+     * La consolidation : le hors normes aux autres langages — le
+     * bouton qui cycle y ouvre chacun, la fenêtre, le fond et le mode
+     * gros fichier y tiennent, la frappe n'y relit qu'une ligne.
+     */
+    private static void hugeFileLanguages() {
+        begin("consolidation : le hors normes aux autres langages");
+        String[] expected = {"XML", "JSON", "KOTLIN", "SQL"};
+        String[] openers = {"<!--", "[", "//", "--"};
+        for (int round = 0; round < expected.length; round++) {
+            click("50k ⨯");
+            frame();
+            View.harnessDrain(2_000L);
+            editor.awaitBackgroundFill(120_000L);
+            View.harnessDrain(2_000L);
+            frame();
+            SyntaxDocument syntax = editor.getSyntaxDocument();
+            check("le hors normes " + expected[round] + " porte 52 000 lignes et plus",
+                    syntax.lineCount() >= 52_000 && syntax.lexedLineCount() == syntax.lineCount());
+            check("le mode gros fichier y est actif", syntax.inBigFileMode());
+            check("le texte est bien du " + expected[round],
+                    editor.getBuffer().getText(0, Math.min(4, editor.getBuffer().length()))
+                            .startsWith(openers[round]));
+            detail(expected[round] + " : " + syntax.lineCount() + " lignes, "
+                    + syntax.tokenCount() + " jetons, fond "
+                    + editor.backgroundFillNanos() / 1_000_000L + " ms");
+        }
+        // la frappe au milieu du dernier : la paresse de ligne tient
+        // sur chaque langage
+        TextBuffer buffer = editor.getBuffer();
+        editor.caretTo(buffer.length() / 2);
+        frame();
+        connection.commitText("z", 1);
+        frame();
+        check("la frappe sur le hors normes SQL relit une ligne",
+                editor.getSyntaxDocument().lastRelexedLines() == 1);
+        click("Annuler");
     }
 
     /** Les plis : la gouttière retourne le pli, la ligne se cache. */
