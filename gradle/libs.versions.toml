@@ -1,0 +1,15 @@
+# Catalogue de versions unique : aucune version en dur dans un module.
+
+[versions]
+agp = "8.7.3"
+checkstyle = "10.18.2"
+junit = "4.13.2"
+compileSdk = "35"
+minSdk = "26"
+targetSdk = "35"
+
+[libraries]
+junit = { module = "junit:junit", version.ref = "junit" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }

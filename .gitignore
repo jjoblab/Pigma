@@ -1,0 +1,18 @@
+# Build
+build/
+.gradle/
+
+# Environnement local
+local.properties
+
+# Listes locales de motifs de références interdites (jamais versionnées)
+config/forbidden-refs.local
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Divers
+.DS_Store
+*.hprof
