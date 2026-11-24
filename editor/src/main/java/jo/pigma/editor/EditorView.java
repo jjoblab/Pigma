@@ -76,6 +76,13 @@ public final class EditorView extends View {
     /** Plans partagés par contenu, au-delà le plus ancien s'évince. */
     private static final int SHARED_PLANS = 256;
 
+    /**
+     * Le plafond de correspondances collectées par une recherche : le
+     * document entier reste parcouru (le compte s'arrête seulement) —
+     * un document piège ne remplit pas la mémoire.
+     */
+    private static final int SEARCH_MATCH_LIMIT = 10_000;
+
     private final TextBuffer buffer;
     private final UndoStack undoStack;
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -96,6 +103,24 @@ public final class EditorView extends View {
 
     /** L'ancre de sélection (-1 : pas de sélection, le curseur seul). */
     private int selectionAnchor = -1;
+
+    /** La requête de recherche courante (null : pas de recherche). */
+    private String searchQuery;
+
+    /** Les débuts des correspondances, triés croissants. */
+    private int[] searchMatches = new int[0];
+
+    /** L'index de la correspondance courante (-1 : aucune). */
+    private int searchCurrent = -1;
+
+    /** Le texte de la popup d'info ancrée (null : masquée). */
+    private String infoPopupText;
+
+    /** La ligne d'ancrage de la popup d'info. */
+    private int infoPopupLine;
+
+    /** La colonne d'ancrage de la popup d'info. */
+    private int infoPopupColumn;
 
     /** L'horodatage de l'appui courant (l'appui long sélectionne le mot). */
     private long touchDownNanos;
@@ -197,6 +222,21 @@ public final class EditorView extends View {
 
     private final Paint selectionPaint = new Paint();
 
+    /** La teinte des correspondances de recherche. */
+    private final Paint searchPaint = new Paint();
+
+    /** La teinte de la correspondance courante (plus dense). */
+    private final Paint searchCurrentPaint = new Paint();
+
+    /** Le texte de la popup d'info ancrée. */
+    private final Paint infoPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** Le fond de la popup d'info. */
+    private final Paint infoBackground = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** Le bord de la popup d'info. */
+    private final Paint infoBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
+
     /** Le souligné des diagnostics d'appariement. */
     private final Paint diagnosticPaint = new Paint();
 
@@ -227,6 +267,14 @@ public final class EditorView extends View {
             clampCaret();
             shiftFolds(start);
             ensureCaretVisible();
+            // une édition déplace tout ce qui suit : les positions des
+            // correspondances seraient des mensonges — la recherche se
+            // range (la feuille la relance), la popup d'info aussi
+            if (searchQuery != null) {
+                searchMatches = new int[0];
+                searchCurrent = -1;
+            }
+            dismissInfoPopup();
             // le remplissage n'est PAS relancé ici : la salve du fond ne
             // doit pas chevaucher le dessin qui suit l'édition —
             // l'odomètre l'a vu (moteur 9,2 ms à l'ouverture du gros
@@ -261,6 +309,17 @@ public final class EditorView extends View {
         scopePaint.setColor(0x0D2962FF);
         selectionPaint.setStyle(Paint.Style.FILL);
         selectionPaint.setColor(0x332979FF);
+        searchPaint.setStyle(Paint.Style.FILL);
+        searchPaint.setColor(0x38FFC107);
+        searchCurrentPaint.setStyle(Paint.Style.FILL);
+        searchCurrentPaint.setColor(0x80FFC107);
+        infoPaint.setColor(0xFF1B1B1F);
+        infoPaint.setTextSize(dp(12));
+        infoBackground.setStyle(Paint.Style.FILL);
+        infoBackground.setColor(0xF2FFFFFF);
+        infoBorder.setStyle(Paint.Style.STROKE);
+        infoBorder.setStrokeWidth(dp(1));
+        infoBorder.setColor(0xFF1B6FE0);
         diagnosticPaint.setStyle(Paint.Style.STROKE);
         diagnosticPaint.setStrokeWidth(dp(2));
         diagnosticPaint.setColor(0xFFFF3B30);
@@ -515,8 +574,13 @@ public final class EditorView extends View {
         lastAnalysisStartNanos = -Long.MAX_VALUE / 2;
         suggestions = List.of();
         suggestionWordStart = -1;
-        // autre document : la sélection n'y désigne plus rien
+        // autre document : la sélection n'y désigne plus rien, la
+        // recherche et la popup d'info non plus
         selectionAnchor = -1;
+        searchQuery = null;
+        searchMatches = new int[0];
+        searchCurrent = -1;
+        infoPopupText = null;
         try (TextTransaction transaction = undoStack.newTransaction()) {
             transaction.replace(0, buffer.length(), text);
         }
@@ -659,6 +723,230 @@ public final class EditorView extends View {
         setSelection(0, buffer.length());
     }
 
+    /**
+     * Cherche la requête dans tout le document : les correspondances
+     * se collectent (au plafond de {@value #SEARCH_MATCH_LIMIT}, le
+     * compte le dit), la première après le curseur devient courante
+     * et s'amène dans la fenêtre. Une requête vide range la recherche.
+     *
+     * @param query le texte cherché, exact (la casse compte)
+     */
+    public void search(String query) {
+        dismissInfoPopup();
+        if (query == null || query.isEmpty()) {
+            clearSearch();
+            return;
+        }
+        searchQuery = query;
+        IntArray found = new IntArray();
+        CharSequence text = buffer.getText(0, buffer.length());
+        int at = 0;
+        while (found.size() < SEARCH_MATCH_LIMIT) {
+            int hit = indexOf(text, query, at);
+            if (hit < 0) {
+                break;
+            }
+            found.add(hit);
+            at = hit + query.length();
+        }
+        searchMatches = found.toArray();
+        searchCurrent = -1;
+        if (searchMatches.length > 0) {
+            searchCurrent = 0;
+            for (int m = 0; m < searchMatches.length; m++) {
+                if (searchMatches[m] >= caretOffset) {
+                    searchCurrent = m;
+                    break;
+                }
+            }
+            gotoSearchMatch(searchCurrent);
+        }
+        invalidate();
+    }
+
+    /**
+     * La correspondance suivante (la recherche boucle : après la
+     * dernière vient la première).
+     */
+    public void searchNext() {
+        if (searchMatches.length > 0) {
+            gotoSearchMatch((searchCurrent + 1) % searchMatches.length);
+        }
+    }
+
+    /** La correspondance précédente (la recherche boucle aussi en arrière). */
+    public void searchPrevious() {
+        if (searchMatches.length > 0) {
+            gotoSearchMatch((searchCurrent - 1 + searchMatches.length)
+                    % searchMatches.length);
+        }
+    }
+
+    /**
+     * Le nombre de correspondances de la recherche courante (le
+     * plafond compris : le compte s'arrête à
+     * {@value #SEARCH_MATCH_LIMIT}).
+     *
+     * @return le nombre de correspondances trouvées, 0 sans recherche
+     */
+    public int searchMatchCount() {
+        return searchMatches.length;
+    }
+
+    /**
+     * L'index de la correspondance courante (0-based), -1 sans
+     * correspondance — la feuille du bas affiche « courant+1/total ».
+     *
+     * @return l'index de la correspondance courante
+     */
+    public int searchCurrentIndex() {
+        return searchCurrent;
+    }
+
+    /** Range la recherche (les teintes disparaissent, la requête s'oublie). */
+    public void clearSearch() {
+        searchQuery = null;
+        searchMatches = new int[0];
+        searchCurrent = -1;
+        invalidate();
+    }
+
+    /**
+     * Remplace la correspondance courante : une transaction, une
+     * unité d'annulation, la recherche se relance après (les
+     * positions suivantes ont bougé).
+     *
+     * @param replacement le texte de remplacement
+     */
+    public void replaceCurrent(String replacement) {
+        if (searchQuery == null || searchCurrent < 0
+                || searchCurrent >= searchMatches.length) {
+            return;
+        }
+        int start = searchMatches[searchCurrent];
+        int end = start + searchQuery.length();
+        if (end > buffer.length()) {
+            return;
+        }
+        applyEdit(start, end, replacement);
+        search(searchQuery);
+    }
+
+    /**
+     * Remplace TOUTES les correspondances en une transaction (une
+     * seule unité d'annulation) : les remplacements se font de la
+     * fin vers le début — les positions antérieures restent valides,
+     * rien ne se recalcule en cours de passe. La recherche se relance
+     * après.
+     *
+     * @param replacement le texte de remplacement
+     * @return le nombre de remplacements faits
+     */
+    public int replaceAll(String replacement) {
+        if (searchQuery == null || searchMatches.length == 0) {
+            return 0;
+        }
+        // un instantané avant la transaction : l'écouteur du tampon
+        // (notifié au PREMIER remplacement) range la recherche — la
+        // boucle doit tenir ses positions, pas celles du champ
+        int[] matches = searchMatches;
+        int count = matches.length;
+        int firstStart = matches[0];
+        try (TextTransaction transaction = undoStack.newTransaction()) {
+            for (int m = count - 1; m >= 0; m--) {
+                int start = matches[m];
+                int end = start + searchQuery.length();
+                if (end > buffer.length()) {
+                    continue;
+                }
+                transaction.replace(start, end, replacement);
+            }
+        }
+        selectionAnchor = -1;
+        caretOffset = Math.min(firstStart + replacement.length(), buffer.length());
+        search(searchQuery);
+        return count;
+    }
+
+    /**
+     * La popup d'info ancrée : le texte se montre au-dessus de la
+     * ligne donnée (sous elle sans la place), bornée aux bords de la
+     * vue. L'appui suivant la masque ; une édition la masque aussi.
+     *
+     * @param text   le texte à montrer, vide ou null pour masquer
+     * @param line   la ligne d'ancrage
+     * @param column la colonne d'ancrage
+     */
+    public void showInfoPopup(String text, int line, int column) {
+        infoPopupText = text == null || text.isEmpty() ? null : text;
+        infoPopupLine = line;
+        infoPopupColumn = column;
+        invalidate();
+    }
+
+    /** Masque la popup d'info. */
+    public void dismissInfoPopup() {
+        if (infoPopupText != null) {
+            infoPopupText = null;
+            invalidate();
+        }
+    }
+
+    /** La popup d'info est-elle visible ? */
+    public boolean isInfoPopupVisible() {
+        return infoPopupText != null;
+    }
+
+    private void gotoSearchMatch(int index) {
+        searchCurrent = index;
+        int offset = searchMatches[index];
+        selectionAnchor = -1;
+        caretOffset = Math.min(offset + searchQuery.length(), buffer.length());
+        ensureCaretVisible();
+        invalidate();
+    }
+
+    /**
+     * La sous-chaîne suivante : le tampon n'offre pas d'indexOf sur
+     * vue, la boucle reste ici — le texte entier a déjà été lu.
+     */
+    private static int indexOf(CharSequence text, String needle, int from) {
+        int limit = text.length() - needle.length();
+        for (int at = Math.max(0, from); at <= limit; at++) {
+            int probe = 0;
+            while (probe < needle.length() && text.charAt(at + probe) == needle.charAt(probe)) {
+                probe++;
+            }
+            if (probe == needle.length()) {
+                return at;
+            }
+        }
+        return -1;
+    }
+
+    /** Un tableau d'entiers extensible sans dépendance (la collecte des correspondances). */
+    private static final class IntArray {
+
+        private int[] values = new int[16];
+
+        private int size;
+
+        void add(int value) {
+            if (size == values.length) {
+                values = java.util.Arrays.copyOf(values, values.length * 2);
+            }
+            values[size++] = value;
+        }
+
+        int size() {
+            return size;
+        }
+
+        int[] toArray() {
+            return java.util.Arrays.copyOf(values, size);
+        }
+    }
+
     @Override
     public boolean onCheckIsTextEditor() {
         return true;
@@ -678,6 +966,9 @@ public final class EditorView extends View {
                 touchStartX = event.getX();
                 touchStartY = event.getY();
                 touchDownNanos = System.nanoTime();
+                // un nouvel appui masque la popup d'info (l'appui long
+                // pourra en rouvrir une sur le mot touché)
+                dismissInfoPopup();
                 dragging = false;
                 break;
             case MotionEvent.ACTION_MOVE:
@@ -757,10 +1048,12 @@ public final class EditorView extends View {
         int last = lastVisibleLine();
         updateStructureCaches();
         // la bande de portée se peint avant le texte (le texte se
-        // dessine dessus), la sélection par-dessus elle, les guides et
-        // la paire après
+        // dessine dessus), la sélection par-dessus elle, la recherche
+        // par-dessus tout ça (la correspondance courante domine), les
+        // guides et la paire après
         drawScopeBand(canvas, first, last, count);
         drawSelection(canvas, first, last, count);
+        drawSearchHighlights(canvas, first, last, count);
         for (int line = first; line <= last && line < count; line++) {
             if (isHidden(line)) {
                 continue;
@@ -779,11 +1072,13 @@ public final class EditorView extends View {
         drawCaret(canvas);
         // les candidats AVANT leur dessin (un déplacement de curseur
         // rend ses candidats dans la même trame), les soulignés de
-        // diagnostic par-dessus le texte, le bandeau par-dessus tout
+        // diagnostic par-dessus le texte, le bandeau par-dessus tout,
+        // la popup d'info par-dessus le bandeau
         refreshAnalysis();
         updateSuggestions();
         drawDiagnostics(canvas, first, last, count);
         drawSuggestions(canvas);
+        drawInfoPopup(canvas);
         // la fenêtre visible est payée : le reste remplit au fil de fond
         ensureFill();
         lastFrameNanos = System.nanoTime() - frameBegin;
@@ -861,6 +1156,85 @@ public final class EditorView extends View {
             float top = getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
             canvas.drawRect(left, top, right, top + lineHeight, selectionPaint);
         }
+    }
+
+    /**
+     * Les teintes de recherche : chaque correspondance DANS la fenêtre
+     * visible se teinte, la courante plus dense — le parcours des
+     * correspondances reste linéaire (le plafond le borne), le test
+     * d'appartenance écarte l'essentiel.
+     */
+    private void drawSearchHighlights(Canvas canvas, int first, int last, int count) {
+        if (searchQuery == null || searchMatches.length == 0) {
+            return;
+        }
+        int queryLength = searchQuery.length();
+        int windowStart = buffer.getLineStart(first);
+        int windowEnd = last + 1 < count
+                ? buffer.getLineStart(last + 1) : buffer.length();
+        for (int m = 0; m < searchMatches.length; m++) {
+            int start = searchMatches[m];
+            if (start >= windowEnd) {
+                break;
+            }
+            int end = start + queryLength;
+            if (end <= windowStart) {
+                continue;
+            }
+            int line = buffer.lineOfOffset(start);
+            if (isHidden(line)) {
+                continue;
+            }
+            int lineStart = buffer.getLineStart(line);
+            int columnStart = Math.max(start, windowStart) - lineStart;
+            int columnEnd = Math.min(end, windowEnd) - lineStart;
+            float left = getPaddingLeft() + columnStart * charWidth;
+            float right = getPaddingLeft() + columnEnd * charWidth;
+            float top = getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
+            canvas.drawRect(left, top, right, top + lineHeight,
+                    m == searchCurrent ? searchCurrentPaint : searchPaint);
+        }
+    }
+
+    /**
+     * La popup d'info ancrée : un rectangle arrondi au-dessus de la
+     * ligne d'ancrage (sous elle sans la place), borné aux bords de la
+     * vue, le texte coupé à la largeur disponible — elle se dessine en
+     * dernier, par-dessus le bandeau.
+     */
+    private void drawInfoPopup(Canvas canvas) {
+        if (infoPopupText == null) {
+            return;
+        }
+        float textWidth = infoPaint.measureText(infoPopupText);
+        float padding = dp(8);
+        float boxWidth = Math.min(textWidth + 2 * padding,
+                getWidth() - getPaddingLeft() - getPaddingRight());
+        float boxHeight = -infoPaint.getFontMetrics().top + dp(2) + padding;
+        float anchorTop = getPaddingTop() + visibleIndexOf(infoPopupLine) * lineHeight
+                - scrollY;
+        float left = Math.min(
+                Math.max(getPaddingLeft(),
+                        getPaddingLeft() + infoPopupColumn * charWidth - padding),
+                getWidth() - getPaddingRight() - boxWidth);
+        float top;
+        if (anchorTop - boxHeight - dp(4) >= getPaddingTop()) {
+            top = anchorTop - boxHeight - dp(4);
+        } else {
+            top = Math.min(anchorTop + lineHeight + dp(4),
+                    getHeight() - boxHeight);
+        }
+        canvas.drawRoundRect(left, top, left + boxWidth, top + boxHeight,
+                dp(4), dp(4), infoBackground);
+        canvas.drawRoundRect(left, top, left + boxWidth, top + boxHeight,
+                dp(4), dp(4), infoBorder);
+        // le texte coupé à la place disponible (les mots longs se
+        // tronquent, la popup reste dans la vue)
+        float maxChars = Math.max(1.0f, (boxWidth - 2 * padding) / charWidth);
+        String shown = infoPopupText.length() > maxChars
+                ? infoPopupText.substring(0, (int) maxChars) : infoPopupText;
+        canvas.drawText(shown, left + padding,
+                top - infoPaint.getFontMetrics().top, infoPaint);
     }
 
     /**
@@ -1523,8 +1897,30 @@ public final class EditorView extends View {
         if (wordEnd > wordStart) {
             selectionAnchor = wordStart;
             caretOffset = wordEnd;
+            showSymbolInfo(wordStart, wordEnd, line, column);
             invalidate();
         }
+    }
+
+    /**
+     * La popup d'info du mot sélectionné : le symbole de l'index le
+     * décrit (nom, nature, ligne de déclaration), un mot ordinaire ne
+     * dit que lui-même — l'index peut être en cours de construction,
+     * la popup dit alors le mot sans la nature.
+     */
+    private void showSymbolInfo(int wordStart, int wordEnd, int line, int column) {
+        String word = buffer.getText(wordStart, wordEnd);
+        String text = "« " + word + " » — mot du texte";
+        if (symbolIndex != null) {
+            for (SymbolIndex.Symbol symbol : symbolIndex.symbols()) {
+                if (symbol.name().equals(word)) {
+                    text = "« " + word + " » — " + symbol.nature()
+                            + ", déclaré ligne " + (symbol.line() + 1);
+                    break;
+                }
+            }
+        }
+        showInfoPopup(text, line, column);
     }
 
     /** Le début du mot qui contient l'offset (ou l'offset lui-même). */

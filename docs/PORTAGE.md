@@ -31,16 +31,16 @@ consigné au moment de la décision.
 
 | Fonctionnalité | Décision | Chantier cible |
 | --- | --- | --- |
-| Popups (feuille du bas/haut, popup ancrée) | à examiner | 8 |
-| Gouttière (numéros, marqueurs) | à examiner | 6 |
-| Pliage | à examiner | 6–7 |
-| Multi-curseurs | à examiner | 6 |
-| Sélection en colonne | à examiner | 6 |
-| Saisie / IME | à examiner | 6 |
-| Accessibilité | à examiner | 6 |
-| Texte bidirectionnel | à examiner | 6 |
-| Guides d'indentation | à examiner | 8 |
-| Recherche / remplacement | à examiner | 8 |
+| Popups (feuille du bas/haut, popup ancrée) | **réécrit** (chantier 24) : la feuille du bas porte la recherche et le remplacement (sample), la popup ancrée se dessine dans la vue (info de symbole, réponse de survol d'un serveur de langage) — la feuille du haut reste à faire si un besoin la justifie | 8 |
+| Gouttière (numéros, marqueurs) | **réécrit** (chantiers 14-15) : marqueurs de plis, guides de profondeur | 6 |
+| Pliage | **réécrit** (chantier 14) : plis par la gouttière, la bande de portée les borde | 6–7 |
+| Multi-curseurs | non repris (aucun besoin exprimé) | 6 |
+| Sélection en colonne | non repris (aucun besoin exprimé) | 6 |
+| Saisie / IME | **réécrit** (chantiers 10-11, 17) : Entrée et Suppr réparés, l'entrelacement tenu | 6 |
+| Accessibilité | non repris (aucun besoin exprimé) | 6 |
+| Texte bidirectionnel | non repris (aucun besoin exprimé) | 6 |
+| Guides d'indentation | **réécrit** (chantier 14) : la chaîne d'appariement de L2 guide, pas les espaces | 8 |
+| Recherche / remplacement | **réécrit** (chantier 24) : la recherche teinte la fenêtre (plafond de 10 000 correspondances), la navigation boucle, remplacer la courante (une unité d'annulation) et tout remplacer (de la fin vers le début, une seule unité) | 8 |
 | Types du domaine LSP | à examiner | 9 |
 | Ordonnancement des requêtes LSP | à examiner | 9 |
 | Catalogue des langages | examiné au chantier 2 : réécriture proposée — un langage = un descripteur (extensions, lexeur, table jeton → portée, analyseur et annotateur facultatifs), famille générique pour la longue traîne ; validation avec le propriétaire | 3 |

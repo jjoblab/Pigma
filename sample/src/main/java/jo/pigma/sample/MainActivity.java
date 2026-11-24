@@ -8,6 +8,7 @@ import android.graphics.Typeface;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -70,6 +71,17 @@ public final class MainActivity extends Activity {
 
     private Button copyTextButton;
 
+    private Button searchButton;
+
+    /** La feuille du bas : la recherche et le remplacement y vivent. */
+    private LinearLayout searchSheet;
+
+    private EditText queryField;
+
+    private EditText replacementField;
+
+    private TextView matchView;
+
     private final List<String> scenarioLog = new ArrayList<>();
     private String currentScenario = "Java (démo)";
     private boolean loggedFirstColoration;
@@ -130,6 +142,12 @@ public final class MainActivity extends Activity {
         copyTextButton = new Button(this);
         copyTextButton.setText("Copier texte");
         copyTextButton.setOnClickListener(this::onCopyTextClicked);
+        searchButton = new Button(this);
+        searchButton.setText("Rechercher");
+        searchButton.setOnClickListener(this::onSearchToggleClicked);
+        queryField = new EditText(this);
+        replacementField = new EditText(this);
+        matchView = new TextView(this);
 
         setContentView(buildLayout());
         editorView.getBuffer().addListener(statusListener);
@@ -168,7 +186,33 @@ public final class MainActivity extends Activity {
                 themeButton("Sombre", EditorThemes.DARK, EditorThemes.DARK_BACKGROUND),
                 undoButton, redoButton));
 
-        root.addView(row(margin, copyButton, selectButton, copyTextButton));
+        root.addView(row(margin, copyButton, selectButton, copyTextButton, searchButton));
+
+        // la feuille du bas (masquée au départ) : la recherche et le
+        // remplacement — elle descend sous la rangée d'actions, la
+        // fermeture range la recherche
+        searchSheet = new LinearLayout(this);
+        searchSheet.setOrientation(LinearLayout.VERTICAL);
+        searchSheet.addView(row(margin,
+                field(queryField, "chercher…"),
+                sheetButton("Chercher", this::onDoSearchClicked),
+                sheetButton("‹", this::onSearchPreviousClicked),
+                sheetButton("›", this::onSearchNextClicked),
+                sheetButton("✕", this::onSearchCloseClicked)));
+        searchSheet.addView(row(margin,
+                field(replacementField, "remplacer par…"),
+                sheetButton("Remplacer", this::onReplaceOneClicked),
+                sheetButton("Tout", this::onReplaceAllClicked)));
+        LinearLayout.LayoutParams matchParams =
+                new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+        matchParams.setMargins(dp(16), 0, margin, 0);
+        searchSheet.addView(matchView, matchParams);
+        searchSheet.setVisibility(View.GONE);
+        LinearLayout.LayoutParams sheetParams =
+                new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+        root.addView(searchSheet, sheetParams);
 
         LinearLayout.LayoutParams diagnosticsParams =
                 new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
@@ -191,6 +235,23 @@ public final class MainActivity extends Activity {
             LinearLayout.LayoutParams params =
                     new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f);
             row.addView(button, params);
+        }
+        return row;
+    }
+
+    /**
+     * La rangée mixte (un champ de saisie parmi les boutons) : le
+     * champ pèse le double d'un bouton, la saisie garde la place.
+     */
+    private LinearLayout row(int margin, Object... views) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        for (Object view : views) {
+            boolean isField = view instanceof EditText;
+            LinearLayout.LayoutParams params =
+                    new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT,
+                            isField ? 2.0f : 1.0f);
+            row.addView((View) view, params);
         }
         return row;
     }
@@ -270,6 +331,93 @@ public final class MainActivity extends Activity {
         clipboard.setPrimaryClip(ClipData.newPlainText("sélection Pigma", selected));
         Toast.makeText(this, selected.length() + " caractère(s) copié(s)",
                 Toast.LENGTH_SHORT).show();
+    }
+
+    /**
+     * La feuille du bas s'ouvre (le champ prend le focus, la recherche
+     * précédente se range) ou se ferme (la recherche se range aussi).
+     */
+    private void onSearchToggleClicked(View button) {
+        if (searchSheet.getVisibility() == View.VISIBLE) {
+            closeSearchSheet();
+        } else {
+            searchSheet.setVisibility(View.VISIBLE);
+            queryField.requestFocus();
+            updateMatchView();
+        }
+    }
+
+    /** Cherche le contenu du champ : les teintes et le compte suivent. */
+    private void onDoSearchClicked(View button) {
+        editorView.search(queryField.getText().toString());
+        updateMatchView();
+    }
+
+    private void onSearchNextClicked(View button) {
+        editorView.searchNext();
+        updateMatchView();
+    }
+
+    private void onSearchPreviousClicked(View button) {
+        editorView.searchPrevious();
+        updateMatchView();
+    }
+
+    private void onSearchCloseClicked(View button) {
+        closeSearchSheet();
+    }
+
+    /**
+     * Remplace la correspondance courante : une unité d'annulation, la
+     * recherche se relance (le compte se met à jour).
+     */
+    private void onReplaceOneClicked(View button) {
+        editorView.replaceCurrent(replacementField.getText().toString());
+        updateMatchView();
+    }
+
+    /**
+     * Remplace toutes les correspondances : une seule unité
+     * d'annulation (les remplacements vont de la fin vers le début —
+     * les positions antérieures restent valides).
+     */
+    private void onReplaceAllClicked(View button) {
+        int count = editorView.replaceAll(replacementField.getText().toString());
+        updateMatchView();
+        Toast.makeText(this, count + " remplacement(s)",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private void closeSearchSheet() {
+        searchSheet.setVisibility(View.GONE);
+        editorView.clearSearch();
+        updateMatchView();
+    }
+
+    /** La ligne du compte de correspondances (« 3/12 » ou « aucune »). */
+    private void updateMatchView() {
+        int total = editorView.searchMatchCount();
+        if (total == 0) {
+            matchView.setText("aucune correspondance");
+        } else {
+            matchView.setText(String.format(Locale.ROOT,
+                    "%d correspondance(s) · courante %d/%d",
+                    total, editorView.searchCurrentIndex() + 1, total));
+        }
+    }
+
+    /** Un champ de saisie de la feuille (l'indice dit son rôle). */
+    private EditText field(EditText input, String hint) {
+        input.setHint(hint);
+        return input;
+    }
+
+    /** Un bouton compact de la feuille du bas. */
+    private Button sheetButton(String label, View.OnClickListener listener) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setOnClickListener(listener);
+        return button;
     }
 
     /**
