@@ -78,9 +78,9 @@ public final class MainActivity extends Activity {
     };
 
     /**
-     * Le veilleur du panneau : tant que la pompe de remplissage avance,
-     * il rafraîchit les mesures (lignes lexées qui montent) ; la fin du
-     * remplissage s'inscrit au journal.
+     * Le veilleur du panneau : tant que le fil de fond avance, il
+     * rafraîchit les mesures (lignes lexées qui montent) ; la fin du
+     * remplissage s'inscrit au journal avec sa montre.
      */
     private final Runnable diagnosticsWatcher = new Runnable() {
         @Override
@@ -91,7 +91,11 @@ public final class MainActivity extends Activity {
                 editorView.postDelayed(this, DIAGNOSTIC_WATCH_MS);
             } else if (filling) {
                 filling = false;
-                logScenario("remplissage fini - " + currentScenario);
+                logScenario(String.format(Locale.ROOT,
+                        "remplissage fini - %s (fond %d ms, %d tranche(s))",
+                        currentScenario,
+                        editorView.backgroundFillNanos() / 1_000_000L,
+                        editorView.backgroundFillSlices()));
             }
         }
     };
@@ -226,7 +230,7 @@ public final class MainActivity extends Activity {
         SyntaxDocument syntax = editorView.getSyntaxDocument();
         String row = String.format(Locale.ROOT,
                 "| %s | %.1f ms | %.2f ms (%d l.) | %.2f ms (%d l. relues) | "
-                        + "%d/%d | %d | trame %.2f ms |",
+                        + "%d/%d | %d | trame %.2f ms (moteur %.2f, pire %.2f) |",
                 event,
                 syntax.firstLexNanos() / 1_000_000.0,
                 syntax.lastRequestNanos() / 1_000_000.0,
@@ -236,7 +240,9 @@ public final class MainActivity extends Activity {
                 syntax.lexedLineCount(),
                 syntax.lineCount(),
                 syntax.tokenCount(),
-                editorView.lastFrameNanos() / 1_000_000.0);
+                editorView.lastFrameNanos() / 1_000_000.0,
+                editorView.lastFrameEngineNanos() / 1_000_000.0,
+                editorView.worstFrameNanos() / 1_000_000.0);
         if (scenarioLog.size() >= LOG_LIMIT) {
             scenarioLog.remove(0);
         }
@@ -288,7 +294,8 @@ public final class MainActivity extends Activity {
         String text = String.format(
                 "coloration : première %.1f ms · demande %.2f ms (%d l.) "
                         + "· dernière frappe %.2f ms (%d ligne(s) relue(s)) · %d/%d lignes lexées "
-                        + "· %d jetons · trame %.2f ms",
+                        + "· %d jetons · trame %.2f ms (pire %.2f, moteur %.2f)"
+                        + " · fond %d ms (%d tr.)",
                 syntax.firstLexNanos() / 1_000_000.0,
                 syntax.lastRequestNanos() / 1_000_000.0,
                 syntax.lastRequestLines(),
@@ -297,7 +304,11 @@ public final class MainActivity extends Activity {
                 syntax.lexedLineCount(),
                 syntax.lineCount(),
                 syntax.tokenCount(),
-                editorView.lastFrameNanos() / 1_000_000.0);
+                editorView.lastFrameNanos() / 1_000_000.0,
+                editorView.worstFrameNanos() / 1_000_000.0,
+                editorView.lastFrameEngineNanos() / 1_000_000.0,
+                editorView.backgroundFillNanos() / 1_000_000L,
+                editorView.backgroundFillSlices());
         if (syntax.inBigFileMode()) {
             text += " · mode gros fichier";
         }

@@ -53,8 +53,8 @@ première coloration ne bouge pas quand on bascule clair/sombre).
 Le bac à sable n'a pas d'appareil : les lignes suivantes se remplissent
 depuis le panneau de diagnostic et le bouton « Copier les mesures »
 (journal du scénario au presse-papiers, tableau prêt à coller). Deux
-relevés reçus le même jour — le premier (APK du chantier 5), le
-second (APK du chantier 6, avec la colonne « trame ») ; l'appareil
+relevés reçus le même jour — chantier 5, chantier 6 (avec la
+colonne « trame »), chantier 7 (fil de fond annulable) ; l'appareil
 n'est pas précisé (modèle et version d'Android à compléter — la ligne
 du tableau copié les demande).
 
@@ -64,9 +64,9 @@ du tableau copié les demande).
 | Première coloration, gros fichier (bouton « Gros ») | appuyer, lire le panneau : seule la fenêtre visible se paie | **0,3 ms** (première demande, deux relevés) ; 1 066–1 322/1 780 lignes déjà lexées au premier tick du panneau (0,2 s) — le remplissage seul (aux relevés : pompe d'interface ; depuis le chantier 7, fil de fond), la couleur est déjà là |
 | Frappe ordinaire (recoloration d'une ligne) | taper, lire « dernière frappe » | à relever : aucune frappe dans les deux relevés (taper puis « Copier les mesures », la ligne « copie » porte la dernière frappe) |
 | Frappe propagée (commentaire ouvert) | supprimer un `*/`, lire les lignes relues | à relever : idem, dans la démo Java (supprimer un `*/` du bloc) |
-| Remplissage du gros fichier | lire « lignes lexées » monter après l'ouverture (aux relevés : pompe par tranches sur le fil d'interface ; depuis le chantier 7 : fil de fond annulable, clichés révision-vérifiés) | **1 780/1 780 lignes, 18 095 jetons** (deux relevés) |
+| Remplissage du gros fichier | lire « lignes lexées » monter après l'ouverture (aux deux premiers relevés : pompe par tranches sur le fil d'interface ; au troisième : fil de fond annulable, clichés révision-vérifiés) | **1 780/1 780 lignes, 18 095 jetons** ; au troisième relevé, complet **avant le premier tick (0,2 s)** — le fond remplit en ~150 ms ce que la pompe étalait sur ~1 s |
 | Bascule de thème | basculer : la première coloration ne doit pas bouger | **première inchangée (0,3 ms), jetons identiques (18 095), deux relevés et trois bascules : zéro retokenisation constaté sur appareil** |
-| Budget par image (tracé d'une trame) | lire « trame » au panneau ; la colonne « trame » du journal copié l'emporte | **première trame 16,0 ms** (démo Java : cuisson des plans + fenêtre) · **11,9 ms** à l'ouverture du gros fichier · **4,9–6,3 ms en régime établi** (recuisson au thème 5,1–6,3, copie 4,9) |
+| Budget par image (tracé d'une trame) | lire « trame » au panneau ; la colonne « trame » du journal copié l'emporte | **première trame 16,0 ms** (démo Java : cuisson des plans + fenêtre) · **11,9 ms** à l'ouverture du gros fichier · **4,9–6,3 ms en régime établi** (recuisson au thème 5,1–6,3, copie 4,9) · troisième relevé (chantier 7) : **15,5–17,1 ms** sur le gros fichier — en hausse, voir la note |
 
 Deux lectures de ce relevé. D'abord, ne pas comparer la colonne
 appareil aux nombres JVM du haut sans précaution : le test JVM paie
@@ -95,6 +95,25 @@ l'ordre de grandeur, pas des plafonds ; la mesure de référence viendra
 de la construction release — le fil de fond a déchargé le fil
 d'interface (chantier 7) : un prochain relevé dira si la trame du
 remplissage en profite.
+
+Le troisième relevé porte le fil de fond (chantier 7) : le
+remplissage complet du gros fichier est là **avant le premier tick du
+panneau** (1 780/1 780) — la promesse d'E6 tient sur appareil. Mais
+la **trame du gros fichier monte à 15,5–17,1 ms** (contre 11,9 à
+l'ouverture et 4,9–6,3 en régime établi au relevé précédent) alors
+que les démons restent au niveau (XML 3,7 · JSON 5,3 · Kotlin 10,3)
+et que la demande moteur monte elle aussi de 0,25 à 0,40 ms (2
+lignes). Le chemin de dessin n'a pas changé entre les deux APK (le
+moteur ne fait que s'ajouter un verrou court, jamais tenu pendant le
+lexage). Hypothèse principale : un état de l'appareil — la salve du
+fond (~150 ms à plein régime, là où la pompe passait au ralenti)
+peut faire baisser la fréquence ou monter la température, et tout le
+reste ralentit avec. Le chantier 8 répond par la mesure : la cellule
+trame du journal porte désormais **« (moteur, pire) »** — le temps
+moteur de la trame (verrou compris) et la pire trame du scénario ;
+moteur bas et trame haute innocente le moteur, moteur haute désigne
+le verrou. La montre du fond (« remplissage fini (fond X ms, N
+tranches) ») chronomètre la passe. Le relevé suivant tranche.
 
 Les plafonds du plan sont codés (E3) : ligne de plus de 20 000 colonnes
 non colorée (état reporté, voisines intactes), dessin limité à 10 000

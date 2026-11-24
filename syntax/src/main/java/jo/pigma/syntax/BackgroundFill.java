@@ -29,6 +29,15 @@ public final class BackgroundFill {
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final ExecutorService executor;
 
+    /** Durée de la dernière passe complète (la montre du fond). */
+    private volatile long fillNanos;
+
+    /** Tranches lexées par la dernière passe complète. */
+    private volatile long sliceCount;
+
+    /** Début de la passe en cours, 0 au repos (fil du fond seul). */
+    private long passBeginNanos;
+
     private BackgroundFill(SyntaxDocument document) {
         this.document = document;
         executor = Executors.newSingleThreadExecutor(runnable -> {
@@ -102,12 +111,40 @@ public final class BackgroundFill {
         return true;
     }
 
+    /**
+     * Durée de la dernière passe complète du fond : du premier cliché
+     * au préfixe complet, annulations comprises — la montre du fond,
+     * pour le panneau et le journal.
+     *
+     * @return la durée en nanosecondes, 0 si aucune passe n'a fini
+     */
+    public long fillNanos() {
+        return fillNanos;
+    }
+
+    /**
+     * Tranches lexées par la dernière passe complète du fond.
+     *
+     * @return le nombre de tranches, 0 si aucune passe n'a fini
+     */
+    public long sliceCount() {
+        return sliceCount;
+    }
+
     private void loop() {
         while (running.get()) {
             SyntaxDocument.FillSlice slice = document.takeFillSlice(SLICE_LINES);
             if (slice == null) {
+                if (passBeginNanos != 0L) {
+                    fillNanos = System.nanoTime() - passBeginNanos;
+                    passBeginNanos = 0L;
+                }
                 return;
             }
+            if (passBeginNanos == 0L) {
+                passBeginNanos = System.nanoTime();
+            }
+            sliceCount++;
             try {
                 SyntaxDocument.LineTokens[] entries = document.lexFillSlice(slice);
                 document.applyFill(slice, entries);

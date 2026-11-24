@@ -93,6 +93,12 @@ public final class EditorView extends View {
     /** Durée de la dernière trame (budget par image, diagnostic). */
     private long lastFrameNanos;
 
+    /** Part moteur de la dernière trame : le temps passé dans lineTokens. */
+    private long lastFrameEngineNanos;
+
+    /** Pire trame depuis le dernier scénario (l'odomètre du budget). */
+    private long worstFrameNanos;
+
     private long frameCount;
 
     private final TextListener modelListener = new TextListener() {
@@ -158,6 +164,54 @@ public final class EditorView extends View {
     }
 
     /**
+     * Part moteur de la dernière trame : le temps cumulé passé à demander
+     * les jetons (verrou compris — un fil de fond goumand s'y verrait).
+     * Trame haute avec moteur bas : le coût est au rendu, pas au moteur.
+     *
+     * @return la durée moteur en nanosecondes, 0 avant le premier dessin
+     */
+    public long lastFrameEngineNanos() {
+        return lastFrameEngineNanos;
+    }
+
+    /**
+     * Pire trame depuis l'ouverture du scénario courant : les pointes que
+     * le tick du panneau peut manquer.
+     *
+     * @return la durée en nanosecondes, 0 avant le premier dessin
+     */
+    public long worstFrameNanos() {
+        return worstFrameNanos;
+    }
+
+    /**
+     * Durée de la dernière passe du fil de fond (ouverture à remplissage
+     * complet) : la montre du fond.
+     *
+     * @return la durée en nanosecondes, 0 si aucune passe n'a fini
+     */
+    public long backgroundFillNanos() {
+        return backgroundFill.fillNanos();
+    }
+
+    /**
+     * Tranches lexées par la dernière passe du fil de fond.
+     *
+     * @return le nombre de tranches, 0 si aucune passe
+     */
+    public long backgroundFillSlices() {
+        return backgroundFill.sliceCount();
+    }
+
+    /**
+     * Remet l'odomètre à zéro : la pire trame repart au changement de
+     * scénario (la vue le fait d'elle-même à chaque langage).
+     */
+    public void resetFrameStats() {
+        worstFrameNanos = 0L;
+    }
+
+    /**
      * Nombre de trames dessinées depuis la construction (diagnostic).
      *
      * @return le nombre de dessins
@@ -214,6 +268,7 @@ public final class EditorView extends View {
         }
         syntax = SyntaxDocument.open(buffer, language);
         backgroundFill = BackgroundFill.start(syntax);
+        resetFrameStats();
         // autre langage : les plans portent des couleurs résolues, tout
         // recuit (sans retokeniser — le nouveau document lexe à la demande)
         renderCache.invalidate();
@@ -309,6 +364,7 @@ public final class EditorView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         long frameBegin = System.nanoTime();
+        lastFrameEngineNanos = 0L;
         super.onDraw(canvas);
         canvas.drawColor(themeBackground);
         int count = buffer.getLineCount();
@@ -330,6 +386,7 @@ public final class EditorView extends View {
         // la fenêtre visible est payée : le reste remplit au fil de fond
         ensureFill();
         lastFrameNanos = System.nanoTime() - frameBegin;
+        worstFrameNanos = Math.max(worstFrameNanos, lastFrameNanos);
         frameCount++;
     }
 
@@ -340,7 +397,9 @@ public final class EditorView extends View {
      * fois) et porte les couleurs résolues.
      */
     private void drawTokens(Canvas canvas, int line, int start, float baseline) {
+        long engineBegin = System.nanoTime();
         SyntaxDocument.LineTokens entry = syntax.lineTokens(line);
+        lastFrameEngineNanos += System.nanoTime() - engineBegin;
         int lineEnd = buffer.getLineEnd(line);
         LinePlan plan = renderCache.frame(line, entry,
                 () -> buffer.getText(start, lineEnd), this::bakeLine);

@@ -9,6 +9,7 @@ import java.util.Random;
 import org.junit.Test;
 
 import jo.pigma.core.TextBuffer;
+import jo.pigma.core.TextListener;
 import jo.pigma.core.TextTransaction;
 import jo.pigma.core.UndoStack;
 
@@ -162,13 +163,14 @@ public class BackgroundFillTest {
     }
 
     /**
-     * Le vrai fil remplit le préfixe complet, sans aide du fil
-     * d'appel.
+     * Le vrai fil remplit le préfixe complet, sans aide du fil d'appel,
+     * et sa montre chronomètre la passe (durée et tranches).
      *
      * @throws IOException si le corpus ne se lit pas
+     * @throws InterruptedException si l'attente de la montre est interrompue
      */
     @Test
-    public void theRealThreadFillsThePrefix() throws IOException {
+    public void theRealThreadFillsThePrefix() throws IOException, InterruptedException {
         TextBuffer buffer = TextBuffer.create(corpus());
         SyntaxDocument document = SyntaxDocument.open(buffer, Languages.JAVA);
         BackgroundFill fill = BackgroundFill.start(document);
@@ -176,8 +178,90 @@ public class BackgroundFillTest {
         fill.kick();
         assertTrue(fill.awaitIdle(10_000));
         assertEquals(document.lineCount(), document.lexedLineCount());
+        // la boucle s'arrête juste après le préfixe complet : la montre
+        // se pose en quelques microsecondes, on lui laisse un souffle
+        Thread.sleep(50L);
+        assertTrue("la montre du fond a chronométré la passe", fill.fillNanos() > 0L);
+        assertTrue("au moins une tranche lexée", fill.sliceCount() >= 1L);
+        assertEquals(document.lineCount(), document.lexedLineCount());
         fill.stop();
         document.detach();
+    }
+
+    /**
+     * La fenêtre du cœur : le tampon mute et sa révision monte AVANT
+     * que la notification n'atteigne le moteur (un écouteur bloquant
+     * la retient 60 ms). Le fond travaille pendant cette fenêtre — ses
+     * clichés portent la révision observée dépassée alors que le texte
+     * est déjà neuf : ils ne doivent jamais s'appliquer, sinon la
+     * relex s'arrête sur un état identique (corpus à états neutres) et
+     * le document garde des entrées décalées. Un comptage de jetons à
+     * période 3 rend le décalage visible.
+     *
+     * @throws InterruptedException si l'attente est interrompue
+     */
+    @Test
+    public void lateNotificationDoesNotCorruptTheFill() throws InterruptedException {
+        StringBuilder plain = new StringBuilder();
+        for (int i = 0; i < 600; i++) {
+            int kind = i % 3;
+            plain.append("int ").append((char) ('a' + kind)).append(i)
+                    .append(" = ").append(i);
+            for (int plus = 0; plus < kind; plus++) {
+                plain.append(" + ").append(i);
+            }
+            plain.append(";\n");
+        }
+        TextBuffer buffer = TextBuffer.create(plain.toString());
+        UndoStack undo = new UndoStack(buffer);
+        // enregistré AVANT le document : il reçoit la notification en
+        // premier et la retient — le tampon est déjà à la révision
+        // neuve quand le moteur apprend l'édition
+        TextListener blocker = new TextListener() {
+            @Override
+            public void textChanged(TextBuffer changed, int start, int removedLength,
+                    int insertedLength, int revision) {
+                try {
+                    Thread.sleep(60L);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        };
+        buffer.addListener(blocker);
+        SyntaxDocument document = SyntaxDocument.open(buffer, Languages.JAVA);
+        BackgroundFill fill = BackgroundFill.start(document);
+        document.lineTokens(3);
+        fill.kick();
+
+        Thread editor = new Thread(() -> {
+            try (TextTransaction transaction = undo.newTransaction()) {
+                transaction.replace(buffer.getLineStart(2) + 1,
+                        buffer.getLineStart(2) + 2, "\n\nint");
+            }
+        });
+        editor.start();
+        editor.join(2_000);
+        // la fenêtre vient de se fermer : relancer le fond (la vue le
+        // fait à chaque texte changé)
+        fill.kick();
+        assertTrue(fill.awaitIdle(10_000));
+        fill.stop();
+
+        TextBuffer reference = TextBuffer.create(buffer.getText(0, buffer.length()));
+        SyntaxDocument direct = SyntaxDocument.open(reference, Languages.JAVA);
+        assertEquals(direct.lineCount(), document.lineCount());
+        for (int line = 0; line < direct.lineCount(); line++) {
+            SyntaxDocument.LineTokens expected = direct.lineTokens(line);
+            SyntaxDocument.LineTokens actual = document.lineTokens(line);
+            assertArrayEquals("jetons de la ligne " + line,
+                    expected.tokens(), actual.tokens());
+            assertEquals("état de fin de la ligne " + line,
+                    expected.endState(), actual.endState());
+        }
+        buffer.removeListener(blocker);
+        document.detach();
+        direct.detach();
     }
 
     /**

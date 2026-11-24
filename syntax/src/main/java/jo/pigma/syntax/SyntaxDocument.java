@@ -297,6 +297,14 @@ public final class SyntaxDocument implements TextListener {
                 ends[i] = buffer.getLineEnd(from + i) - base;
             }
             String text = buffer.getText(base, textEnd);
+            if (buffer.getRevision() != observedRevision) {
+                // le tampon est déjà à une révision que le moteur n'a
+                // pas observée (la notification dort encore) : le
+                // cliché porterait un texte neuf sous une révision
+                // ancienne — on n'en prend pas, la révision observée
+                // montera à la notification et le fil repartira
+                return null;
+            }
             return new FillSlice(observedRevision, from, startState, text, starts, ends);
         }
     }
@@ -338,7 +346,13 @@ public final class SyntaxDocument implements TextListener {
         Objects.requireNonNull(slice);
         Objects.requireNonNull(entries);
         synchronized (stateLock) {
-            if (observedRevision != slice.revision()) {
+            // double garde : la révision observée (le moteur a vu la
+            // même version du texte) ET la révision brute du tampon
+            // (le cœur monte la révision avant de notifier — pendant
+            // cette fenêtre, un cliché porterait un texte neuf sous
+            // une révision ancienne ; la révision brute le refuse)
+            if (observedRevision != slice.revision()
+                    || buffer.getRevision() != slice.revision()) {
                 return 0;
             }
             int from = Math.max(lexedUpto, slice.fromLine());
