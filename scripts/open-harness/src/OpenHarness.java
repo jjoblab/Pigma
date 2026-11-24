@@ -316,7 +316,7 @@ public final class OpenHarness {
 
     /** La loupe de précision : la borne traînée se lit agrandie. */
     private static void loupe() {
-        begin("loupe : le texte de la borne se dessine agrandi");
+        begin("loupe : le rendu de la borne se blitte agrandi");
         doubleTapOfWord("graine");
         TextBuffer buffer = editor.getBuffer();
         int end = editor.selectionEnd();
@@ -328,14 +328,18 @@ public final class OpenHarness {
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN, handleX, handleY));
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_MOVE, handleX, lineMidY));
         frame();
-        String magnifiedText = null;
-        for (Canvas.TextOp op : canvas.harnessTextsSinceMark()) {
-            if (op.scaleX > 1.5f) {
-                magnifiedText = op.text;
-            }
+        // la loupe blitte : la ligne rendue UNE FOIS à l'échelle 1
+        // (hors trame), la trame ne paie plus la rastérisation à
+        // l'échelle 2 (le pire 16,55 du relevé 16 y trouvait sa cause)
+        Canvas.BitmapOp blit = null;
+        for (Canvas.BitmapOp op : canvas.harnessBitmapsSinceMark()) {
+            blit = op;
         }
-        check("le texte de la ligne de la borne se dessine agrandi",
-                magnifiedText != null);
+        check("le rendu de la loupe se blitte (rastérisé hors trame)",
+                blit != null && blit.dstRight - blit.dstLeft > 0.0f);
+        check("le blit agrandit (destination double de la source)",
+                blit != null && (blit.dstRight - blit.dstLeft)
+                        > 1.9f * Math.max(1.0f, blit.srcRight - blit.srcLeft));
         boolean bounded = false;
         for (Canvas.ClipOp op : canvas.harnessClipsSinceMark()) {
             if (op.right - op.left < VIEW_WIDTH / 2.0f) {
@@ -344,17 +348,14 @@ public final class OpenHarness {
         }
         check("la loupe découpe une fenêtre bornée", bounded);
         check("le cadre arrondi se dessine", canvas.harnessRoundRectCount() >= 1);
-        detail(magnifiedText == null
-                ? "aucun texte agrandi" : "agrandi : « " + magnifiedText + " »");
+        detail(blit == null
+                ? "aucun blit" : "blit : source [" + blit.srcLeft + ", "
+                        + blit.srcRight + "] vers [" + blit.dstLeft + ", "
+                        + blit.dstRight + "]");
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP, handleX, lineMidY));
         frame();
-        boolean closed = true;
-        for (Canvas.TextOp op : canvas.harnessTextsSinceMark()) {
-            if (op.scaleX > 1.5f) {
-                closed = false;
-            }
-        }
-        check("la loupe se ferme au lâcher", closed);
+        check("la loupe se ferme au lâcher",
+                canvas.harnessBitmapsSinceMark().isEmpty());
     }
 
     /** L'appui long qui glisse : la sélection naît du mot sous l'appui. */

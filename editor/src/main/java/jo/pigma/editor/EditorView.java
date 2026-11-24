@@ -162,6 +162,15 @@ public final class EditorView extends View {
     /** Le décalage de dépôt courant du traîné-déposé (-1 : hors geste). */
     private int dropOffset = -1;
 
+    /** Le rendu de la ligne sous la loupe (1×, hors trame) — blitté par trame. */
+    private android.graphics.Bitmap loupeLine;
+
+    /** La ligne du rendu de loupe en cache (-1 : aucun). */
+    private int loupeLineIndex = -1;
+
+    /** La révision du rendu de loupe en cache (-1 : aucune). */
+    private int loupeLineRevision = -1;
+
     /** Le fil de fond du remplissage (clichés révision-vérifiés). */
     private BackgroundFill backgroundFill;
 
@@ -741,6 +750,9 @@ public final class EditorView extends View {
         // les plans portent des couleurs résolues : re-rendu, jamais
         // retokenisation (la première coloration du panneau ne bouge pas)
         renderCache.invalidate();
+        // le rendu de la loupe porte les couleurs du thème aussi
+        loupeLine = null;
+        loupeLineIndex = -1;
         invalidate();
     }
 
@@ -2312,7 +2324,6 @@ public final class EditorView extends View {
         // doigt en hauteur (le doigt cache la ligne, jamais la loupe)
         float centerX = getPaddingLeft() + column * charWidth;
         float lineTop = getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
-        float lineCenterY = lineTop + lineHeight / 2.0f;
         float width = Math.min(getWidth() - getPaddingLeft() - getPaddingRight(),
                 dp(160));
         float height = lineHeight * LOUPE_SCALE + dp(8);
@@ -2323,21 +2334,72 @@ public final class EditorView extends View {
             top = Math.min(dragFingerY + dp(12),
                     Math.max(getPaddingTop(), getHeight() - getPaddingBottom() - height));
         }
+        // le contenu : la ligne rendue UNE FOIS à l'échelle 1 (hors
+        // trame), blittée à l'échelle — le relevé 16 : le pire du
+        // geste de copie (16,55, ni moteur ni collecteur) venait des
+        // glyphes rastérisés à l'échelle 2 à chaque trame ; le blit
+        // ne paie plus que la texture, la première trame non plus
+        ensureLoupeLine(line, lineStart, lineTop);
+        float srcLeft = clampToRange(
+                centerX - width / (2.0f * LOUPE_SCALE), getPaddingLeft(),
+                Math.max(getPaddingLeft(),
+                        getPaddingLeft() + loupeLine.getWidth() - width / LOUPE_SCALE));
         canvas.save();
         canvas.clipRect(left, top, left + width, top + height);
-        canvas.translate(left + width / 2.0f, top + height / 2.0f);
-        canvas.scale(LOUPE_SCALE, LOUPE_SCALE);
-        canvas.translate(-centerX, -lineCenterY);
         // l'assiette : la couleur de fond du thème remplit la découpe
         canvas.drawColor(themeBackground);
-        drawSelection(canvas, line, line, buffer.getLineCount());
-        if (buffer.getLineEnd(line) > lineStart) {
-            drawTokens(canvas, line, lineStart, lineBaseline(line));
+        canvas.drawBitmap(loupeLine, srcLeft, 0.0f,
+                srcLeft + width / LOUPE_SCALE, lineHeight,
+                left, top + dp(4), left + width, top + height - dp(4), null);
+        // la teinte de sélection par-dessus (directe : la région
+        // source, à l'échelle)
+        if (hasSelection()) {
+            int selStart = Math.max(selectionStart(), lineStart);
+            int selEnd = Math.min(selectionEnd(), buffer.getLineEnd(line));
+            if (selEnd > selStart) {
+                float tintLeft = left + (getPaddingLeft()
+                        + (selStart - lineStart) * charWidth - srcLeft) * LOUPE_SCALE;
+                float tintRight = left + (getPaddingLeft()
+                        + (selEnd - lineStart) * charWidth - srcLeft) * LOUPE_SCALE;
+                canvas.drawRect(tintLeft, top + dp(4), tintRight,
+                        top + height - dp(4), selectionPaint);
+            }
         }
-        drawCaret(canvas);
+        // la borne au centre (la loupe s'y centre par construction) :
+        // un trait direct, pas de texte à rastériser
+        float caretCenter = left + width / 2.0f;
+        canvas.drawRect(caretCenter - caretWidth * LOUPE_SCALE, top + dp(4),
+                caretCenter, top + height - dp(4), caretPaint);
         canvas.restore();
         canvas.drawRoundRect(left, top, left + width, top + height,
                 dp(6), dp(6), loupeBorder);
+    }
+
+    /**
+     * Le rendu de la ligne sous la loupe, à l'échelle 1, hors trame :
+     * les jetons y dessinent une fois (le rendu logiciel), la trame
+     * la blitte. Le rendu se cache par ligne et révision — le
+     * traînement ne change ni l'un ni l'autre, le rendu ne se paie
+     * qu'aux traversées de ligne.
+     */
+    private void ensureLoupeLine(int line, int lineStart, float lineTop) {
+        if (loupeLine != null && loupeLineIndex == line
+                && loupeLineRevision == buffer.getRevision()) {
+            return;
+        }
+        int width = Math.max(1, getWidth() - getPaddingLeft() - getPaddingRight());
+        int tall = Math.max(1, (int) lineHeight);
+        loupeLine = android.graphics.Bitmap.createBitmap(width, tall,
+                android.graphics.Bitmap.Config.ARGB_8888);
+        Canvas render = new Canvas(loupeLine);
+        // les coordonnées de la vue se ramènent au bitmap : la ligne
+        // occupe [0, largeur] × [0, hauteur-de-ligne]
+        render.translate(-getPaddingLeft(), -lineTop);
+        if (buffer.getLineEnd(line) > lineStart) {
+            drawTokens(render, line, lineStart, lineBaseline(line));
+        }
+        loupeLineIndex = line;
+        loupeLineRevision = buffer.getRevision();
     }
 
     private void placeCaretAt(float x, float y) {

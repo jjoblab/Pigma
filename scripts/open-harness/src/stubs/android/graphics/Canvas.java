@@ -59,6 +59,7 @@ public final class Canvas {
 
     private final List<TextOp> textOps = new ArrayList<>();
     private final List<ClipOp> clipOps = new ArrayList<>();
+    private final List<BitmapOp> bitmapOps = new ArrayList<>();
     private final Deque<float[]> matrixStack = new ArrayDeque<>();
     private float scaleX = 1.0f;
     private float scaleY = 1.0f;
@@ -70,13 +71,81 @@ public final class Canvas {
     private int lineCount;
     private int roundRectCount;
     private int mark = 0;
+    private int bitmapMark = 0;
 
     /** Le crochet du harnais : couru au premier texte dessiné, puis retiré. */
     private Runnable drawHook;
 
+    /** Le canevas de la vue (ses opérations s'y enregistrent). */
+    public Canvas() {
+    }
+
+    /**
+     * Un canevas qui dessine dans un bitmap (le rendu hors trame de
+     * la loupe) — ses opérations s'y enregistrent, personne d'autre
+     * ne les lit.
+     *
+     * @param bitmap le bitmap cible
+     */
+    public Canvas(Bitmap bitmap) {
+        // le rendu du bitmap se compte sur ce canevas propre
+    }
+
+    /**
+     * Un bitmap blitté : le bitmap, la source, la destination — la
+     * loupe y rend sa ligne une fois, la trame la blitte.
+     */
+    public static final class BitmapOp {
+        /** Le bitmap blitté. */
+        public final Bitmap bitmap;
+        /** La source gauche. */
+        public final float srcLeft;
+        /** La source droite. */
+        public final float srcRight;
+        /** La destination gauche. */
+        public final float dstLeft;
+        /** La destination droite. */
+        public final float dstRight;
+
+        BitmapOp(Bitmap bitmap, float srcLeft, float srcRight,
+                float dstLeft, float dstRight) {
+            this.bitmap = bitmap;
+            this.srcLeft = srcLeft;
+            this.srcRight = srcRight;
+            this.dstLeft = dstLeft;
+            this.dstRight = dstRight;
+        }
+    }
+
     /** Peint la couleur de fond : se compte. */
     public void drawColor(int color) {
         colorCount++;
+    }
+
+    /**
+     * Blitte un bitmap : la région source vers la région destination
+     * (la loupe y rend sa ligne rendue une fois, à l'échelle).
+     *
+     * @param bitmap  le bitmap
+     * @param srcLeft la source gauche
+     * @param srcTop  la source haute
+     * @param srcRight la source droite
+     * @param srcBottom la source basse
+     * @param dstLeft la destination gauche
+     * @param dstTop  la destination haute
+     * @param dstRight la destination droite
+     * @param dstBottom la destination basse
+     * @param paint   la peinture (null : aucune)
+     */
+    public void drawBitmap(Bitmap bitmap, float srcLeft, float srcTop,
+            float srcRight, float srcBottom, float dstLeft, float dstTop,
+            float dstRight, float dstBottom, Paint paint) {
+        bitmapOps.add(new BitmapOp(bitmap, srcLeft, srcRight, dstLeft, dstRight));
+    }
+
+    /** Les bitmaps blittés depuis la dernière marque du harnais. */
+    public List<BitmapOp> harnessBitmapsSinceMark() {
+        return new ArrayList<>(bitmapOps.subList(bitmapMark, bitmapOps.size()));
     }
 
     /**
@@ -233,6 +302,7 @@ public final class Canvas {
         circleCount = 0;
         lineCount = 0;
         roundRectCount = 0;
+        bitmapMark = bitmapOps.size();
     }
 
     /** Les textes dessinés depuis la marque. */
