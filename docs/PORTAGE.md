@@ -43,7 +43,10 @@ consigné au moment de la décision.
 | Recherche / remplacement | à examiner | 8 |
 | Types du domaine LSP | à examiner | 9 |
 | Ordonnancement des requêtes LSP | à examiner | 9 |
-| Catalogue des langages | à examiner | 3 |
+| Catalogue des langages | examiné au chantier 2 : réécriture proposée — un langage = un descripteur (extensions, lexeur, table jeton → portée, analyseur et annotateur facultatifs), famille générique pour la longue traîne ; validation avec le propriétaire | 3 |
+| Coloration par grammaires TextMate (chargement, tissage, expressions) | abandon proposé — hors du cœur par le plan (§4.8) ; le profil du chantier 2 mesure le coût de chargement qui le justifie (~1 s JVM x86 pour 27 grammaires, plusieurs secondes sur téléphone) ; modules optionnels seulement si un besoin réel apparaît | — |
 
-Aucune décision n'est encore prise : le chantier 0 ne porte que le
-squelette, l'examen des candidats commence avec les chantiers concernés.
+Aucune reprise n'est encore engagée : les décisions « à examiner »
+attendent leur chantier, les deux lignes examinées attendent la
+validation du propriétaire avec le document de conception du moteur
+(`conception-coloration.md`).

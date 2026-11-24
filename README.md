@@ -31,6 +31,12 @@ Installer l'APK sur un appareil ou un émulateur :
 de politique de langue et de commentaires (`scripts/check-code-policy`) et
 le contrôle des références interdites (`scripts/check-forbidden-refs`).
 
+## Banc d'essai
+
+Les bancs (faisabilité de la génération de lexeurs, profil du dépôt de
+référence) vivent dans `bench/`, hors du build courant : voir
+`bench/README.md`.
+
 ## Crochet pre-commit
 
 Après le clonage, installer le crochet pour que chaque commit passe les
