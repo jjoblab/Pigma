@@ -2,32 +2,35 @@ package jo.pigma.lsp;
 
 import jo.pigma.core.TextBuffer;
 
+import org.eclipse.lsp4j.Position;
+
 /**
  * Position du protocole : ligne et caractère en unités de code UTF-16
- * — les mêmes que le tampon, la conversion est directe.
+ * — les mêmes que le tampon, la conversion est directe. Le type
+ * d'adaptation de lsp4j se convertit dans les deux sens.
  *
  * @param line      la ligne, zéro-based
  * @param character la colonne, zéro-based, en unités de code UTF-16
  */
 public record LspPosition(int line, int character) {
 
-    static LspPosition fromJson(JsonObject object) {
-        Double line = object.getNumber("line");
-        Double character = object.getNumber("character");
-        if (line == null || character == null) {
-            throw new IllegalArgumentException("position sans ligne ou colonne");
-        }
-        return new LspPosition((int) (double) line, (int) (double) character);
+    /**
+     * La position du protocole lsp4j équivalente.
+     *
+     * @return la position lsp4j
+     */
+    public Position toLsp() {
+        return new Position(line, character);
     }
 
     /**
-     * La position en JSON.
+     * L'adaptation d'une position lsp4j.
      *
-     * @return l'objet JSON de la position
+     * @param position la position du protocole
+     * @return la position du domaine
      */
-    public JsonObject toJson() {
-        return JsonObject.of("line", JsonNumber.of(line),
-                "character", JsonNumber.of(character));
+    public static LspPosition fromLsp(Position position) {
+        return new LspPosition(position.getLine(), position.getCharacter());
     }
 
     /**

@@ -26,7 +26,6 @@ import jo.pigma.core.UndoStack;
 import jo.pigma.lsp.LspDiagnostic;
 import jo.pigma.lsp.LspPosition;
 import jo.pigma.lsp.LspSession;
-import jo.pigma.lsp.LspTransport;
 import jo.pigma.syntax.LanguageSyntax;
 import jo.pigma.syntax.Languages;
 import jo.pigma.syntax.StructureDocument;
@@ -434,16 +433,24 @@ public final class MainActivity extends Activity {
             updateDiagnostics();
             return;
         }
-        LspTransport[] pair = LspTransport.newPair();
-        lspSession = new LspSession(pair[0], new LspSession.Listener() {
-            @Override
-            public void onDiagnostics(String uri, java.util.List<LspDiagnostic> diagnostics) {
-                lspDiagnosticCount = diagnostics.size();
-                runOnUiThread(MainActivity.this::updateDiagnostics);
-            }
-        });
-        lspSession.start();
-        new DemoLanguageServer(pair[1], DOC_URI).start();
+        // la liaison monte le serveur au même processus : lsp4j porte
+        // le protocole (JSON-RPC et gson dessous), les tubes ne
+        // quittent pas la machine
+        try {
+            lspSession = LspSession.beside(new DemoLanguageServer(DOC_URI),
+                    new LspSession.Listener() {
+                        @Override
+                        public void onDiagnostics(String uri,
+                                java.util.List<LspDiagnostic> diagnostics) {
+                            lspDiagnosticCount = diagnostics.size();
+                            runOnUiThread(MainActivity.this::updateDiagnostics);
+                        }
+                    });
+        } catch (java.io.IOException noPipe) {
+            Toast.makeText(this, "la liaison LSP ne monte pas : " + noPipe.getMessage(),
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
         lspSession.initialize("pigma-sample");
         pushDocumentToServer();
         // le survol du serveur prime : la réponse attend au plus

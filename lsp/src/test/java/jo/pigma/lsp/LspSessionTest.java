@@ -1,10 +1,30 @@
 package jo.pigma.lsp;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+
+import org.eclipse.lsp4j.Diagnostic;
+import org.eclipse.lsp4j.DiagnosticSeverity;
+import org.eclipse.lsp4j.DidChangeTextDocumentParams;
+import org.eclipse.lsp4j.DidCloseTextDocumentParams;
+import org.eclipse.lsp4j.DidOpenTextDocumentParams;
+import org.eclipse.lsp4j.DidSaveTextDocumentParams;
+import org.eclipse.lsp4j.Hover;
+import org.eclipse.lsp4j.HoverParams;
+import org.eclipse.lsp4j.InitializeParams;
+import org.eclipse.lsp4j.InitializeResult;
+import org.eclipse.lsp4j.MarkupContent;
+import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.PublishDiagnosticsParams;
+import org.eclipse.lsp4j.Range;
+import org.eclipse.lsp4j.ServerCapabilities;
+import org.eclipse.lsp4j.services.LanguageClient;
+import org.eclipse.lsp4j.services.LanguageClientAware;
+import org.eclipse.lsp4j.services.LanguageServer;
+import org.eclipse.lsp4j.services.TextDocumentService;
 
 import org.junit.Test;
 
@@ -12,100 +32,96 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * La liaison sur la paire en processus : l'ouverture négocie, le
- * document ouvert publie ses diagnostics, le survol répond, l'arrêt
- * ferme proprement — la corrélation des requêtes s'y éprouve (les
- * réponses arrivent dans le désordre).
+ * La liaison sur le serveur du même processus : l'ouverture négocie
+ * (lsp4j porte la requête et sa réponse), le document ouvert publie
+ * ses diagnostics, le survol répond, l'arrêt ferme proprement — et
+ * les requêtes concurrentes gardent chacune leur réponse (lsp4j
+ * corrèle par identifiant, le test l'éprouve de bout en bout).
  */
 public class LspSessionTest {
 
     /**
      * Le serveur d'essai : il répond à l'initialisation, publie un
-     * diagnostic par document ouvert, répond au survol du mot — et
-     * répond DÉLIBÉRÉMENT dans le désordre (la seconde requête
-     * recevant la réponse de la première partie : la corrélation doit
-     * tenir).
+     * diagnostic par document ouvert, répond au survol — les autres
+     * notifications se taisent (lsp4j les remplit par défaut).
      */
-    private static final class TrialServer {
+    private static final class TrialServer implements LanguageServer,
+            TextDocumentService, LanguageClientAware {
 
-        private final LspTransport side;
+        private LanguageClient client;
 
-        private final Thread thread;
+        private volatile String text = "";
 
-        TrialServer(LspTransport side) {
-            this.side = side;
-            thread = new Thread(this::serve, "trial-server");
-            thread.setDaemon(true);
+        @Override
+        public void connect(LanguageClient client) {
+            this.client = client;
         }
 
-        void start() {
-            thread.start();
+        @Override
+        public CompletableFuture<InitializeResult> initialize(InitializeParams params) {
+            ServerCapabilities capabilities = new ServerCapabilities();
+            capabilities.setHoverProvider(true);
+            return CompletableFuture.completedFuture(new InitializeResult(capabilities));
         }
 
-        private void serve() {
-            try {
-                serveFrames();
-            } catch (IOException broken) {
-                // le client a fermé : le serveur d'essai s'en va
-            }
+        @Override
+        public CompletableFuture<Object> shutdown() {
+            return CompletableFuture.completedFuture(null);
         }
 
-        private void serveFrames() throws IOException {
-            while (true) {
-                String json = side.read();
-                if (json == null) {
-                    return;
+        @Override
+        public void exit() {
+        }
+
+        @Override
+        public TextDocumentService getTextDocumentService() {
+            return this;
+        }
+
+        @Override
+        public org.eclipse.lsp4j.services.WorkspaceService getWorkspaceService() {
+            return new org.eclipse.lsp4j.services.WorkspaceService() {
+                @Override
+                public void didChangeConfiguration(
+                        org.eclipse.lsp4j.DidChangeConfigurationParams params) {
                 }
-                JsonObject object = (JsonObject) JsonValue.parse(json);
-                LspMessage message = LspMessage.fromJson(object);
-                if (message.method() == null) {
-                    continue;
+
+                @Override
+                public void didChangeWatchedFiles(
+                        org.eclipse.lsp4j.DidChangeWatchedFilesParams params) {
                 }
-                switch (message.method()) {
-                    case "initialize" -> side.send(LspMessage.response(message.id(),
-                            JsonObject.of("capabilities", JsonObject.of(
-                                    "hoverProvider", JsonBoolean.TRUE)),
-                            null).toJson());
-                    case "textDocument/didOpen" -> {
-                        String text = message.params().getObject("textDocument")
-                                .getString("text");
-                        int unbalanced = count(text);
-                        side.send(LspMessage.notification(
-                                "textDocument/publishDiagnostics",
-                                JsonObject.of(
-                                        "uri", JsonString.of("file:///demo.java"),
-                                        "diagnostics", unbalanced == 0
-                                                ? new JsonArray()
-                                                : JsonArray.of(new LspDiagnostic(
-                                                        new LspRange(
-                                                                new LspPosition(0, 0),
-                                                                new LspPosition(0, 1)),
-                                                        1,
-                                                        "parenthèses non appariées : "
-                                                                + unbalanced)
-                                                        .toJson())))
-                                .toJson());
-                    }
-                    case "textDocument/hover" -> side.send(LspMessage.response(
-                            message.id(),
-                            JsonObject.of("contents", JsonObject.of(
-                                    "kind", JsonString.of("plaintext"),
-                                    "value", JsonString.of("mot sous le curseur"))),
-                            null).toJson());
-                    case "shutdown" -> side.send(LspMessage.response(
-                            message.id(), new JsonObject(), null).toJson());
-                    case "exit" -> {
-                        return;
-                    }
-                    default -> {
-                    }
-                }
-            }
+            };
         }
 
-        private static int count(String text) {
-            int depth = 0;
+        @Override
+        public void didOpen(DidOpenTextDocumentParams params) {
+            text = params.getTextDocument().getText();
+            publish();
+        }
+
+        @Override
+        public void didChange(DidChangeTextDocumentParams params) {
+            text = params.getContentChanges().get(0).getText();
+            publish();
+        }
+
+        @Override
+        public void didClose(DidCloseTextDocumentParams params) {
+        }
+
+        @Override
+        public void didSave(DidSaveTextDocumentParams params) {
+        }
+
+        @Override
+        public CompletableFuture<Hover> hover(HoverParams params) {
+            return CompletableFuture.completedFuture(
+                    new Hover(new MarkupContent("plaintext", "mot sous le curseur")));
+        }
+
+        private void publish() {
             int unbalanced = 0;
+            int depth = 0;
             for (int at = 0; at < text.length(); at++) {
                 char c = text.charAt(at);
                 if (c == '(') {
@@ -118,29 +134,30 @@ public class LspSessionTest {
                     }
                 }
             }
-            return unbalanced + depth;
+            int total = unbalanced + depth;
+            Diagnostic diagnostic = new Diagnostic(
+                    new Range(new Position(0, 0), new Position(0, 1)),
+                    "parenthèses non appariées : " + total,
+                    total == 0 ? DiagnosticSeverity.Information : DiagnosticSeverity.Error,
+                    "trial-server");
+            client.publishDiagnostics(new PublishDiagnosticsParams(
+                    "file:///demo.java", List.of(diagnostic)));
         }
     }
 
     /** Les diagnostics arrivent à l'écouteur, l'ouverture et le survol répondent. */
     @Test
     public void sessionSpeaksTheProtocol() throws Exception {
-        LspTransport[] pair = LspTransport.newPair();
-        LspTransport clientSide = pair[0];
         BlockingQueue<List<LspDiagnostic>> received = new ArrayBlockingQueue<>(4);
-        LspSession session = new LspSession(clientSide, new LspSession.Listener() {
+        LspSession session = LspSession.beside(new TrialServer(), new LspSession.Listener() {
             @Override
             public void onDiagnostics(String uri, List<LspDiagnostic> diagnostics) {
                 received.add(diagnostics);
             }
         });
-        session.start();
-        TrialServer server = new TrialServer(pair[1]);
-        server.start();
 
-        JsonObject capabilities = session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
-        assertEquals(Boolean.TRUE, capabilities.getObject("capabilities")
-                .getBoolean("hoverProvider"));
+        InitializeResult result = session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        assertEquals(Boolean.TRUE, result.getCapabilities().getHoverProvider().getLeft());
 
         session.didOpen("file:///demo.java", "int f() {\n  return 1;\n}\n)\n", "java");
         List<LspDiagnostic> diagnostics = received.poll(5, TimeUnit.SECONDS);
@@ -153,19 +170,13 @@ public class LspSessionTest {
         assertEquals("mot sous le curseur", hover);
 
         session.shutdown();
-        assertTrue("la session s'arrête", !session.isRunning());
+        assertTrue("la liaison s'arrête", !session.isRunning());
     }
 
     /** Plusieurs requêtes en vol : chacune reçoit SA réponse (la corrélation). */
     @Test
     public void concurrentRequestsKeepTheirAnswers() throws Exception {
-        LspTransport[] pair = LspTransport.newPair();
-        LspSession session = new LspSession(pair[0], null);
-        session.start();
-        // le serveur d'essai répond au survol un texte fixe : la
-        // corrélation se prouve par la présence des DEUX réponses
-        TrialServer server = new TrialServer(pair[1]);
-        server.start();
+        LspSession session = LspSession.beside(new TrialServer(), null);
         session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
         var first = session.hover("file:///a.java", new LspPosition(0, 0));
         var second = session.hover("file:///b.java", new LspPosition(0, 0));

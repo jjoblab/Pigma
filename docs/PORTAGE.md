@@ -41,12 +41,13 @@ consigné au moment de la décision.
 | Texte bidirectionnel | non repris (aucun besoin exprimé) | 6 |
 | Guides d'indentation | **réécrit** (chantier 14) : la chaîne d'appariement de L2 guide, pas les espaces | 8 |
 | Recherche / remplacement | **réécrit** (chantier 24) : la recherche teinte la fenêtre (plafond de 10 000 correspondances), la navigation boucle, remplacer la courante (une unité d'annulation) et tout remplacer (de la fin vers le début, une seule unité) | 8 |
-| Types du domaine LSP | **réécrit** (chantier 25) : `:lsp` — JSON scellé, enveloppe JSON-RPC, positions/intervalle/diagnostics, conversions vers le tampon | 9 |
-| Ordonnancement des requêtes LSP | **réécrit** (chantier 25) : la corrélation par identifiant tient les futurs, la pompe dispatche les notifications, l'arrêt ferme proprement (le tout-annulable reste à faire si un besoin l'exprime) | 9 |
+| Types du domaine LSP | **réécrit** (chantiers 25 puis 26) : `:lsp` sur lsp4j 1.0.0 (la décision du propriétaire — jsonrpc et gson en transitif, `NOTICE.md` les consigne) ; les adaptateurs du domaine (position, intervalle, diagnostic) convertissent vers le tampon | 9 |
+| Ordonnancement des requêtes LSP | **réécrit** (chantiers 25 puis 26) : la corrélation par identifiant vit dans lsp4j, la liaison tient le vocabulaire du dépôt, trois raccordements (en processus par tubes, processus externe, flux) ; l'arrêt ferme proprement | 9 |
 | Catalogue des langages | examiné au chantier 2 : réécriture proposée — un langage = un descripteur (extensions, lexeur, table jeton → portée, analyseur et annotateur facultatifs), famille générique pour la longue traîne ; validation avec le propriétaire | 3 |
 | Coloration par grammaires TextMate (chargement, tissage, expressions) | abandon proposé — hors du cœur par le plan (§4.8) ; le profil du chantier 2 mesure le coût de chargement qui le justifie (~1 s JVM x86 pour 27 grammaires, plusieurs secondes sur téléphone) ; modules optionnels seulement si un besoin réel apparaît | — |
 
-Aucune reprise n'est encore engagée : les décisions « à examiner »
-attendent leur chantier, les deux lignes examinées attendent la
+Toutes les lignes des chantiers livrés portent leur décision (réécrit
+ou non repris) ; la ligne du catalogue des langages attend la
 validation du propriétaire avec le document de conception du moteur
-(`conception-coloration.md`).
+(`conception-coloration.md`), la feuille de route §8 est épuisée —
+les reprises futures naîtront d'un besoin exprimé.

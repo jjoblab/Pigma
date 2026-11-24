@@ -1,29 +1,34 @@
 package jo.pigma.lsp;
 
+import org.eclipse.lsp4j.Range;
+
 /**
  * Intervalle du protocole : de la position de début (incluse) à la
- * position de fin (exclue).
+ * position de fin (exclue). L'adaptation du type lsp4j se convertit
+ * dans les deux sens.
  *
  * @param start le début
  * @param end   la fin
  */
 public record LspRange(LspPosition start, LspPosition end) {
 
-    static LspRange fromJson(JsonObject object) {
-        JsonObject start = object.getObject("start");
-        JsonObject end = object.getObject("end");
-        if (start == null || end == null) {
-            throw new IllegalArgumentException("intervalle sans bornes");
-        }
-        return new LspRange(LspPosition.fromJson(start), LspPosition.fromJson(end));
+    /**
+     * L'intervalle du protocole lsp4j équivalent.
+     *
+     * @return l'intervalle lsp4j
+     */
+    public Range toLsp() {
+        return new Range(start.toLsp(), end.toLsp());
     }
 
     /**
-     * L'intervalle en JSON.
+     * L'adaptation d'un intervalle lsp4j.
      *
-     * @return l'objet JSON de l'intervalle
+     * @param range l'intervalle du protocole
+     * @return l'intervalle du domaine
      */
-    public JsonObject toJson() {
-        return JsonObject.of("start", start.toJson(), "end", end.toJson());
+    public static LspRange fromLsp(Range range) {
+        return new LspRange(LspPosition.fromLsp(range.getStart()),
+                LspPosition.fromLsp(range.getEnd()));
     }
 }

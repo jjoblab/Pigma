@@ -10,9 +10,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Le transport par processus : un vrai serveur dans un autre JVM, les
- * messages cadrés par {@code Content-Length} sur l'entrée et la sortie
- * standard — le raccordement qu'un serveur de langage réel demande.
+ * Le raccordement par processus : un vrai serveur dans un autre JVM,
+ * lsp4j cadre les messages sur l'entrée et la sortie standard du
+ * processus — le raccordement qu'un serveur de langage réel demande.
  */
 public class LspProcessTransportTest {
 
@@ -28,23 +28,32 @@ public class LspProcessTransportTest {
         String classpath = System.getProperty("java.class.path");
         String javaHome = System.getProperty("java.home");
         String java = javaHome + File.separator + "bin" + File.separator + "java";
-        LspTransport.ProcessTransport transport =
-                new LspTransport.ProcessTransport(List.of(java, "-cp", classpath,
-                        "jo.pigma.lsp.TestServerMain"));
-        LspSession session = new LspSession(transport, null);
-        session.start();
+        Process process = new ProcessBuilder(java, "-cp", classpath,
+                "jo.pigma.lsp.TestServerMain").start();
+        java.util.concurrent.BlockingQueue<List<LspDiagnostic>> received =
+                new java.util.concurrent.ArrayBlockingQueue<>(4);
+        LspSession session = LspSession.overProcess(process, new LspSession.Listener() {
+            @Override
+            public void onDiagnostics(String uri, List<LspDiagnostic> diagnostics) {
+                received.add(diagnostics);
+            }
+        });
 
-        JsonObject capabilities = session.initialize("pigma-process-test")
+        org.eclipse.lsp4j.InitializeResult capabilities = session.initialize("pigma-process-test")
                 .get(20, TimeUnit.SECONDS);
-        assertEquals(Boolean.TRUE, capabilities.getObject("capabilities")
-                .getBoolean("hoverProvider"));
+        assertEquals(Boolean.TRUE, capabilities.getCapabilities()
+                .getHoverProvider().getLeft());
 
         String hover = session.hover("file:///demo.java", new LspPosition(0, 0))
                 .get(20, TimeUnit.SECONDS);
         assertEquals("réponse du sous-processus", hover);
 
+        session.didOpen("file:///demo.java", "class A {}", "java");
+        List<LspDiagnostic> diagnostics = received.poll(20, TimeUnit.SECONDS);
+        assertEquals("diagnostic du sous-processus", diagnostics.get(0).message());
+
         session.shutdown();
         assertTrue("le sous-processus meurt à l'arrêt",
-                transport.process().waitFor(10, TimeUnit.SECONDS));
+                process.waitFor(10, TimeUnit.SECONDS));
     }
 }

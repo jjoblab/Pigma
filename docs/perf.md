@@ -52,7 +52,7 @@ première coloration ne bouge pas quand on bascule clair/sombre).
 
 Le bac à sable n'a pas d'appareil : les lignes suivantes se remplissent
 depuis le panneau de diagnostic et le bouton « Copier les mesures »
-(journal du scénario au presse-papiers, tableau prêt à coller). Dix
+(journal du scénario au presse-papiers, tableau prêt à coller). Onze
 relevés reçus le même jour — chantier 5, chantier 6 (colonne
 « trame »), chantier 7 (fil de fond annulable), chantier 8 (odomètre de
 trame), chantiers 9+10 (recul du fond, structure L2), chantier 13
@@ -63,7 +63,11 @@ de 108 ms y est né, corrigé au chantier 20 juste après), chantier 20
 (le neuvième — la frappe y est enfin mesurée, et le pire de 25 ms
 y trouve son correctif au chantier 21), chantiers 21-23 (le
 dixième — **la borne du chantier 21 confirmée : pire 4,93** ; le
-fichier hors normes y est mesuré : ouverture 11,97 ms, fond 329 ms) ;
+fichier hors normes y est mesuré : ouverture 11,97 ms, fond 329 ms),
+chantiers 24-25 (le onzième — **le hors normes au nouvel APK : pire
+13,77 sur la trame de fin de remplissage, sous le budget** ; la
+feuille de recherche n'y a pas été ouverte, sa mesure viendra au
+prochain relevé) ;
 l'appareil n'est pas précisé
 (modèle et version d'Android à compléter — la ligne du tableau copié
 les demande).
@@ -76,7 +80,7 @@ les demande).
 | Frappe propagée (commentaire ouvert) | supprimer un `*/`, lire les lignes relues | à relever : idem, dans la démo Java (supprimer un `*/` du bloc) |
 | Remplissage du gros fichier | lire « lignes lexées » monter après l'ouverture (aux deux premiers relevés : pompe par tranches sur le fil d'interface ; au troisième : fil de fond annulable, clichés révision-vérifiés) | **1 780/1 780 lignes, 18 095 jetons** ; au troisième relevé, complet **avant le premier tick (0,2 s)** — le fond remplit en ~150 ms ce que la pompe étalait sur ~1 s |
 | Bascule de thème | basculer : la première coloration ne doit pas bouger | **première inchangée (0,3 ms), jetons identiques (18 095), deux relevés et trois bascules : zéro retokenisation constaté sur appareil** |
-| Budget par image (tracé d'une trame) | lire « trame » au panneau ; la colonne « trame » du journal copié l'emporte | **première trame 16,0 ms** (démo Java : cuisson des plans + fenêtre) · **11,9 ms** à l'ouverture du gros fichier · **4,9–6,3 ms en régime établi** (recuisson au thème 5,1–6,3, copie 4,9) · troisième relevé (chantier 7) : 15,5–17,1 ms sur le gros fichier — voir la note · quatrième relevé (chantier 8, odomètre) : régime établi confirmé à 4,5–5,5 ms, moteur 0,09–0,23 ms ; ouverture du gros fichier **moteur 9,23 ms** (réouverture tiède : 4,95) — voir la note · cinquième relevé (chantiers 9+10) : **recul du fond confirmé — ouverture 13,51 ms (moteur 5,93), réouverture 8,49 (moteur 3,24)** ; recuisson **3,46 ms (moteur 0,06)** ; trame de frappe 10,09 (moteur 0,21) — voir la note · sixième relevé (chantier 13, **release**) : **ouverture 6,53 ms, moteur 1,65** — l'interprétation à froid tranchée ; frappe 2,43 (moteur 0,03), pire 24,06 — voir la note · septième relevé (chantiers 14-16 : portée, plis, L3 à la fenêtre) : **ouverture 4,36 ms, moteur 0,02 ; pire 12,18** — sous le budget, la marche d'appariement du relevé 6 ne s'est pas revue (pas de frappe : les touches étaient le bug) · huitième relevé (chantiers 17-19 : Entrée et Suppr réparés — aucune fermeture signalée) : **ouverture 2,68 ms, moteur 0,02, copie 8,43 (moteur 0,08) ; pire 108,14** — la première construction d'analyse (index de symboles + diagnostics, chantier 19) courait dans une trame et forçait le lexage du gros fichier entier : **corrigé au chantier 20** (l'analyse attend le remplissage du fond, puis se construit par tranches postées — jamais dans une trame) · neuvième relevé (chantier 20) : **frappe 0,15 ms, 1 ligne relue — ENFIN mesurée** (un caractère tapé dans le gros fichier avant la copie) ; ouverture 2,34 ms (moteur 0,02), copie 8,32 (moteur 0,01), **pire 25,02** — la première marche d'appariement (le relevé 6 l'avait annoncée) : **corrigé au chantier 21** (la borne de marche passe de 4 000 à 512 lignes) · dixième relevé (chantiers 21-23) : **pire 4,93** — la borne du chantier 21 confirmée sur l'appareil ; **le hors normes mesuré : 52 004 lignes, ouverture 11,97 ms (moteur 0,09), fond 329 ms (203 tranches, 624 002 jetons), trames 2,91-3,99** — le défilement du §4.2 tient sur le hors normes |
+| Budget par image (tracé d'une trame) | lire « trame » au panneau ; la colonne « trame » du journal copié l'emporte | **première trame 16,0 ms** (démo Java : cuisson des plans + fenêtre) · **11,9 ms** à l'ouverture du gros fichier · **4,9–6,3 ms en régime établi** (recuisson au thème 5,1–6,3, copie 4,9) · troisième relevé (chantier 7) : 15,5–17,1 ms sur le gros fichier — voir la note · quatrième relevé (chantier 8, odomètre) : régime établi confirmé à 4,5–5,5 ms, moteur 0,09–0,23 ms ; ouverture du gros fichier **moteur 9,23 ms** (réouverture tiède : 4,95) — voir la note · cinquième relevé (chantiers 9+10) : **recul du fond confirmé — ouverture 13,51 ms (moteur 5,93), réouverture 8,49 (moteur 3,24)** ; recuisson **3,46 ms (moteur 0,06)** ; trame de frappe 10,09 (moteur 0,21) — voir la note · sixième relevé (chantier 13, **release**) : **ouverture 6,53 ms, moteur 1,65** — l'interprétation à froid tranchée ; frappe 2,43 (moteur 0,03), pire 24,06 — voir la note · septième relevé (chantiers 14-16 : portée, plis, L3 à la fenêtre) : **ouverture 4,36 ms, moteur 0,02 ; pire 12,18** — sous le budget, la marche d'appariement du relevé 6 ne s'est pas revue (pas de frappe : les touches étaient le bug) · huitième relevé (chantiers 17-19 : Entrée et Suppr réparés — aucune fermeture signalée) : **ouverture 2,68 ms, moteur 0,02, copie 8,43 (moteur 0,08) ; pire 108,14** — la première construction d'analyse (index de symboles + diagnostics, chantier 19) courait dans une trame et forçait le lexage du gros fichier entier : **corrigé au chantier 20** (l'analyse attend le remplissage du fond, puis se construit par tranches postées — jamais dans une trame) · neuvième relevé (chantier 20) : **frappe 0,15 ms, 1 ligne relue — ENFIN mesurée** (un caractère tapé dans le gros fichier avant la copie) ; ouverture 2,34 ms (moteur 0,02), copie 8,32 (moteur 0,01), **pire 25,02** — la première marche d'appariement (le relevé 6 l'avait annoncée) : **corrigé au chantier 21** (la borne de marche passe de 4 000 à 512 lignes) · dixième relevé (chantiers 21-23) : **pire 4,93** — la borne du chantier 21 confirmée sur l'appareil ; **le hors normes mesuré : 52 004 lignes, ouverture 11,97 ms (moteur 0,09), fond 329 ms (203 tranches, 624 002 jetons), trames 2,91-3,99** — le défilement du §4.2 tient sur le hors normes · onzième relevé (chantiers 24-25) : **le hors normes au nouvel APK : fond 367 ms, trame de fin de remplissage 13,77 ms (moteur 0,09) — pire du scénario, sous le budget** ; recuissons au thème 1,79-6,83, démes des langages 1,41-4,28, copie Kotlin 3,87 — la feuille de recherche n'y a pas été ouverte (la mesure viendra au prochain) |
 
 Deux lectures de ce relevé. D'abord, ne pas comparer la colonne
 appareil aux nombres JVM du haut sans précaution : le test JVM paie
@@ -250,11 +254,27 @@ le défilement du §4.2 tient le budget sur le hors normes. Le régime
 ordinaire ne bouge pas (démo 0,2 ms de première, gros fichier
 1,39 ms de première trame au même parcours).
 
+Le onzième relevé (chantiers 24-25, le nouvel APK) revient sur le
+hors normes avec les chantiers nouveaux à bord : **fond 367 ms
+(203 tranches, même compte), trame de fin de remplissage 13,77 ms
+(moteur 0,09) — pire du scénario, sous le budget** ; l'ouverture
+y descend à 2,37 ms (la fenêtre seule, tiède). Les recuissons au
+thème sur le hors normes tiennent (1,79-6,83 ms, moteur 0,03-0,15)
+— la recherche du chantier 24 ne s'y est pas vue : la feuille
+n'a pas été ouverte dans ce parcours, la mesure viendra au
+prochain. Les démos des langages se peignent (Kotlin 1,41-1,65,
+Java 4,28, JSON 2,34 ms), la copie Kotlin 3,87 (pire 8,43). Aucune
+frappe dans le gros fichier cette fois (aucune ligne relue) ; le
+modèle d'appareil reste à compléter. Le 13,77 de la fin de
+remplissage reste sous le budget — c'est la trame qui dessine
+l'état arrivé du fond (624 002 jetons), le dixième la mesurait à
+3,99 : la variance de l'appareil, pas une marche du code.
+
 Les plafonds du plan sont codés (E3) : ligne de plus de 20 000 colonnes
 non colorée (état reporté, voisines intactes), dessin limité à 10 000
 colonnes (vue), mode gros fichier au-delà de 2,5 M caractères ou
 50 000 lignes (`inBigFileMode()` : la coloration L1 n'y est jamais
-coupée, L2 et L3 s'y couperont). Le dixième relevé les met à
-l'épreuve sans les contredire — la coupe de L2/L3 en mode gros
-fichier (le plan E3) n'a pas eu à s'activer : la structure et
+coupée, L2 et L3 s'y couperont). Les dixième et onzième relevés les
+mettent à l'épreuve sans les contredire — la coupe de L2/L3 en mode
+gros fichier (le plan E3) n'a pas eu à s'activer : la structure et
 l'analyse ont tenu seules.
