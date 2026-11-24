@@ -10,7 +10,7 @@ conventions communes vivent dans le `build.gradle.kts` racine — aucun
 
 | Module | Nature | Contenu | État |
 | --- | --- | --- | --- |
-| `:core` | JVM pur | modèle de texte (tampon, positions, plages, transactions, annulation), modèle de jetons/spans, contrats communs | prévu |
+| `:core` | JVM pur | modèle de texte (tampon à trou, positions UTF-16, lignes, transactions, annulation), contrats communs | **présent** |
 | `:syntax` | JVM pur | moteur de coloration : contrat `SyntaxEngine`, lexeurs compilés par langage, famille générique paramétrable, portées, thème, cache de révisions | prévu |
 | `:analysis` | JVM pur | analyseur tolérant (L2), annotateurs sémantiques (L3), symboles, index, diagnostics, complétion de base | prévu |
 | `:editor` | bibliothèque Android | vue d'édition (Canvas), saisie/IME, sélection, défilement, gouttière, pliage, popups, façade hôte | prévu |
@@ -18,7 +18,8 @@ conventions communes vivent dans le `build.gradle.kts` racine — aucun
 | `:sample` | application | instrument de test du projet, jamais publiée | **présent** |
 
 Aucun module n'est créé avant que la fonctionnalité qui le justifie
-n'arrive : le dépôt ne contient aujourd'hui que `:sample`.
+n'arrive. Le cœur du modèle de texte est en place ; le modèle de jetons et
+de spans rejoindra `:core` avec le moteur de coloration.
 
 ## Le cas d'une application hôte
 
