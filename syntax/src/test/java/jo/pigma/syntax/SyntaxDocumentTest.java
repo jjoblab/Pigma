@@ -8,6 +8,7 @@ import jo.pigma.syntax.lexers.generated.JavaLexer;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Le moteur de coloration : premier lexage à la demande, règle d'arrêt
@@ -58,7 +59,8 @@ public class SyntaxDocumentTest {
         TextBuffer buffer = TextBuffer.create("int a;\nint b;\nint c;");
         UndoStack undo = new UndoStack(buffer);
         SyntaxDocument document = SyntaxDocument.open(buffer, Languages.JAVA);
-        document.lineTokens(0);
+        // toute la région est déjà calculée : la propagation relit tout
+        document.lineTokens(2);
         edit(undo, 0, 0, "/*");
         assertEquals(3, document.lastRelexedLines());
         for (int line = 0; line < 3; line++) {
@@ -74,6 +76,32 @@ public class SyntaxDocumentTest {
         assertEquals("comment",
                 document.lineTokens(2).tokens()
                         [document.lineTokens(2).tokens().length - 1].scope().name());
+        document.detach();
+    }
+
+    /**
+     * Un commentaire ouvert dans une fenêtre paresseuse : seule la
+     * ligne éditée relit, la suite s'enchaîne à la demande depuis le
+     * point de contrôle posé à la frontière.
+     */
+    @Test
+    public void openedCommentPropagatesLazily() {
+        TextBuffer buffer = TextBuffer.create("int a;\nint b;\nint c;");
+        UndoStack undo = new UndoStack(buffer);
+        SyntaxDocument document = SyntaxDocument.open(buffer, Languages.JAVA);
+        // seule la ligne 0 est demandée : le reste est à la demande
+        document.lineTokens(0);
+        edit(undo, 0, 0, "/*");
+        assertEquals(1, document.lastRelexedLines());
+        // les lignes suivantes se colorent en commentaire en enchaînant
+        for (int line = 0; line < 3; line++) {
+            SyntaxDocument.Token[] tokens = document.lineTokens(line).tokens();
+            assertTrue("ligne " + line + " vide", tokens.length > 0);
+            for (SyntaxDocument.Token token : tokens) {
+                assertEquals("ligne " + line, "comment", token.scope().name());
+            }
+        }
+        assertEquals(3, document.lexedLineCount());
         document.detach();
     }
 
