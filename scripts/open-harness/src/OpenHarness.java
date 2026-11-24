@@ -378,16 +378,31 @@ public final class OpenHarness {
         check("la feuille s'ouvre", sheet.getVisibility() == View.VISIBLE);
         String text = editor.getBuffer().toString();
         int expected = countOccurrences(text, "graine");
-        findField("chercher…").setText("graine");
-        click("Chercher");
-        check("le compte des correspondances est exact",
+        // la recherche incrémentale : le champ tape lettre à lettre,
+        // chaque frappe relance (amortie) — le compte suit la frappe
+        android.widget.EditText query = findField("chercher…");
+        query.setText("g");
+        View.harnessDrain(400L);
+        check("la recherche suit la première frappe (g)",
+                editor.searchMatchCount() == countOccurrences(text, "g"));
+        query.setText("gr");
+        View.harnessDrain(400L);
+        check("la recherche suit la deuxième frappe (gr)",
+                editor.searchMatchCount() == countOccurrences(text, "gr"));
+        query.setText("graine");
+        View.harnessDrain(400L);
+        check("le compte exact des correspondances est arrivé à la frappe finale",
                 editor.searchMatchCount() == expected);
         check("la feuille porte le compte",
                 textOf("correspondance") != null);
+        // la recherche incrémentale a navigué en tapant (la
+        // correspondance la plus proche du curseur) : l'index de départ
+        // n'est plus zéro — l'avance et le recul se vérifient relatifs
+        int beforeNext = editor.searchCurrentIndex();
         click("›");
-        check("la navigation avance", editor.searchCurrentIndex() == 1);
+        check("la navigation avance", editor.searchCurrentIndex() == beforeNext + 1);
         click("‹");
-        check("la navigation recule", editor.searchCurrentIndex() == 0);
+        check("la navigation recule", editor.searchCurrentIndex() == beforeNext);
         findField("remplacer par…").setText("GRAINE");
         click("Remplacer");
         check("un remplacement a eu lieu",

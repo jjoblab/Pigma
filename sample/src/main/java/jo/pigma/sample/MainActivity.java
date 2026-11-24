@@ -91,6 +91,9 @@ public final class MainActivity extends Activity {
     /** Le report du changement de document vers le serveur (la synchronisation intégrale se amortit). */
     private final Runnable lspSync = this::pushDocumentToServer;
 
+    /** Le report de la frappe du champ vers la recherche (incrémentale). */
+    private final Runnable searchSync = this::runIncrementalSearch;
+
     /** La feuille du bas : la recherche et le remplacement y vivent. */
     private LinearLayout searchSheet;
 
@@ -168,6 +171,24 @@ public final class MainActivity extends Activity {
         lspButton.setText("LSP");
         lspButton.setOnClickListener(this::onLspToggleClicked);
         queryField = new EditText(this);
+        // la recherche est incrémentale : chaque frappe du champ
+        // relance la recherche (amortie de 150 ms — les frappes
+        // rapides n'envoient que la dernière), le bouton « Chercher »
+        // garde sa voie explicite
+        queryField.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
+                scheduleIncrementalSearch();
+            }
+        });
         replacementField = new EditText(this);
         matchView = new TextView(this);
 
@@ -372,6 +393,38 @@ public final class MainActivity extends Activity {
     /** Cherche le contenu du champ : les teintes et le compte suivent. */
     private void onDoSearchClicked(View button) {
         editorView.search(queryField.getText().toString());
+        updateMatchView();
+    }
+
+    /**
+     * Une frappe du champ arrive : la recherche se reprogramme de
+     * 150 ms — les frappes rapides n'envoient qu'une recherche, la
+     * dernière.
+     */
+    private void scheduleIncrementalSearch() {
+        if (searchSheet == null || searchSheet.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        editorView.removeCallbacks(searchSync);
+        editorView.postDelayed(searchSync, 150L);
+    }
+
+    /**
+     * La recherche incrémentale : le champ vient de bouger, la
+     * recherche le suit (le champ vide range la recherche). La
+     * navigation va à la correspondance la plus proche du curseur —
+     * le comportement attendu d'une recherche qui suit la frappe.
+     */
+    private void runIncrementalSearch() {
+        if (searchSheet.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        String query = queryField.getText().toString();
+        if (query.isEmpty()) {
+            editorView.clearSearch();
+        } else {
+            editorView.search(query);
+        }
         updateMatchView();
     }
 
