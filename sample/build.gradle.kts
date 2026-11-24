@@ -36,4 +36,7 @@ dependencies {
     // api le cœur, le moteur et l'annotateur (le cas courant de
     // l'architecture — une seule dépendance)
     implementation(project(":editor"))
+    // le client de serveur de langage est OPTIONNEL : l'hôte qui le
+    // veut l'ajoute, celui qui n'en veut pas ne le voit jamais
+    implementation(project(":lsp"))
 }

@@ -23,6 +23,10 @@ import jo.pigma.core.TextBuffer;
 import jo.pigma.core.TextListener;
 import jo.pigma.core.TextPosition;
 import jo.pigma.core.UndoStack;
+import jo.pigma.lsp.LspDiagnostic;
+import jo.pigma.lsp.LspPosition;
+import jo.pigma.lsp.LspSession;
+import jo.pigma.lsp.LspTransport;
 import jo.pigma.syntax.LanguageSyntax;
 import jo.pigma.syntax.Languages;
 import jo.pigma.syntax.StructureDocument;
@@ -73,6 +77,21 @@ public final class MainActivity extends Activity {
 
     private Button searchButton;
 
+    /** Le bouton LSP : branche (et débranche) le serveur de démonstration. */
+    private Button lspButton;
+
+    /** La liaison LSP branchée (null : aucune). */
+    private LspSession lspSession;
+
+    /** Le document courant côté serveur (l'URI stable du protocole). */
+    private static final String DOC_URI = "file:///demo.java";
+
+    /** Les diagnostics du dernier avis du serveur (le panneau les lit). */
+    private volatile int lspDiagnosticCount = -1;
+
+    /** Le report du changement de document vers le serveur (la synchronisation intégrale se amortit). */
+    private final Runnable lspSync = this::pushDocumentToServer;
+
     /** La feuille du bas : la recherche et le remplacement y vivent. */
     private LinearLayout searchSheet;
 
@@ -93,6 +112,7 @@ public final class MainActivity extends Activity {
                                 int insertedLength, int revision) {
             updateStatus();
             watchDiagnostics();
+            scheduleLspSync();
         }
     };
 
@@ -145,6 +165,9 @@ public final class MainActivity extends Activity {
         searchButton = new Button(this);
         searchButton.setText("Rechercher");
         searchButton.setOnClickListener(this::onSearchToggleClicked);
+        lspButton = new Button(this);
+        lspButton.setText("LSP");
+        lspButton.setOnClickListener(this::onLspToggleClicked);
         queryField = new EditText(this);
         replacementField = new EditText(this);
         matchView = new TextView(this);
@@ -186,7 +209,7 @@ public final class MainActivity extends Activity {
                 themeButton("Sombre", EditorThemes.DARK, EditorThemes.DARK_BACKGROUND),
                 undoButton, redoButton));
 
-        root.addView(row(margin, copyButton, selectButton, copyTextButton, searchButton));
+        root.addView(row(margin, copyButton, selectButton, copyTextButton, searchButton, lspButton));
 
         // la feuille du bas (masquée au départ) : la recherche et le
         // remplacement — elle descend sous la rangée d'actions, la
@@ -394,6 +417,75 @@ public final class MainActivity extends Activity {
         updateMatchView();
     }
 
+    /**
+     * Branche le serveur de démonstration : la liaison négocie
+     * l'initialisation, le document part au serveur, ses diagnostics
+     * arrivent au panneau, la popup d'info interroge le survol (la
+     * réponse du serveur prime sur l'index local — le fournisseur
+     * rend null quand le serveur ne sait pas). Débrancher coupe tout.
+     */
+    private void onLspToggleClicked(View button) {
+        if (lspSession != null) {
+            editorView.setInfoProvider(null);
+            lspSession.shutdown();
+            lspSession = null;
+            lspDiagnosticCount = -1;
+            lspButton.setText("LSP");
+            updateDiagnostics();
+            return;
+        }
+        LspTransport[] pair = LspTransport.newPair();
+        lspSession = new LspSession(pair[0], new LspSession.Listener() {
+            @Override
+            public void onDiagnostics(String uri, java.util.List<LspDiagnostic> diagnostics) {
+                lspDiagnosticCount = diagnostics.size();
+                runOnUiThread(MainActivity.this::updateDiagnostics);
+            }
+        });
+        lspSession.start();
+        new DemoLanguageServer(pair[1], DOC_URI).start();
+        lspSession.initialize("pigma-sample");
+        pushDocumentToServer();
+        // le survol du serveur prime : la réponse attend au plus
+        // 200 ms — le serveur de démonstration répond dans le
+        // processus, instantanément ; un serveur réel demanderait la
+        // voie asynchrone (la réponse remplace la popup quand elle
+        // arrive)
+        editorView.setInfoProvider((line, column, word) -> {
+            if (lspSession == null) {
+                return null;
+            }
+            try {
+                return lspSession.hover(DOC_URI, new LspPosition(line, column))
+                        .get(200, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (Exception noAnswer) {
+                return null;
+            }
+        });
+        lspButton.setText("LSP ✔");
+        updateDiagnostics();
+    }
+
+    /**
+     * Le document part au serveur en entier (la synchronisation
+     * intégrale) — chaque édition le reprogramme de 300 ms : les
+     * frappes rapides n'envoient qu'un texte, le dernier.
+     */
+    private void pushDocumentToServer() {
+        if (lspSession != null) {
+            lspSession.didChange(DOC_URI, editorView.getBuffer().toString());
+        }
+    }
+
+    /** Une édition arrive : le report du document se reprogramme. */
+    private void scheduleLspSync() {
+        if (lspSession == null) {
+            return;
+        }
+        editorView.removeCallbacks(lspSync);
+        editorView.postDelayed(lspSync, 300L);
+    }
+
     /** La ligne du compte de correspondances (« 3/12 » ou « aucune »). */
     private void updateMatchView() {
         int total = editorView.searchMatchCount();
@@ -527,6 +619,9 @@ public final class MainActivity extends Activity {
         if (editorView.hiddenLineCount() > 0) {
             text += String.format(" · replié : %d pli(s), %d ligne(s) cachée(s)",
                     editorView.foldedCount(), editorView.hiddenLineCount());
+        }
+        if (lspDiagnosticCount >= 0) {
+            text += " · LSP : " + lspDiagnosticCount + " diagnostic(s) du serveur de démo";
         }
         text += String.format(" · L3 : %d annotation(s) (fenêtre)"
                         + " · symboles : %d (%d mots) · diagnostics : %d",

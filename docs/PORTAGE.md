@@ -41,8 +41,8 @@ consigné au moment de la décision.
 | Texte bidirectionnel | non repris (aucun besoin exprimé) | 6 |
 | Guides d'indentation | **réécrit** (chantier 14) : la chaîne d'appariement de L2 guide, pas les espaces | 8 |
 | Recherche / remplacement | **réécrit** (chantier 24) : la recherche teinte la fenêtre (plafond de 10 000 correspondances), la navigation boucle, remplacer la courante (une unité d'annulation) et tout remplacer (de la fin vers le début, une seule unité) | 8 |
-| Types du domaine LSP | à examiner | 9 |
-| Ordonnancement des requêtes LSP | à examiner | 9 |
+| Types du domaine LSP | **réécrit** (chantier 25) : `:lsp` — JSON scellé, enveloppe JSON-RPC, positions/intervalle/diagnostics, conversions vers le tampon | 9 |
+| Ordonnancement des requêtes LSP | **réécrit** (chantier 25) : la corrélation par identifiant tient les futurs, la pompe dispatche les notifications, l'arrêt ferme proprement (le tout-annulable reste à faire si un besoin l'exprime) | 9 |
 | Catalogue des langages | examiné au chantier 2 : réécriture proposée — un langage = un descripteur (extensions, lexeur, table jeton → portée, analyseur et annotateur facultatifs), famille générique pour la longue traîne ; validation avec le propriétaire | 3 |
 | Coloration par grammaires TextMate (chargement, tissage, expressions) | abandon proposé — hors du cœur par le plan (§4.8) ; le profil du chantier 2 mesure le coût de chargement qui le justifie (~1 s JVM x86 pour 27 grammaires, plusieurs secondes sur téléphone) ; modules optionnels seulement si un besoin réel apparaît | — |
 

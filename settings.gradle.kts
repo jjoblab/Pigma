@@ -22,10 +22,12 @@ rootProject.name = "pigma"
 // Chaque module arrive avec la fonctionnalité qui le justifie : le cœur du
 // modèle de texte (:core), le moteur de coloration (:syntax), l'annotateur
 // sémantique (:analysis), la bibliothèque d'édition (:editor — la vue,
-// l'hôte n'a qu'elle à déclarer) et l'application de démonstration
+// l'hôte n'a qu'elle à déclarer), le client de serveur de langage
+// (:lsp, optionnel) et l'application de démonstration
 // (:sample).
 include(":core")
 include(":syntax")
 include(":analysis")
 include(":editor")
+include(":lsp")
 include(":sample")

@@ -884,6 +884,38 @@ public final class EditorView extends View {
         invalidate();
     }
 
+    /**
+     * Le fournisseur d'info de la popup ancrée : l'hôte y branche une
+     * source extérieure (un serveur de langage par exemple) — la vue
+     * reste au-dessus du protocole, elle ne connaît que la question
+     * (où, quel mot) et la réponse (un texte, ou null pour dire
+     * « je ne sais pas, demande à l'index local »).
+     */
+    public interface InfoPopupProvider {
+
+        /**
+         * L'info du mot demandé.
+         *
+         * @param line   la ligne du doigt
+         * @param column la colonne du doigt
+         * @param word   le mot sous le doigt
+         * @return le texte à montrer, null pour retomber sur l'index
+         */
+        String infoFor(int line, int column, String word);
+    }
+
+    /**
+     * Branche un fournisseur d'info (null débranche : l'index local
+     * reprend la popup).
+     *
+     * @param provider le fournisseur, ou null
+     */
+    public void setInfoProvider(InfoPopupProvider provider) {
+        infoProvider = provider;
+    }
+
+    private InfoPopupProvider infoProvider;
+
     /** Masque la popup d'info. */
     public void dismissInfoPopup() {
         if (infoPopupText != null) {
@@ -895,6 +927,16 @@ public final class EditorView extends View {
     /** La popup d'info est-elle visible ? */
     public boolean isInfoPopupVisible() {
         return infoPopupText != null;
+    }
+
+    /**
+     * Le texte de la popup d'info (le harnais le vérifie, l'hôte peut
+     * le journaliser).
+     *
+     * @return le texte affiché, null si masquée
+     */
+    public String infoPopupText() {
+        return infoPopupText;
     }
 
     private void gotoSearchMatch(int index) {
@@ -1903,13 +1945,21 @@ public final class EditorView extends View {
     }
 
     /**
-     * La popup d'info du mot sélectionné : le symbole de l'index le
-     * décrit (nom, nature, ligne de déclaration), un mot ordinaire ne
-     * dit que lui-même — l'index peut être en cours de construction,
-     * la popup dit alors le mot sans la nature.
+     * La popup d'info du mot sélectionné : le fournisseur de l'hôte
+     * répond le premier (un serveur de langage par exemple), l'index
+     * de symboles décrit sinon (nom, nature, ligne de déclaration),
+     * un mot ordinaire ne dit que lui-même — l'index peut être en
+     * cours de construction, la popup dit alors le mot sans la nature.
      */
     private void showSymbolInfo(int wordStart, int wordEnd, int line, int column) {
         String word = buffer.getText(wordStart, wordEnd);
+        if (infoProvider != null) {
+            String provided = infoProvider.infoFor(line, column, word);
+            if (provided != null) {
+                showInfoPopup(provided, line, column);
+                return;
+            }
+        }
         String text = "« " + word + " » — mot du texte";
         if (symbolIndex != null) {
             for (SymbolIndex.Symbol symbol : symbolIndex.symbols()) {
