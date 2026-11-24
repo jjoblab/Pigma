@@ -26,7 +26,7 @@ import java.util.List;
  * {@link UndoStack#newTransaction()}) ; le remplacement direct est réservé
  * aux mécanismes internes du même package.</p>
  */
-public final class TextBuffer {
+public final class TextBuffer implements CharSequence {
 
     private static final int INITIAL_CAPACITY = 64;
 
@@ -128,6 +128,20 @@ public final class TextBuffer {
             System.arraycopy(content, gapEnd, result, head, end - start - head);
         }
         return new String(result);
+    }
+
+    /**
+     * Plage en tant que séquence de caractères : le tampon se prête
+     * aux moteurs qui lisent par {@link CharSequence} (lexage sans
+     * copie du texte).
+     *
+     * @param start début de la plage, inclus
+     * @param end   fin de la plage, exclue
+     * @return le texte de la plage, jamais {@code null}
+     */
+    @Override
+    public CharSequence subSequence(int start, int end) {
+        return getText(start, end);
     }
 
     /**
