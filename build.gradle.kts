@@ -1,5 +1,7 @@
+import org.gradle.api.plugins.JavaPlugin
 import org.gradle.api.plugins.quality.Checkstyle
 import org.gradle.api.plugins.quality.CheckstyleExtension
+import org.gradle.api.tasks.compile.JavaCompile
 
 // Conventions communes de tous les modules, sans build-logic ni buildSrc :
 // tout se déclare ici, dans un bloc subprojects court et lisible.
@@ -27,9 +29,11 @@ val checkForbiddenRefs = tasks.register("checkForbiddenRefs", Exec::class) {
     commandLine("python3", rootProject.file("scripts/check-forbidden-refs").absolutePath)
 }
 
-// Version de Checkstyle, capturée ici : l'accesseur du catalogue de
-// versions n'existe que pour le script racine, pas dans subprojects.
+// Captures du catalogue de versions : l'accesseur n'existe que pour le
+// script racine, pas dans subprojects.
 val checkstyleVersion = libs.versions.checkstyle.get()
+val junitLibrary = libs.junit
+val javaRelease = libs.versions.java.get().toInt()
 
 subprojects {
     apply(plugin = "checkstyle")
@@ -50,6 +54,24 @@ subprojects {
         description = "Vérifie le style des sources Java du module."
         source("src/main/java", "src/test/java")
         classpath = files()
+    }
+
+    // Modules JVM purs : Java 17 strict (drapeau release) et JUnit commun.
+    plugins.withType<JavaPlugin> {
+        tasks.withType<JavaCompile>().configureEach {
+            options.release.set(javaRelease)
+        }
+        dependencies {
+            "testImplementation"(junitLibrary)
+        }
+    }
+
+    // Modules Android : JUnit commun, les autres dépendances restent dans
+    // le module concerné.
+    plugins.withId("com.android.application") {
+        dependencies {
+            "testImplementation"(junitLibrary)
+        }
     }
 
     tasks.matching { it.name == "check" }.configureEach {

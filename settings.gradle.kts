@@ -19,6 +19,7 @@ dependencyResolutionManagement {
 rootProject.name = "pigma"
 
 // Un module par fonctionnalité ; aucun module vide n'est créé pour l'avenir.
-// Le chantier en cours n'exige que le sample : les autres arriveront chacun
-// avec la fonctionnalité qui les justifie.
+// Chaque module arrive avec la fonctionnalité qui le justifie : le cœur du
+// modèle de texte (:core) et l'application de démonstration (:sample).
+include(":core")
 include(":sample")
