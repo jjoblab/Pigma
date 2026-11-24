@@ -162,6 +162,19 @@ public final class EditorView extends View {
     /** Le décalage de dépôt courant du traîné-déposé (-1 : hors geste). */
     private int dropOffset = -1;
 
+    /** L'abscisse du doigt pendant le traîné (l'aperçu flottant la suit). */
+    private float dragFingerX;
+
+    /**
+     * Le défilement au bord du traîné-déposé est-il programmé ? (une
+     * échéance à la fois — le doigt tient la zone, la suite se
+     * reprogramme).
+     */
+    private boolean edgeScrollScheduled;
+
+    /** Une échéance du défilement au bord du traîné-déposé. */
+    private final Runnable edgeScroll = this::runEdgeScroll;
+
     /** Le rendu de la ligne sous la loupe (1×, hors trame) — blitté par trame. */
     private android.graphics.Bitmap loupeLine;
 
@@ -266,7 +279,10 @@ public final class EditorView extends View {
     /** Le cadre arrondi de la loupe de précision. */
     private final Paint loupeBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-    /** L'ordonnée du doigt pendant le traînement d'une poignée (la loupe la fuit). */
+    /**
+     * L'ordonnée du doigt pendant le traînement (la loupe la fuit —
+     * poignée comme traîné-déposé).
+     */
     private float dragFingerY;
 
     /** La teinte des correspondances de recherche. */
@@ -1213,7 +1229,12 @@ public final class EditorView extends View {
                 if (textDragging) {
                     // le curseur de dépôt suit le doigt : le caractère
                     // le plus proche (il se dessine à la place du
-                    // curseur le temps du geste)
+                    // curseur le temps du geste) ; le doigt près du
+                    // bord programme le défilement — le point de dépôt
+                    // reste lisible pendant que la vue glisse
+                    dragFingerX = event.getX();
+                    dragFingerY = event.getY();
+                    scheduleEdgeScroll();
                     dropOffset = offsetNearest(event.getX(), event.getY());
                     invalidate();
                     break;
@@ -1260,7 +1281,9 @@ public final class EditorView extends View {
                 if (textDragging) {
                     // le dépôt : le texte sélectionné se déplace au
                     // curseur de dépôt — l'appui ne compte pas pour un
-                    // tap non plus
+                    // tap non plus ; le défilement au bord se range
+                    removeCallbacks(edgeScroll);
+                    edgeScrollScheduled = false;
                     dropTextAtSelection(dropOffset);
                     textDragging = false;
                     textDragArmed = false;
@@ -1473,6 +1496,7 @@ public final class EditorView extends View {
         drawStructure(canvas, first, last, count);
         drawCaret(canvas);
         drawSelectionHandles(canvas);
+        drawDragPreview(canvas);
         drawLoupe(canvas);
         // les candidats AVANT leur dessin (un déplacement de curseur
         // rend ses candidats dans la même trame), les soulignés de
@@ -2301,19 +2325,24 @@ public final class EditorView extends View {
     }
 
     /**
-     * La loupe de précision : pendant le traînement d'une poignée, la
-     * ligne de la borne traînée se redessine agrandie au-dessus du
-     * doigt — la colonne exacte de la borne se lit, le doigt ne la
-     * cache pas. Le contenu se peint sous homothétie dans une fenêtre
-     * découpée (la teinte de sélection, les jetons, le curseur — la
-     * borne traînée EST le curseur), le cadre arrondi la borne
-     * par-dessus ; la loupe ne vit que le temps du traînement.
+     * La loupe de précision : pendant le traînement d'une poignée OU du
+     * traîné-déposé, la ligne de la borne traînée (du point de dépôt)
+     * se redessine agrandie au-dessus du doigt — la colonne exacte se
+     * lit, le doigt ne la cache pas. Le contenu se peint sous
+     * homothétie dans une fenêtre découpée (la teinte de sélection, les
+     * jetons, le curseur — la borne traînée EST le curseur, le point
+     * de dépôt aussi), le cadre arrondi la borne par-dessus ; la loupe
+     * ne vit que le temps du traînement.
      */
     private void drawLoupe(Canvas canvas) {
-        if (selectionDragBound == 0) {
+        if (selectionDragBound == 0 && !textDragging) {
             return;
         }
-        int offset = Math.min(caretOffset, buffer.length());
+        if (textDragging && dropOffset < 0) {
+            return;
+        }
+        int offset = Math.min(textDragging ? dropOffset : caretOffset,
+                buffer.length());
         int line = buffer.lineOfOffset(offset);
         if (isHidden(line)) {
             return;
@@ -2376,6 +2405,91 @@ public final class EditorView extends View {
         canvas.restore();
         canvas.drawRoundRect(left, top, left + width, top + height,
                 dp(6), dp(6), loupeBorder);
+    }
+
+    /**
+     * L'aperçu flottant du texte traîné : la première ligne de la
+     * sélection — raccourcie à une vingtaine de colonnes — flotte
+     * dans une pastille teintée SOUS le doigt (la loupe vit au-dessus
+     * : elle porte OÙ le texte se pose, la pastille porte QUOI il
+     * déplace). Les glyphes sont ceux du texte déjà rendu : le cache
+     * du traîné reste chaud, la trame ne paie qu'un drawText court.
+     */
+    private void drawDragPreview(Canvas canvas) {
+        if (!textDragging || !hasSelection()) {
+            return;
+        }
+        int start = selectionStart();
+        int firstLineEnd = Math.min(buffer.getLineEnd(buffer.lineOfOffset(start)),
+                selectionEnd());
+        String carried = buffer.getText(start, firstLineEnd).trim();
+        if (carried.isEmpty()) {
+            return;
+        }
+        String shown = carried.length() > 20
+                ? carried.substring(0, 19) + "…" : carried;
+        float chipWidth = shown.length() * charWidth + dp(16);
+        float chipHeight = lineHeight + dp(8);
+        float left = clampToRange(dragFingerX - chipWidth / 2.0f, getPaddingLeft(),
+                Math.max(getPaddingLeft(), getWidth() - getPaddingRight() - chipWidth));
+        float top = Math.min(dragFingerY + dp(10),
+                Math.max(getPaddingTop(), getHeight() - getPaddingBottom() - chipHeight));
+        canvas.drawRoundRect(left, top, left + chipWidth, top + chipHeight,
+                dp(6), dp(6), selectionPaint);
+        // le texte de la pastille : la couleur par défaut du thème (le
+        // pinceau est partagé, ses drapeaux se posent avant l'usage)
+        textPaint.setColor(theme.defaultColor());
+        textPaint.setFakeBoldText(false);
+        canvas.drawText(shown, left + dp(8), top + dp(4) - fontMetrics.top, textPaint);
+    }
+
+    /**
+     * Le doigt du traîné tient-il une zone du bord (haut ou bas) ? Le
+     * défilement s'y programme : le point de dépôt se lit dans la
+     * fenêtre visible pendant que la vue glisse — la limitation du
+     * chantier 34 (le dépôt hors fenêtre n'existait pas).
+     */
+    private void scheduleEdgeScroll() {
+        if (!textDragging || edgeScrollScheduled) {
+            return;
+        }
+        float zone = dp(48);
+        if (dragFingerY <= getPaddingTop() + zone
+                || dragFingerY >= getHeight() - getPaddingBottom() - zone) {
+            edgeScrollScheduled = true;
+            postDelayed(edgeScroll, 16L);
+        }
+    }
+
+    /**
+     * Une échéance du défilement au bord : la vue glisse d'une
+     * demi-ligne vers le doigt, le point de dépôt se relit à sa
+     * nouvelle place — le doigt tient toujours la zone, la suite se
+     * reprogramme ; le bord du document (la zone quittée) l'arrête.
+     */
+    private void runEdgeScroll() {
+        edgeScrollScheduled = false;
+        if (!textDragging) {
+            return;
+        }
+        float zone = dp(48);
+        float step = 0.0f;
+        if (dragFingerY <= getPaddingTop() + zone) {
+            step = -0.5f * lineHeight;
+        } else if (dragFingerY >= getHeight() - getPaddingBottom() - zone) {
+            step = 0.5f * lineHeight;
+        }
+        if (step == 0.0f) {
+            return;
+        }
+        float before = scrollY;
+        scrollY = clampToRange(scrollY + step, 0.0f, maxScroll());
+        if (scrollY == before) {
+            return;
+        }
+        dropOffset = offsetNearest(dragFingerX, dragFingerY);
+        invalidate();
+        scheduleEdgeScroll();
     }
 
     /**
@@ -2535,16 +2649,37 @@ public final class EditorView extends View {
         scrollY = clampToRange(scrollY, 0.0f, maxScroll());
     }
 
-    /** Première ligne visible (indice — les plis cachent des lignes). */
-    private int firstVisibleLine() {
+    /**
+     * Le décalage de dépôt courant du traîné-déposé (-1 : hors geste).
+     * Publique : le harnais y lit le point de dépôt pendant le
+     * défilement au bord.
+     *
+     * @return le décalage de dépôt, -1 hors geste
+     */
+    public int harnessDropOffset() {
+        return dropOffset;
+    }
+
+    /**
+     * Première ligne visible (indice — les plis cachent des lignes).
+     * Publique : le harnais y lit le défilement au bord du traîné.
+     *
+     * @return l'indice de la première ligne visible
+     */
+    public int firstVisibleLine() {
         if (lineHeight <= 0.0f) {
             return 0;
         }
         return lineOfVisibleIndex((int) (scrollY / lineHeight));
     }
 
-    /** Dernière ligne visible (indice, bornée au document). */
-    private int lastVisibleLine() {
+    /**
+     * Dernière ligne visible (indice, bornée au document). Publique :
+     * le harnais y lit la fenêtre du point de dépôt.
+     *
+     * @return l'indice de la dernière ligne visible
+     */
+    public int lastVisibleLine() {
         if (lineHeight <= 0.0f) {
             return 0;
         }

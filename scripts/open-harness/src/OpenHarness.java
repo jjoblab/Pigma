@@ -93,6 +93,8 @@ public final class OpenHarness {
         loupe();
         longPressDrag();
         dragDropText();
+        dragDropLoupeAndPreview();
+        dragDropEdgeScroll();
         searchAndReplace();
         hugeFile();
         hugeFileCopyGesture();
@@ -464,6 +466,101 @@ public final class OpenHarness {
         click("Annuler");
         check("l'annulation rend encore le texte",
                 buffer.toString().equals(before));
+    }
+
+    /**
+     * La loupe et la pastille du traîné-déposé : la ligne du point de
+     * dépôt se blitte agrandie (la loupe du traîné, la même que celle
+     * des poignées), le texte traîné flotte sous le doigt en pastille
+     * raccourcie (l'ellipse marque la coupe). Le dépôt dans la
+     * sélection ne déplace rien : le geste se lâche sans trace.
+     */
+    private static void dragDropLoupeAndPreview() {
+        begin("traîné-déposé : la loupe du dépôt, la pastille du texte");
+        openLanguage("Gros", 10_000L);
+        click("Tout sélectionner");
+        frame();
+        String before = editor.getBuffer().toString();
+        float grabX = editor.getPaddingLeft() + 40.0f;
+        float lineMidY = lineTop(0) + LINE_HEIGHT / 2.0f;
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN, grabX, lineMidY));
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_MOVE, grabX - 40.0f, lineMidY));
+        frame();
+        // la loupe du traîné : le rendu de la ligne de dépôt, blitté
+        Canvas.BitmapOp blit = null;
+        for (Canvas.BitmapOp op : canvas.harnessBitmapsSinceMark()) {
+            blit = op;
+        }
+        check("la loupe du traîné blitte la ligne de dépôt",
+                blit != null && blit.dstRight - blit.dstLeft > 0.0f);
+        check("le blit agrandit (destination double de la source)",
+                blit != null && (blit.dstRight - blit.dstLeft)
+                        > 1.9f * Math.max(1.0f, blit.srcRight - blit.srcLeft));
+        // la pastille : le texte traîné, raccourci à vingt colonnes —
+        // la première ligne du gros fichier est longue, l'ellipse de
+        // la coupe la distingue du texte de la ligne
+        boolean chip = false;
+        for (Canvas.TextOp op : canvas.harnessTextsSinceMark()) {
+            if (op.text.endsWith("…")) {
+                chip = true;
+            }
+        }
+        check("la pastille du texte traîné se dessine (l'ellipse de la coupe)",
+                chip);
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_UP, grabX - 40.0f, lineMidY));
+        frame();
+        check("la loupe se ferme au lâcher",
+                canvas.harnessBitmapsSinceMark().isEmpty());
+        check("le dépôt dans la sélection ne déplace rien",
+                editor.getBuffer().toString().equals(before));
+        // le dépôt sans déplacement range la sélection : le bouton
+        // « Tout sélectionner » re-part de zéro au scénario suivant
+    }
+
+    /**
+     * Le défilement au bord du traîné-déposé : le doigt tient la zone
+     * du haut, la vue glitte par échéances (une demi-ligne par
+     * échéance, la suite se reprogramme tant que le doigt tient) — le
+     * point de dépôt reste dans la fenêtre visible. La sélection est
+     * entière : les poignées vivent hors écran, la saisie au milieu de
+     * l'écran arme le traîné (un mot court y serait saisi par ses
+     * poignées — leur rayon domine).
+     */
+    private static void dragDropEdgeScroll() {
+        begin("traîné-déposé : le défilement au bord suit le doigt");
+        openLanguage("Gros", 10_000L);
+        // le scénario précédent laisse la vue près de la fin (le
+        // bouton de sélection amène le curseur au bout) : le bord HAUT
+        // offre la profondeur — le doigt y tient, la vue remonte.
+        // L'étiquette du bouton est restée « Quitter la sélection »
+        // (le dépôt sans déplacement range la sélection sans la
+        // rabattre) : sa branche autre sélectionne tout de neuf.
+        click("Quitter la sélection");
+        frame();
+        TextBuffer buffer = editor.getBuffer();
+        float grabX = editor.getPaddingLeft() + 40.0f;
+        float grabY = VIEW_HEIGHT / 2.0f;
+        float edgeY = editor.getPaddingTop() + 3.0f;
+        int before = editor.firstVisibleLine();
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_DOWN, grabX, grabY));
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_MOVE, grabX, edgeY));
+        // le doigt tient la zone du haut : les échéances défilent la vue
+        View.harnessDrain(400L);
+        int scrolled = editor.firstVisibleLine();
+        check("la vue a défilé pendant que le doigt tient le bord",
+                scrolled < before);
+        detail("première ligne " + before + " → " + scrolled);
+        int dropLine = buffer.lineOfOffset(editor.harnessDropOffset());
+        check("le point de dépôt reste dans la fenêtre visible",
+                dropLine >= editor.firstVisibleLine()
+                        && dropLine <= editor.lastVisibleLine());
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_UP, grabX, edgeY));
+        frame();
     }
 
     /** La feuille de recherche : chercher, naviguer, remplacer, tout. */
