@@ -8,15 +8,20 @@ import jo.pigma.editor.selection.SelectionRenderer;
 import jo.pigma.editor.selection.SelectionState;
 
 
+import jo.pigma.editor.popups.GotoBarView;
 import jo.pigma.editor.popups.InfoPopup;
 import jo.pigma.editor.render.RenderCache;
 import jo.pigma.editor.popups.PopupMetrics;
+import jo.pigma.editor.popups.SearchBarView;
 import jo.pigma.editor.popups.SuggestionBand;
 
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Typeface;
+import android.view.Gravity;
+import android.view.ViewGroup;
+import android.widget.PopupWindow;
 
 import java.util.List;
 import java.util.TreeSet;
@@ -131,6 +136,16 @@ public final class EditorView extends View {
 
     /** La popup d'info ancrée — état et dessin au paquet des popups. */
     private InfoPopup infoPopup;
+
+    /** La barre de recherche flottante — vue réelle du paquet popups. */
+    private SearchBarView searchBar;
+    /** La fenêtre qui la porte (créée paresseusement, jamais deux fois). */
+    private PopupWindow searchPopup;
+
+    /** La barre « aller à la ligne » flottante. */
+    private GotoBarView gotoBar;
+    /** La fenêtre qui la porte. */
+    private PopupWindow gotoPopup;
 
     /** L'horodatage de l'appui courant (l'appui long sélectionne le mot). */
     private long touchDownNanos;
@@ -1018,6 +1033,80 @@ public final class EditorView extends View {
         selection.setCaret(Math.min(firstStart + replacement.length(), buffer.length()));
         search(searchQuery);
         return count;
+    }
+
+    /**
+     * La barre de recherche en popup flottante — un VRAI View du
+     * paquet popups (l'hôte n'y bricole plus sa feuille dans son
+     * layout). La barre couvre le haut de la vue et prend le focus :
+     * le champ, le clavier et la recherche incrémentale amortie lui
+     * reviennent ; l'appui hors d'elle la range et la recherche se
+     * range avec. Un nouvel appel la range aussi — le bouton
+     * « Rechercher » de l'hôte fait bascule.
+     */
+    public void toggleSearchPopup() {
+        if (searchPopup != null && searchPopup.isShowing()) {
+            dismissSearchPopup();
+            return;
+        }
+        if (searchBar == null) {
+            searchBar = new SearchBarView(getContext());
+            searchBar.bind(this);
+        }
+        if (searchPopup == null) {
+            searchPopup = new PopupWindow(searchBar, getWidth(),
+                    ViewGroup.LayoutParams.WRAP_CONTENT, true);
+            searchPopup.setOutsideTouchable(true);
+            searchPopup.setOnDismissListener(() -> {
+                clearSearch();
+                searchBar.closed();
+            });
+        }
+        searchPopup.setWidth(getWidth());
+        searchBar.opened();
+        searchPopup.showAtLocation(this, Gravity.TOP, 0, 0);
+    }
+
+    /**
+     * Range la barre de recherche (le bouton « ✕ », la bascule,
+     * l'appui hors d'elle — la recherche se range avec).
+     */
+    public void dismissSearchPopup() {
+        if (searchPopup != null && searchPopup.isShowing()) {
+            searchPopup.dismiss();
+        }
+    }
+
+    /**
+     * La barre « aller à la ligne » en popup flottante : le champ ne
+     * prend que des chiffres, la touche « Aller » du clavier vaut le
+     * bouton, le numéro se borne au fichier. La même bascule, le
+     * même rangement que la barre de recherche.
+     */
+    public void toggleGotoPopup() {
+        if (gotoPopup != null && gotoPopup.isShowing()) {
+            dismissGotoPopup();
+            return;
+        }
+        if (gotoBar == null) {
+            gotoBar = new GotoBarView(getContext());
+            gotoBar.bind(this);
+        }
+        if (gotoPopup == null) {
+            gotoPopup = new PopupWindow(gotoBar, getWidth(),
+                    ViewGroup.LayoutParams.WRAP_CONTENT, true);
+            gotoPopup.setOutsideTouchable(true);
+        }
+        gotoPopup.setWidth(getWidth());
+        gotoBar.opened();
+        gotoPopup.showAtLocation(this, Gravity.TOP, 0, 0);
+    }
+
+    /** Range la barre « aller à la ligne ». */
+    public void dismissGotoPopup() {
+        if (gotoPopup != null && gotoPopup.isShowing()) {
+            gotoPopup.dismiss();
+        }
     }
 
     /**

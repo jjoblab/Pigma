@@ -12,6 +12,12 @@ android {
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 1
         versionName = "0.1.0"
+        ndk {
+            // l'APK ne porte que arm64-v8a : le serveur natif EmmyLua y
+            // descend seul (x86_64 ne servait qu'à l'émulateur — la
+            // demande est arm64, le poids des .so s'en trouve réduit)
+            abiFilters += "arm64-v8a"
+        }
     }
 
     compileOptions {

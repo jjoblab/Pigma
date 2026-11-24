@@ -90,6 +90,24 @@ public class TextView extends View {
         return hint;
     }
 
+    /** Le type de saisie demandé au clavier (InputType.TYPE_CLASS_*). */
+    private int inputType;
+
+    /**
+     * Pose le type de saisie (le clavier s'y règle — nombre pour
+     * l'aller-à-la-ligne).
+     *
+     * @param inputType le type (InputType.TYPE_CLASS_*)
+     */
+    public void setInputType(int inputType) {
+        this.inputType = inputType;
+    }
+
+    /** Le type de saisie posé (le harnais le lit). */
+    public int getInputType() {
+        return inputType;
+    }
+
     /**
      * Pose la police.
      *

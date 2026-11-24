@@ -328,6 +328,24 @@ public class View {
         return false;
     }
 
+    /** La description du rôle de la vue (la lecture d'écran la dit). */
+    private CharSequence contentDescription;
+
+    /**
+     * Pose la description du rôle de la vue (accessibilité : la
+     * lecture d'écran la prononce à sa place d'un libellé).
+     *
+     * @param description la description, vide pour aucune
+     */
+    public void setContentDescription(CharSequence description) {
+        this.contentDescription = description;
+    }
+
+    /** La description posée (le harnais la lit). */
+    public CharSequence getContentDescription() {
+        return contentDescription;
+    }
+
     /**
      * Attache la vue à la fenêtre (le harnais le fait après la pose
      * du contenu).

@@ -9,6 +9,9 @@ public class EditorInfo {
     /** Le clavier reste dans la fenêtre (pas de plein écran). */
     public static final int IME_FLAG_NO_FULLSCREEN = 0x02000000;
 
+    /** La touche d'action « Aller » (le champ aller-à-la-ligne). */
+    public static final int IME_ACTION_GO = 0x00000002;
+
     /** Le type de saisie demandé. */
     public int inputType;
 

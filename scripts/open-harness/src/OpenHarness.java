@@ -9,6 +9,7 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.PopupWindow;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -97,6 +98,7 @@ public final class OpenHarness {
         dragDropLoupeAndPreview();
         dragDropEdgeScroll();
         searchAndReplace();
+        gotoLine();
         hugeFile();
         hugeFileCopyGesture();
         replaceAllHugeFile();
@@ -609,18 +611,20 @@ public final class OpenHarness {
                 buffer.toString().equals(text));
     }
 
-    /** La feuille de recherche : chercher, naviguer, remplacer, tout. */
+    /** La popup de recherche : chercher, naviguer, remplacer, tout. */
     private static void searchAndReplace() {
         begin("recherche : compter, naviguer, remplacer, tout remplacer");
         click("Rechercher");
-        View sheet = findButton(activity.harnessRootView(), "Chercher")
-                .harnessParent().harnessParent();
-        check("la feuille s'ouvre", sheet.getVisibility() == View.VISIBLE);
+        PopupWindow popup = PopupWindow.harnessLast();
+        check("la popup flottante s'ouvre (focusable, l'appui dehors range)",
+                popup != null && popup.isShowing() && popup.harnessFocusable()
+                        && popup.harnessOutsideTouchable());
+        View bar = popup.harnessContent();
         String text = editor.getBuffer().toString();
         int expected = countOccurrences(text, "graine");
         // la recherche incrémentale : le champ tape lettre à lettre,
         // chaque frappe relance (amortie) — le compte suit la frappe
-        android.widget.EditText query = findField("chercher…");
+        EditText query = findField(bar, "chercher…");
         query.setText("g");
         View.harnessDrain(400L);
         check("la recherche suit la première frappe (g)",
@@ -633,25 +637,25 @@ public final class OpenHarness {
         View.harnessDrain(400L);
         check("le compte exact des correspondances est arrivé à la frappe finale",
                 editor.searchMatchCount() == expected);
-        check("la feuille porte le compte",
-                textOf("correspondance") != null);
+        check("la barre porte le compte",
+                textOf(bar, "correspondance") != null);
         // la recherche incrémentale a navigué en tapant (la
         // correspondance la plus proche du curseur) : l'index de départ
         // n'est plus zéro — l'avance et le recul se vérifient relatifs
         int beforeNext = editor.searchCurrentIndex();
-        click("›");
+        clickIn(bar, "›");
         check("la navigation avance", editor.searchCurrentIndex() == beforeNext + 1);
-        click("‹");
+        clickIn(bar, "‹");
         check("la navigation recule", editor.searchCurrentIndex() == beforeNext);
-        findField("remplacer par…").setText("GRAINE");
-        click("Remplacer");
+        findField(bar, "remplacer par…").setText("GRAINE");
+        clickIn(bar, "Remplacer");
         check("un remplacement a eu lieu",
                 countOccurrences(editor.getBuffer().toString(), "graine") == expected - 1);
         click("Annuler");
         check("l'annulation rend le texte",
                 editor.getBuffer().toString().equals(text));
-        click("Chercher");
-        click("Tout");
+        clickIn(bar, "Chercher");
+        clickIn(bar, "Tout");
         check("tout remplacer vide les correspondances",
                 countOccurrences(editor.getBuffer().toString(), "graine") == 0);
         boolean toasted = false;
@@ -662,10 +666,46 @@ public final class OpenHarness {
         click("Annuler");
         check("l'annulation rend le texte après le tout",
                 editor.getBuffer().toString().equals(text));
-        click("✕");
-        check("la feuille se ferme et la recherche se range",
-                sheet.getVisibility() == View.GONE && editor.searchMatchCount() == 0);
+        clickIn(bar, "✕");
+        check("la popup se ferme et la recherche se range",
+                !popup.isShowing() && editor.searchMatchCount() == 0);
         detail(expected + " correspondances de « graine »");
+    }
+
+    /**
+     * La popup aller-à-la-ligne : le numéro se borne au fichier, le
+     * curseur s'y pose, la touche d'action du clavier vaut le bouton.
+     */
+    private static void gotoLine() {
+        begin("aller à la ligne : borne, pose, touche d'action, fermeture");
+        click("Aller à");
+        PopupWindow popup = PopupWindow.harnessLast();
+        check("la popup aller-à s'ouvre (focusable, l'appui dehors range)",
+                popup != null && popup.isShowing() && popup.harnessFocusable()
+                        && popup.harnessOutsideTouchable());
+        View bar = popup.harnessContent();
+        EditText line = findField(bar, "numéro de ligne…");
+        check("le champ ne prend que des chiffres",
+                line.getInputType() == android.text.InputType.TYPE_CLASS_NUMBER);
+        check("l'ouverture compte le fichier",
+                textOf(bar, "ligne(s)") != null);
+        int last = editor.getBuffer().getLineCount();
+        line.setText("999999");
+        clickIn(bar, "Aller");
+        check("le numéro au-delà va à la dernière ligne",
+                editor.selectionStart() == editor.getBuffer().getLineStart(last - 1));
+        line.setText("1");
+        clickIn(bar, "Aller");
+        check("la première ligne se pose",
+                editor.selectionStart() == 0);
+        line.setText("3");
+        line.harnessEditorAction();
+        check("la touche « Aller » du clavier vaut le bouton",
+                editor.selectionStart() == editor.getBuffer().getLineStart(2));
+        check("le retour dit la ligne où le curseur est tombé",
+                textOf(bar, "ligne 3") != null);
+        clickIn(bar, "✕");
+        check("la popup se ferme", !popup.isShowing());
     }
 
     /** Le fichier hors normes : 52 004 lignes, 624 002 jetons. */
@@ -826,15 +866,16 @@ public final class OpenHarness {
         check("la démonstration hors normes porte plus de dix mille graines",
                 total > 10_000);
         click("Rechercher");
-        android.widget.EditText query = findField("chercher…");
+        View bar = PopupWindow.harnessLast().harnessContent();
+        EditText query = findField(bar, "chercher…");
         query.setText("graine");
         View.harnessDrain(400L);
         int matches = editor.searchMatchCount();
         check("la recherche plafonne à dix mille correspondances",
                 matches == 10_000);
-        findField("remplacer par…").setText("GRAINE");
+        findField(bar, "remplacer par…").setText("GRAINE");
         long startedAt = System.nanoTime();
-        click("Tout");
+        clickIn(bar, "Tout");
         long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L;
         check("tout remplacer remplace exactement les correspondances portées",
                 countOccurrences(editor.getBuffer().toString(), "graine") == total - matches
@@ -1145,7 +1186,18 @@ public final class OpenHarness {
      * @param label l'étiquette exacte
      */
     private static void click(String label) {
-        Button button = findButton(activity.harnessRootView(), label);
+        clickIn(activity.harnessRootView(), label);
+    }
+
+    /**
+     * Déclenche le clic d'un bouton par son étiquette, dans une racine
+     * donnée (la barre d'une popup flottante).
+     *
+     * @param root  la racine visitée
+     * @param label l'étiquette exacte
+     */
+    private static void clickIn(View root, String label) {
+        Button button = findButton(root, label);
         if (button == null) {
             failures++;
             System.out.printf("    [ÉCHEC] bouton introuvable : %s%n", label);
