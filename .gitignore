@@ -16,3 +16,6 @@ config/forbidden-refs.local
 # Divers
 .DS_Store
 *.hprof
+
+# Sorties du banc (code genere non committe, cf. decision pendante)
+bench/out/

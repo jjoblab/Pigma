@@ -1,0 +1,25 @@
+{
+  "fichier": "reference du banc E0",
+  "version": 3,
+  "actif": true,
+  "cache": null,
+  "nul": false,
+  "nombres": [0, 1, 42, -7, 3.5, -0.25, 1e3, 2.5e-8, 100000000000],
+  "textes": [
+    "simple",
+    "échappé \" et \\",
+    "contrôle \n\t et unicode \u263A",
+    "slashes / et //",
+    ""
+  ],
+  "imbrication": {
+    "liste": [
+      {"cle": "valeur", "index": 1, "sous": {"profondeur": 2}},
+      {"cle": "autre", "index": 2, "sous": {"profondeur": 3, "liste": [1, 2, 3]}}
+    ],
+    "objet": {
+      "vide": {},
+      "tableau_vide": []
+    }
+  }
+}

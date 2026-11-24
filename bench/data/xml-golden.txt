@@ -1,0 +1,190 @@
+MARKUP	<?xml version="1.0" encoding="UTF-8"?>
+WHITESPACE	\n
+DOCTYPE	<!DOCTYPE config SYSTEM "config.dtd">
+WHITESPACE	\n
+COMMENT	<!-- fichier de reference du lexeur XML du banc E0 -->
+WHITESPACE	\n
+MARKUP	<?instructions mode="reference" ?>
+WHITESPACE	\n
+MARKUP	<
+NAME	config
+WHITESPACE	 
+NAME	id
+MARKUP	=
+ATTR_VALUE	"ref-1"
+WHITESPACE	 
+NAME	version
+MARKUP	=
+ATTR_VALUE	'2'
+MARKUP	>
+WHITESPACE	\n    
+MARKUP	<
+NAME	owner
+WHITESPACE	 
+NAME	name
+MARKUP	=
+ATTR_VALUE	"Pigma"
+WHITESPACE	 
+NAME	role
+MARKUP	=
+ATTR_VALUE	"editor"
+MARKUP	/>
+WHITESPACE	\n    
+MARKUP	<
+NAME	limits
+WHITESPACE	 
+NAME	min
+MARKUP	=
+ATTR_VALUE	"0"
+WHITESPACE	 
+NAME	max
+MARKUP	=
+ATTR_VALUE	"1000000"
+WHITESPACE	 
+NAME	ratio
+MARKUP	=
+ATTR_VALUE	"0.5"
+WHITESPACE	 
+NAME	negative
+MARKUP	=
+ATTR_VALUE	"-12"
+MARKUP	/>
+WHITESPACE	\n    
+MARKUP	<
+NAME	entities
+WHITESPACE	 
+NAME	amp
+MARKUP	=
+ATTR_VALUE	"&amp;"
+WHITESPACE	 
+NAME	lt
+MARKUP	=
+ATTR_VALUE	"&lt;"
+WHITESPACE	 
+NAME	gt
+MARKUP	=
+ATTR_VALUE	"&gt;"
+WHITESPACE	 
+NAME	quote
+MARKUP	=
+ATTR_VALUE	"&quot;"
+WHITESPACE	 
+NAME	code
+MARKUP	=
+ATTR_VALUE	"&#169;"
+WHITESPACE	 
+NAME	hex
+MARKUP	=
+ATTR_VALUE	"&#x263A;"
+MARKUP	/>
+WHITESPACE	\n    
+MARKUP	<
+NAME	description
+MARKUP	>
+WHITESPACE	\n        
+TEXT	texte
+WHITESPACE	 
+TEXT	simple
+WHITESPACE	 
+TEXT	avec
+WHITESPACE	 
+TEXT	ponctuation,
+WHITESPACE	 
+TEXT	virgules
+WHITESPACE	 
+TEXT	et
+WHITESPACE	 
+TEXT	points.
+WHITESPACE	\n    
+MARKUP	</
+NAME	description
+MARKUP	>
+WHITESPACE	\n    
+MARKUP	<
+NAME	raw
+MARKUP	>
+CDATA	<![CDATA[donnée brute <non> &interprétée, ponctuation «» et tiret -- simple]]>
+MARKUP	</
+NAME	raw
+MARKUP	>
+WHITESPACE	\n    
+MARKUP	<
+NAME	list
+MARKUP	>
+WHITESPACE	\n        
+MARKUP	<
+NAME	item
+WHITESPACE	 
+NAME	position
+MARKUP	=
+ATTR_VALUE	"1"
+WHITESPACE	 
+NAME	actif
+MARKUP	=
+ATTR_VALUE	"true"
+MARKUP	/>
+WHITESPACE	\n        
+MARKUP	<
+NAME	item
+WHITESPACE	 
+NAME	position
+MARKUP	=
+ATTR_VALUE	'2'
+WHITESPACE	 
+NAME	actif
+MARKUP	=
+ATTR_VALUE	'false'
+MARKUP	/>
+WHITESPACE	\n        
+MARKUP	<
+NAME	item
+WHITESPACE	 
+NAME	position
+MARKUP	=
+ATTR_VALUE	"3"
+MARKUP	/>
+WHITESPACE	\n    
+MARKUP	</
+NAME	list
+MARKUP	>
+WHITESPACE	\n    
+MARKUP	<
+NAME	empty
+MARKUP	/>
+WHITESPACE	\n    
+MARKUP	<
+NAME	nested
+MARKUP	>
+WHITESPACE	\n        
+MARKUP	<
+NAME	deep
+MARKUP	>
+WHITESPACE	\n            
+MARKUP	<
+NAME	deeper
+WHITESPACE	 
+NAME	attribut
+MARKUP	=
+ATTR_VALUE	"valeur"
+MARKUP	>
+TEXT	contenu
+WHITESPACE	 
+TEXT	profond
+MARKUP	</
+NAME	deeper
+MARKUP	>
+WHITESPACE	\n        
+MARKUP	</
+NAME	deep
+MARKUP	>
+WHITESPACE	\n    
+MARKUP	</
+NAME	nested
+MARKUP	>
+WHITESPACE	\n
+MARKUP	</
+NAME	config
+MARKUP	>
+WHITESPACE	\n
+COMMENT	<!-- fin du fichier de reference -->
+WHITESPACE	\n
