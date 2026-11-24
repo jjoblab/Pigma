@@ -37,6 +37,19 @@ public class LexersRestartTest {
     }
 
     /**
+     * Redémarrage et couverture du lexeur Kotlin sur les deux corpus —
+     * la pile de contextes (gabarits, imbrications) traverse les
+     * fenêtres par l'entier d'état.
+     *
+     * @throws IOException si un corpus ne se lit pas
+     */
+    @Test
+    public void kotlinRestartsFromInitialLines() throws IOException {
+        checkRestart(Languages.KOTLIN, "data/kotlin-2000.kt");
+        checkRestart(Languages.KOTLIN, "data/kotlin-reference.kt");
+    }
+
+    /**
      * Redémarrage et couverture du lexeur XML sur les deux corpus.
      *
      * @throws IOException si un corpus ne se lit pas

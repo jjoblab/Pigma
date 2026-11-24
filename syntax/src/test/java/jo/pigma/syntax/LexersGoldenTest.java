@@ -42,6 +42,16 @@ public class LexersGoldenTest {
     }
 
     /**
+     * Le doré Kotlin se reproduit à l'identique.
+     *
+     * @throws IOException si un fichier ne se lit pas
+     */
+    @Test
+    public void kotlinGoldenMatches() throws IOException {
+        checkGolden(Languages.KOTLIN, "kotlin-reference.kt", "kotlin-golden.txt");
+    }
+
+    /**
      * Le doré XML se reproduit à l'identique.
      *
      * @throws IOException si un fichier ne se lit pas

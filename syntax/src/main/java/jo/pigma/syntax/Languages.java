@@ -8,15 +8,16 @@ import java.util.Set;
 import jo.pigma.syntax.generic.GenericLexer;
 import jo.pigma.syntax.generic.LexerProfile;
 import jo.pigma.syntax.lexer.FlexLexerAdapter;
+import jo.pigma.syntax.lexer.KotlinLexerAdapter;
 import jo.pigma.syntax.lexers.generated.JavaLexer;
 import jo.pigma.syntax.lexers.generated.JsonLexer;
 import jo.pigma.syntax.lexers.generated.XmlLexer;
 
 /**
- * Registre des langages livrés avec le moteur : les trois lexeurs
- * générés (Java, XML, JSON) et la famille générique armée d'un profil
- * SQL. Un hôte ajoute ses langages par ses propres descripteurs ; ce
- * registre ne sert que de point de départ cohérent.
+ * Registre des langages livrés avec le moteur : les quatre lexeurs
+ * générés (Java, XML, JSON, Kotlin) et la famille générique armée d'un
+ * profil SQL. Un hôte ajoute ses langages par ses propres
+ * descripteurs ; ce registre ne sert que de point de départ cohérent.
  */
 public final class Languages {
 
@@ -75,6 +76,27 @@ public final class Languages {
             },
             LanguageSyntax.initialStateOnly());
 
+    /** Langage Kotlin (lexeur généré, gabarits et pile de contextes). */
+    public static final LanguageSyntax KOTLIN = new LanguageSyntax(
+            "Kotlin", List.of("kt", "kts"),
+            KotlinLexerAdapter::new,
+            new Scope[] {
+                    null,
+                    Scope.of("keyword"),
+                    null,
+                    Scope.of("number"),
+                    Scope.of("string"),
+                    Scope.of("string.raw"),
+                    Scope.of("string.escape"),
+                    Scope.of("comment"),
+                    Scope.of("comment"),
+                    Scope.of("comment.doc"),
+                    Scope.of("operator"),
+                    Scope.of("punct"),
+                    null
+            },
+            LanguageSyntax.initialStateOnly());
+
     /** Profil SQL de la famille générique. */
     public static final LexerProfile SQL_PROFILE = new LexerProfile(
             "SQL",
@@ -128,7 +150,8 @@ public final class Languages {
         String name = fileName.toLowerCase(Locale.ROOT);
         int dot = name.lastIndexOf('.');
         String extension = dot < 0 ? name : name.substring(dot + 1);
-        for (LanguageSyntax candidate : new LanguageSyntax[] {JAVA, XML, JSON, SQL}) {
+        for (LanguageSyntax candidate
+                : new LanguageSyntax[] {JAVA, XML, JSON, KOTLIN, SQL}) {
             if (candidate.servesExtension(extension)) {
                 return candidate;
             }
