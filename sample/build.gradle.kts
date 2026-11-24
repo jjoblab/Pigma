@@ -18,6 +18,17 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    buildTypes {
+        // la construction release de mesure : signée debug (installable
+        // par adb pour les relevés), sans minification — la seule
+        // variable qui change face au debug est le mode de compilation,
+        // la mesure y répond (l'interprétation à froid des relevés)
+        release {
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+        }
+    }
 }
 
 dependencies {

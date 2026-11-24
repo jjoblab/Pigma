@@ -51,6 +51,19 @@ public final class StructureDocument {
     }
 
     /**
+     * Une paire d'appariement : le signe demandé (ligne, colonne) et
+     * son partenaire dans la chaîne tolérante.
+     *
+     * @param fromLine   ligne du signe demandé
+     * @param fromColumn colonne du signe demandé
+     * @param toLine     ligne du partenaire
+     * @param toColumn   colonne du partenaire
+     */
+    public record BracketPair(int fromLine, int fromColumn,
+            int toLine, int toColumn) {
+    }
+
+    /**
      * L'analyse interne porte en plus le timbre : l'objet de jetons
      * depuis lequel elle fut calculée. Identité préservée par l'épargne
      * du lexeur : un timbre inchangé prouve que les jetons n'ont pas
@@ -66,6 +79,9 @@ public final class StructureDocument {
 
     /** Lignes analysées [0..analyzedUpto), au-delà : rien de prouvé. */
     private LineAnalysis[] lines = new LineAnalysis[0];
+
+    /** Portée de la marche d'appariement : au-delà, la paire est trop loin. */
+    private static final int MATCH_WALK_MAX_LINES = 4000;
 
     private int analyzedUpto;
 
@@ -126,6 +142,38 @@ public final class StructureDocument {
             ensureAnalyzed(line + 1);
             LineAnalysis analysis = lines[line];
             return new LineStructure(analysis.depthOut(), analysis.mismatches());
+        }
+    }
+
+    /**
+     * Le signe adjacent au curseur (à gauche d'abord — la frappe
+     * referme à gauche) et son partenaire. La marche suit les jetons
+     * depuis le signe, la profondeur de début de chaque ligne vient de
+     * L2 (le point de contrôle : jamais de relecture depuis le début
+     * du document). Un fermant orphelin ou un ouvrant non fermé n'a
+     * pas de partenaire ({@code null}) ; une paire plus loin que
+     * {@value #MATCH_WALK_MAX_LINES} lignes se déclare trop loin.
+     *
+     * @param caretOffset la position du curseur
+     * @return la paire, ou {@code null} si aucun signe adjacent ne
+     *         s'apparie
+     */
+    public BracketPair pairAt(int caretOffset) {
+        synchronized (stateLock) {
+            if (caretOffset < 0 || caretOffset > buffer.length()) {
+                return null;
+            }
+            for (int side = 0; side < 2; side++) {
+                int offset = side == 0 ? caretOffset - 1 : caretOffset;
+                if (offset < 0 || offset >= buffer.length()) {
+                    continue;
+                }
+                BracketPair pair = pairOfSign(offset);
+                if (pair != null) {
+                    return pair;
+                }
+            }
+            return null;
         }
     }
 
@@ -309,6 +357,164 @@ public final class StructureDocument {
         for (int i = from; i < lines.length; i++) {
             lines[i] = null;
         }
+    }
+
+    // ------------------------------------------------- appariement (L2)
+
+    /**
+     * Le partenaire du signe simple à l'offset donné, ou {@code null}.
+     * La profondeur du signe se lit depuis le début de sa ligne (la
+     * règle tolérante de l'analyse, à l'identique).
+     */
+    private BracketPair pairOfSign(int offset) {
+        int line = buffer.lineOfOffset(offset);
+        ensureAnalyzed(line + 1);
+        int rel = offset - buffer.getLineStart(line);
+        SyntaxDocument.Token[] tokens = syntax.lineTokens(line).tokens();
+        CharSequence text = buffer.getText(
+                buffer.getLineStart(line), buffer.getLineEnd(line));
+        int depth = line == 0 ? 0 : lines[line - 1].depthOut();
+        int signIndex = -1;
+        char sign = 0;
+        for (int at = 0; at < tokens.length; at++) {
+            SyntaxDocument.Token token = tokens[at];
+            char c = singleSign(token, text);
+            if (c == 0) {
+                continue;
+            }
+            if (token.start() == rel) {
+                signIndex = at;
+                sign = c;
+                break;
+            }
+            if (c == '(' || c == '{' || c == '[') {
+                depth++;
+            } else if (depth > 0) {
+                depth--;
+            }
+        }
+        if (signIndex < 0) {
+            return null;
+        }
+        if (sign == '(' || sign == '{' || sign == '[') {
+            return matchForward(line, rel, signIndex, depth);
+        }
+        if (depth == 0) {
+            // fermant orphelin : toléré, compté, sans partenaire
+            return null;
+        }
+        return matchBackward(line, rel, signIndex);
+    }
+
+    /**
+     * Le fermant d'un ouvrant donné : la marche suit les jetons depuis
+     * l'ouvrant, ligne à ligne — le retour à la profondeur d'avant
+     * l'ouvrant peut vivre AU MILIEU d'une ligne (l'ouvrant refermé,
+     * puis un autre ouvert sur la même ligne : le saut par la seule
+     * profondeur de fin de ligne le raterait). L2 donne le point de
+     * contrôle de début de chaque ligne (pas de relecture depuis le
+     * début du document), le jeton exact se lit dans la ligne.
+     */
+    private BracketPair matchForward(int line, int rel, int signIndex,
+            int depthAtSign) {
+        int count = buffer.getLineCount();
+        int limit = Math.min(line + MATCH_WALK_MAX_LINES, count);
+        for (int m = line; m < limit; m++) {
+            ensureAnalyzed(m + 1);
+            int column = closerColumn(m, line, signIndex, depthAtSign);
+            if (column >= 0) {
+                return new BracketPair(line, rel, m, column);
+            }
+        }
+        // au-delà de la borne, la paire se déclare trop loin : la
+        // marche resterait payable, la mesure dira s'il le faut
+        return null;
+    }
+
+    /**
+     * L'ouvrant d'un fermant donné : la marche suit les jetons en
+     * arrière depuis le fermant, ligne à ligne — la file des fermants
+     * à sauter se PORTE d'une ligne à l'autre (la règle de pile : un
+     * point de contrôle par ligne la perdrait, l'ouvrant qui referme
+     * peut vivre loin derrière son fermant), l'ouvrant qui la vide est
+     * le partenaire.
+     */
+    private BracketPair matchBackward(int line, int rel, int signIndex) {
+        int bound = Math.max(line - MATCH_WALK_MAX_LINES, -1);
+        int counter = 0;
+        for (int m = line; m > bound; m--) {
+            SyntaxDocument.Token[] tokens = syntax.lineTokens(m).tokens();
+            CharSequence text = buffer.getText(
+                    buffer.getLineStart(m), buffer.getLineEnd(m));
+            int from = m == line ? signIndex - 1 : tokens.length - 1;
+            for (int at = from; at >= 0; at--) {
+                SyntaxDocument.Token token = tokens[at];
+                char c = singleSign(token, text);
+                if (c == 0) {
+                    continue;
+                }
+                if (c == '(' || c == '{' || c == '[') {
+                    if (counter == 0) {
+                        return new BracketPair(line, rel, m, token.start());
+                    }
+                    counter--;
+                } else {
+                    counter++;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Le fermant exact dans une ligne de la marche : la première
+     * décroissance qui rejoint la profondeur d'avant l'ouvrant. Sur
+     * la ligne de l'ouvrant lui-même, la marche part juste après lui ;
+     * ailleurs, la profondeur de départ vient de L2.
+     */
+    private int closerColumn(int matchLine, int openerLine, int openerIndex,
+            int depthAtSign) {
+        boolean sameLine = matchLine == openerLine;
+        int from = sameLine ? openerIndex + 1 : 0;
+        int running = sameLine
+                ? depthAtSign + 1
+                : lines[matchLine - 1].depthOut();
+        SyntaxDocument.Token[] tokens = syntax.lineTokens(matchLine).tokens();
+        CharSequence text = buffer.getText(
+                buffer.getLineStart(matchLine), buffer.getLineEnd(matchLine));
+        for (int at = from; at < tokens.length; at++) {
+            SyntaxDocument.Token token = tokens[at];
+            char c = singleSign(token, text);
+            if (c == 0) {
+                continue;
+            }
+            if (c == '(' || c == '{' || c == '[') {
+                running++;
+            } else if (running > 0) {
+                running--;
+                if (running == depthAtSign) {
+                    return token.start();
+                }
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Le caractère d'appariement d'un jeton simple : 0 si le jeton
+     * n'est pas un signe (une parenthèse dans une chaîne ou un
+     * commentaire vit dans un jeton plus long, elle n'apparie pas).
+     */
+    private static char singleSign(SyntaxDocument.Token token, CharSequence text) {
+        if (token.end() - token.start() != 1) {
+            return 0;
+        }
+        char c = text.charAt(token.start());
+        if (c == '(' || c == ')' || c == '{' || c == '}'
+                || c == '[' || c == ']') {
+            return c;
+        }
+        return 0;
     }
 
     private static int shiftBoundary(int boundary, int first, int removeCount,

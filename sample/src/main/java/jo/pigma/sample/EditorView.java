@@ -60,6 +60,9 @@ public final class EditorView extends View {
     /** Colonnes au-delà desquelles le dessin d'une ligne s'arrête. */
     private static final int MAX_DRAWN_COLUMNS = 10_000;
 
+    /** Colonnes par niveau d'indentation (les guides de L2). */
+    private static final int GUIDE_COLUMNS = 4;
+
     /** Plans partagés par contenu, au-delà le plus ancien s'évince. */
     private static final int SHARED_PLANS = 256;
 
@@ -91,6 +94,19 @@ public final class EditorView extends View {
 
     /** L2 : la structure d'appariement par-dessus les jetons du moteur. */
     private StructureDocument structure;
+
+    /** La paire d'appariement du curseur (L2), null si rien n'adjace. */
+    private StructureDocument.BracketPair bracketPair;
+
+    private int pairCaret = -1;
+
+    private int pairRevision = -1;
+
+    /** Le surlignage des deux bouts d'une paire (le trait du signe). */
+    private final Paint bracketPaint = new Paint();
+
+    /** Les guides d'indentation de L2 (un par niveau de profondeur). */
+    private final Paint guidePaint = new Paint();
 
     private final RenderCache<LinePlan> renderCache = new RenderCache<>(SHARED_PLANS);
 
@@ -134,6 +150,11 @@ public final class EditorView extends View {
         caretWidth = dp(2);
         caretPaint.setColor(CARET_COLOR);
         composePaint.setColor(COMPOSE_COLOR);
+        bracketPaint.setStyle(Paint.Style.STROKE);
+        bracketPaint.setStrokeWidth(dp(1) * 1.5f);
+        bracketPaint.setColor(CARET_COLOR);
+        guidePaint.setStrokeWidth(dp(1));
+        guidePaint.setColor(0x33808080);
         buffer.addListener(modelListener);
         int padding = dp(12);
         setPadding(padding, dp(16), padding, dp(16));
@@ -178,6 +199,29 @@ public final class EditorView extends View {
      */
     public int caretLine() {
         return buffer.lineOfOffset(Math.min(caretOffset, buffer.length()));
+    }
+
+    /**
+     * Pose le curseur à un offset (borné au texte) : l'hôte place le
+     * curseur par programme, la paire d'appariement s'y recalcule au
+     * dessin suivant.
+     *
+     * @param offset la position visée
+     */
+    public void caretTo(int offset) {
+        caretOffset = Math.max(0, Math.min(offset, buffer.length()));
+        ensureCaretVisible();
+        invalidate();
+    }
+
+    /**
+     * La paire d'appariement du curseur (L2) : la dernière calculée au
+     * dessin — le harnais s'en sert pour vérifier la marche.
+     *
+     * @return la paire, ou {@code null} si aucun signe adjacent
+     */
+    public StructureDocument.BracketPair bracketPair() {
+        return bracketPair;
     }
 
     /**
@@ -413,12 +457,70 @@ public final class EditorView extends View {
                 drawComposeUnderline(canvas, line, start, end, baseline);
             }
         }
+        drawStructure(canvas, first, last, count);
         drawCaret(canvas);
         // la fenêtre visible est payée : le reste remplit au fil de fond
         ensureFill();
         lastFrameNanos = System.nanoTime() - frameBegin;
         worstFrameNanos = Math.max(worstFrameNanos, lastFrameNanos);
         frameCount++;
+    }
+
+    /**
+     * Dessine la structure de L2 par-dessus les plans : les guides
+     * d'indentation (un trait par niveau de profondeur, la chaîne
+     * d'appariement — pas les espaces : un code mal indenté les verrait
+     * décalés, assumé) et, quand le curseur est adjacent à un signe, le
+     * surlignage de la paire — la marche {@code pairAt} saute par la
+     * profondeur, le signe exact se lit dans la ligne.
+     */
+    private void drawStructure(Canvas canvas, int first, int last, int count) {
+        for (int line = first; line <= last && line < count; line++) {
+            int depth = line == 0 ? 0
+                    : structure.structureOf(line - 1).depthOut();
+            if (depth <= 0) {
+                continue;
+            }
+            float baseline = getPaddingTop() - fontMetrics.top
+                    + line * lineHeight - scrollY;
+            float top = baseline + fontMetrics.top;
+            float bottom = baseline + fontMetrics.bottom;
+            float left = getPaddingLeft();
+            for (int level = 1; level <= depth; level++) {
+                // un guide par bande de 4 colonnes, centré sur la bande
+                float x = left + (GUIDE_COLUMNS * level - 2) * charWidth;
+                canvas.drawLine(x, top, x, bottom, guidePaint);
+            }
+        }
+        if (caretOffset != pairCaret || buffer.getRevision() != pairRevision) {
+            pairCaret = caretOffset;
+            pairRevision = buffer.getRevision();
+            bracketPair = structure.pairAt(Math.min(caretOffset, buffer.length()));
+        }
+        if (bracketPair == null) {
+            return;
+        }
+        highlightPairEnd(canvas, first, last, bracketPair.fromLine(),
+                bracketPair.fromColumn());
+        highlightPairEnd(canvas, first, last, bracketPair.toLine(),
+                bracketPair.toColumn());
+    }
+
+    /**
+     * Surligne un bout de paire s'il est visible : un cadre fin autour
+     * du signe (la bande verticale de la ligne).
+     */
+    private void highlightPairEnd(Canvas canvas, int first, int last,
+            int line, int column) {
+        if (line < first || line > last) {
+            return;
+        }
+        float baseline = getPaddingTop() - fontMetrics.top
+                + line * lineHeight - scrollY;
+        float x = getPaddingLeft() + column * charWidth;
+        canvas.drawRect(x - dp(1), baseline + fontMetrics.top + dp(2),
+                x + charWidth + dp(1), baseline + fontMetrics.bottom - dp(2),
+                bracketPaint);
     }
 
     /**

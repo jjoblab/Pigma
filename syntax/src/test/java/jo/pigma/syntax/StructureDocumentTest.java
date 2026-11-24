@@ -1,6 +1,7 @@
 package jo.pigma.syntax;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import jo.pigma.core.TextBuffer;
@@ -222,6 +223,143 @@ public class StructureDocumentTest {
         fresh.detach();
         syntax.detach();
         freshSyntax.detach();
+    }
+
+    /**
+     * L'appariement parcourt le corpus : chaque signe simple interrogé
+     * désigne son complémentaire, et la marche est symétrique —
+     * interrogé, le partenaire désigne le signe demandé.
+     *
+     * @throws IOException si le corpus ne se lit pas
+     */
+    @Test
+    public void pairAtWalksTheCorpusSymmetrically() throws IOException {
+        TextBuffer buffer = TextBuffer.create(corpus());
+        SyntaxDocument syntax = SyntaxDocument.open(buffer, Languages.JAVA);
+        StructureDocument structure = StructureDocument.open(buffer, syntax);
+        structure.structureOf(buffer.getLineCount() - 1);
+        // le corpus est un Java complet : la chaîne referme à zéro
+        assertEquals(0, structure.structureOf(buffer.getLineCount() - 1).depthOut());
+        int examined = 0;
+        int paired = 0;
+        outer:
+        for (int line = 0; line < 60; line++) {
+            for (SyntaxDocument.Token token : syntax.lineTokens(line).tokens()) {
+                if (token.end() - token.start() != 1) {
+                    continue;
+                }
+                char sign = charAt(buffer, line, token.start());
+                if (!isSign(sign)) {
+                    continue;
+                }
+                examined++;
+                int offset = buffer.getLineStart(line) + token.start();
+                StructureDocument.BracketPair pair = structure.pairAt(offset + 1);
+                if (pair == null) {
+                    continue;
+                }
+                paired++;
+                assertEquals("le partenaire de la ligne " + line + ", colonne "
+                        + token.start() + " est le complémentaire",
+                        complement(sign), charAt(buffer, pair.toLine(), pair.toColumn()));
+                int matchOffset = buffer.getLineStart(pair.toLine()) + pair.toColumn();
+                StructureDocument.BracketPair back = structure.pairAt(matchOffset + 1);
+                assertEquals("la marche est symétrique : le retour désigne la ligne",
+                        line, back.toLine());
+                assertEquals("la marche est symétrique : le retour désigne la colonne",
+                        token.start(), back.toColumn());
+                if (examined >= 200) {
+                    break outer;
+                }
+            }
+        }
+        assertTrue("le corpus s'apparie presque partout (" + paired + "/"
+                + examined + ")", paired > examined * 9 / 10);
+        structure.detach();
+        syntax.detach();
+    }
+
+    /**
+     * Les paires près et loin : la même ligne, plusieurs lignes, la
+     * préférence du signe à gauche du curseur, et les deux orphelins
+     * (fermant compté sans partenaire, ouvrant non fermé).
+     */
+    @Test
+    public void pairAtMatchesNearAndFar() {
+        TextBuffer buffer = TextBuffer.create(
+                "int f() { return g(1); }\nclass B {\n  int x;\n}\n");
+        SyntaxDocument syntax = SyntaxDocument.open(buffer, Languages.JAVA);
+        StructureDocument structure = StructureDocument.open(buffer, syntax);
+        // le couple de g( : même ligne, colonnes 18 et 20
+        StructureDocument.BracketPair near = structure.pairAt(19);
+        assertEquals(0, near.fromLine());
+        assertEquals(18, near.fromColumn());
+        assertEquals(0, near.toLine());
+        assertEquals(20, near.toColumn());
+        // la préférence du signe à gauche : entre ( et ) de f(), la
+        // marche part de l'ouvrante
+        assertEquals(5, structure.pairAt(6).fromColumn());
+        // le corps de f : l'accolade ligne 0 colonne 8 referme colonne 23
+        StructureDocument.BracketPair body = structure.pairAt(9);
+        assertEquals(0, body.fromLine());
+        assertEquals(8, body.fromColumn());
+        assertEquals(0, body.toLine());
+        assertEquals(23, body.toColumn());
+        // le corps de la classe B : plusieurs lignes, colonne 8 vers la
+        // ligne 3 colonne 0
+        StructureDocument.BracketPair far = structure.pairAt(
+                buffer.getLineStart(1) + 9);
+        assertEquals(1, far.fromLine());
+        assertEquals(8, far.fromColumn());
+        assertEquals(3, far.toLine());
+        assertEquals(0, far.toColumn());
+        // et la marche inverse, depuis la fermante
+        StructureDocument.BracketPair back = structure.pairAt(
+                buffer.getLineStart(3) + 1);
+        assertEquals(1, back.toLine());
+        assertEquals(8, back.toColumn());
+        structure.detach();
+        syntax.detach();
+    }
+
+    /**
+     * Les orphelins n'apparient pas : le fermant sans ouvrant (compté
+     * en rompu) et l'ouvrant jamais fermé (document ouvert).
+     */
+    @Test
+    public void pairAtReturnsNullForOrphans() {
+        TextBuffer buffer = TextBuffer.create(")\n(");
+        SyntaxDocument syntax = SyntaxDocument.open(buffer, Languages.JAVA);
+        StructureDocument structure = StructureDocument.open(buffer, syntax);
+        // le fermant orphelin : à droite du curseur posé juste après
+        assertNull("fermant orphelin : pas de partenaire", structure.pairAt(1));
+        // l'ouvrant jamais fermé : idem, document ouvert
+        assertNull("ouvrant non fermé : pas de partenaire", structure.pairAt(3));
+        // mais le fermant orphelin reste compté en rompu
+        assertEquals(1, structure.mismatchCount());
+        structure.detach();
+        syntax.detach();
+    }
+
+    private static char charAt(TextBuffer buffer, int line, int column) {
+        int start = buffer.getLineStart(line);
+        return buffer.getText(start + column, start + column + 1).charAt(0);
+    }
+
+    private static boolean isSign(char c) {
+        return c == '(' || c == ')' || c == '{' || c == '}'
+                || c == '[' || c == ']';
+    }
+
+    private static char complement(char sign) {
+        return switch (sign) {
+            case '(' -> ')';
+            case ')' -> '(';
+            case '{' -> '}';
+            case '}' -> '{';
+            case '[' -> ']';
+            default -> '[';
+        };
     }
 
     private String corpus() throws IOException {
