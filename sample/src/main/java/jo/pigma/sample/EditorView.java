@@ -19,6 +19,7 @@ import jo.pigma.core.UndoStack;
 import jo.pigma.syntax.BackgroundFill;
 import jo.pigma.syntax.LanguageSyntax;
 import jo.pigma.syntax.Languages;
+import jo.pigma.syntax.StructureDocument;
 import jo.pigma.syntax.SyntaxDocument;
 import jo.pigma.syntax.SyntaxTheme;
 
@@ -88,6 +89,9 @@ public final class EditorView extends View {
     /** Le fil de fond du remplissage (clichés révision-vérifiés). */
     private BackgroundFill backgroundFill;
 
+    /** L2 : la structure d'appariement par-dessus les jetons du moteur. */
+    private StructureDocument structure;
+
     private final RenderCache<LinePlan> renderCache = new RenderCache<>(SHARED_PLANS);
 
     /** Durée de la dernière trame (budget par image, diagnostic). */
@@ -107,7 +111,10 @@ public final class EditorView extends View {
                                 int insertedLength, int revision) {
             clampCaret();
             ensureCaretVisible();
-            ensureFill();
+            // le remplissage n'est PAS relancé ici : la salve du fond ne
+            // doit pas chevaucher le dessin qui suit l'édition —
+            // l'odomètre l'a vu (moteur 9,2 ms à l'ouverture du gros
+            // fichier) — ensureFill, en fin de trame, s'en chargera
             invalidate();
         }
     };
@@ -117,6 +124,7 @@ public final class EditorView extends View {
         buffer = TextBuffer.create(INITIAL_TEXT);
         undoStack = new UndoStack(buffer);
         syntax = SyntaxDocument.open(buffer, Languages.JAVA);
+        structure = StructureDocument.open(buffer, syntax);
         backgroundFill = BackgroundFill.start(syntax);
         textPaint.setTypeface(Typeface.MONOSPACE);
         textPaint.setTextSize(14.0f * getResources().getDisplayMetrics().scaledDensity);
@@ -151,6 +159,25 @@ public final class EditorView extends View {
      */
     public SyntaxDocument getSyntaxDocument() {
         return syntax;
+    }
+
+    /**
+     * Structure d'appariement de la vue (L2) : le panneau y lit la
+     * profondeur et les rompus.
+     *
+     * @return l'analyseur tolérant, jamais {@code null}
+     */
+    public StructureDocument getStructureDocument() {
+        return structure;
+    }
+
+    /**
+     * Ligne du curseur (le panneau structure y lit sa profondeur).
+     *
+     * @return l'indice de la ligne du curseur
+     */
+    public int caretLine() {
+        return buffer.lineOfOffset(Math.min(caretOffset, buffer.length()));
     }
 
     /**
@@ -263,10 +290,12 @@ public final class EditorView extends View {
         // cours finit sur l'ancien document, le nouveau partira sien
         backgroundFill.stop();
         syntax.detach();
+        structure.detach();
         try (TextTransaction transaction = undoStack.newTransaction()) {
             transaction.replace(0, buffer.length(), text);
         }
         syntax = SyntaxDocument.open(buffer, language);
+        structure = StructureDocument.open(buffer, syntax);
         backgroundFill = BackgroundFill.start(syntax);
         resetFrameStats();
         // autre langage : les plans portent des couleurs résolues, tout
@@ -275,7 +304,9 @@ public final class EditorView extends View {
         scrollY = 0.0f;
         clampCaret();
         ensureCaretVisible();
-        ensureFill();
+        // la salve du fond attend la fin de la trame d'ouverture (le
+        // ensureFill de onDraw la relance) : le premier dessin du gros
+        // fichier ne la paie plus
         invalidate();
     }
 

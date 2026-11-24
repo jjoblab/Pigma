@@ -22,6 +22,7 @@ import jo.pigma.core.TextPosition;
 import jo.pigma.core.UndoStack;
 import jo.pigma.syntax.LanguageSyntax;
 import jo.pigma.syntax.Languages;
+import jo.pigma.syntax.StructureDocument;
 import jo.pigma.syntax.SyntaxDocument;
 import jo.pigma.syntax.SyntaxTheme;
 
@@ -291,11 +292,15 @@ public final class MainActivity extends Activity {
 
     private void updateDiagnostics() {
         SyntaxDocument syntax = editorView.getSyntaxDocument();
+        StructureDocument structure = editorView.getStructureDocument();
+        int caretLine = editorView.caretLine();
+        int depth = caretLine == 0 ? 0 : structure.structureOf(caretLine - 1).depthOut();
         String text = String.format(
                 "coloration : première %.1f ms · demande %.2f ms (%d l.) "
                         + "· dernière frappe %.2f ms (%d ligne(s) relue(s)) · %d/%d lignes lexées "
                         + "· %d jetons · trame %.2f ms (pire %.2f, moteur %.2f)"
-                        + " · fond %d ms (%d tr.)",
+                        + " · fond %d ms (%d tr.)"
+                        + " · structure : %d/%d lignes, profondeur %d, %d rompu(s)",
                 syntax.firstLexNanos() / 1_000_000.0,
                 syntax.lastRequestNanos() / 1_000_000.0,
                 syntax.lastRequestLines(),
@@ -308,7 +313,11 @@ public final class MainActivity extends Activity {
                 editorView.worstFrameNanos() / 1_000_000.0,
                 editorView.lastFrameEngineNanos() / 1_000_000.0,
                 editorView.backgroundFillNanos() / 1_000_000L,
-                editorView.backgroundFillSlices());
+                editorView.backgroundFillSlices(),
+                structure.analyzedLineCount(),
+                syntax.lineCount(),
+                depth,
+                structure.mismatchCount());
         if (syntax.inBigFileMode()) {
             text += " · mode gros fichier";
         }
