@@ -94,6 +94,18 @@ public final class EditorView extends View {
     private int composingStart = -1;
     private int composingEnd = -1;
 
+    /** L'ancre de sélection (-1 : pas de sélection, le curseur seul). */
+    private int selectionAnchor = -1;
+
+    /** L'horodatage de l'appui courant (l'appui long sélectionne le mot). */
+    private long touchDownNanos;
+
+    /** L'horodatage du dernier tap (le double-tap sélectionne le mot). */
+    private long lastTapNanos;
+
+    private float lastTapX;
+    private float lastTapY;
+
     private float scrollY;
     private float touchStartX;
     private float touchStartY;
@@ -133,6 +145,9 @@ public final class EditorView extends View {
 
     /** Horodatage du dernier DÉMARRAGE de passe (le ralenti tient même à froid). */
     private long lastAnalysisStartNanos = -Long.MAX_VALUE / 2;
+
+    /** La passe est suspendue : les documents ne sont pas ceux du texte courant. */
+    private boolean analysisSuspended;
 
     /** La taille d'une tranche d'analyse (lignes avalées par post). */
     private static final int ANALYSIS_SLICE_LINES = 256;
@@ -180,6 +195,8 @@ public final class EditorView extends View {
     /** La bande de fond de la portée du curseur. */
     private final Paint scopePaint = new Paint();
 
+    private final Paint selectionPaint = new Paint();
+
     /** Le souligné des diagnostics d'appariement. */
     private final Paint diagnosticPaint = new Paint();
 
@@ -206,6 +223,7 @@ public final class EditorView extends View {
         @Override
         public void textChanged(TextBuffer changed, int start, int removedLength,
                                 int insertedLength, int revision) {
+            shiftSelection(start, removedLength, insertedLength);
             clampCaret();
             shiftFolds(start);
             ensureCaretVisible();
@@ -241,6 +259,8 @@ public final class EditorView extends View {
         guidePaint.setColor(0x33808080);
         scopePaint.setStyle(Paint.Style.FILL);
         scopePaint.setColor(0x0D2962FF);
+        selectionPaint.setStyle(Paint.Style.FILL);
+        selectionPaint.setColor(0x332979FF);
         diagnosticPaint.setStyle(Paint.Style.STROKE);
         diagnosticPaint.setStrokeWidth(dp(2));
         diagnosticPaint.setColor(0xFFFF3B30);
@@ -298,12 +318,14 @@ public final class EditorView extends View {
     /**
      * Pose le curseur à un offset (borné au texte) : l'hôte place le
      * curseur par programme, la paire d'appariement s'y recalcule au
-     * dessin suivant.
+     * dessin suivant. La sélection se range — poser le curseur, c'est
+     * quitter la sélection.
      *
      * @param offset la position visée
      */
     public void caretTo(int offset) {
         caretOffset = Math.max(0, Math.min(offset, buffer.length()));
+        selectionAnchor = -1;
         ensureCaretVisible();
         invalidate();
     }
@@ -469,6 +491,12 @@ public final class EditorView extends View {
         // le fil de fond s'arrête avant le détachement : sa tranche en
         // cours finit sur l'ancien document, le nouveau partira sien
         backgroundFill.stop();
+        // l'analyse se suspend : l'écouteur du panneau est notifié
+        // APRÈS le remplacement du texte mais AVANT l'ouverture des
+        // nouveaux documents — démarrer une passe dans cette fenêtre
+        // lexe les ANCIENS jetons dans le NOUVEAU texte (le harnais
+        // l'a épinglé au changement du fichier hors normes)
+        analysisSuspended = true;
         syntax.detach();
         structure.detach();
         // l'annotateur s'éteint AVANT le remplacement : l'écouteur du
@@ -487,6 +515,8 @@ public final class EditorView extends View {
         lastAnalysisStartNanos = -Long.MAX_VALUE / 2;
         suggestions = List.of();
         suggestionWordStart = -1;
+        // autre document : la sélection n'y désigne plus rien
+        selectionAnchor = -1;
         try (TextTransaction transaction = undoStack.newTransaction()) {
             transaction.replace(0, buffer.length(), text);
         }
@@ -495,6 +525,9 @@ public final class EditorView extends View {
         semantic = SemanticDocument.open(buffer, syntax, structure,
                 new JavaDeclarations());
         backgroundFill = BackgroundFill.start(syntax);
+        // les nouveaux documents sont ouverts : la fenêtre de
+        // suspension se referme, l'analyse repartira sur la demande
+        analysisSuspended = false;
         // autre document : les plis de l'ancien n'y ont plus de sens
         folded.clear();
         rebuildFoldLayout();
@@ -545,6 +578,87 @@ public final class EditorView extends View {
         return caretOffset;
     }
 
+    /**
+     * La largeur d'un glyphe de la police à espacement fixe (l'hôte
+     * calcule ses propres repères de toucher avec).
+     *
+     * @return la largeur de « M » en pixels
+     */
+    public float charWidth() {
+        return charWidth;
+    }
+
+    /**
+     * Une sélection est-elle en cours (l'ancre et le curseur
+     * désignent des positions différentes) ?
+     *
+     * @return vrai si du texte est sélectionné
+     */
+    public boolean hasSelection() {
+        return selectionAnchor >= 0 && selectionAnchor != caretOffset;
+    }
+
+    /**
+     * Le début de la sélection, en unités de code UTF-16.
+     *
+     * @return la plus petite des deux bornes, ou la position du
+     *         curseur sans sélection
+     */
+    public int selectionStart() {
+        return selectionAnchor < 0
+                ? caretOffset : Math.min(selectionAnchor, caretOffset);
+    }
+
+    /**
+     * La fin de la sélection, en unités de code UTF-16.
+     *
+     * @return la plus grande des deux bornes, ou la position du
+     *         curseur sans sélection
+     */
+    public int selectionEnd() {
+        return selectionAnchor < 0
+                ? caretOffset : Math.max(selectionAnchor, caretOffset);
+    }
+
+    /**
+     * Le texte sélectionné (le copier de l'hôte, le presse-papiers).
+     *
+     * @return le texte entre l'ancre et le curseur, vide sans sélection
+     */
+    public CharSequence selectedText() {
+        if (!hasSelection()) {
+            return "";
+        }
+        return buffer.getText(selectionStart(), selectionEnd());
+    }
+
+    /**
+     * Pose la sélection : l'ancre et le curseur (les bornes se
+     * bornent, l'ordre importe peu — le curseur porte la fin visible).
+     * Un début égal à la fin réduit la sélection au curseur.
+     *
+     * @param start une borne (l'ancre si elle précède)
+     * @param end   l'autre borne
+     */
+    public void setSelection(int start, int end) {
+        int from = clampToRange(start, 0, buffer.length());
+        int to = clampToRange(end, 0, buffer.length());
+        // l'ancre se pose APRÈS le curseur : poser le curseur range la
+        // sélection, l'ancre la rouvre
+        selectionAnchor = -1;
+        caretTo(to);
+        selectionAnchor = from == to ? -1 : from;
+        invalidate();
+    }
+
+    /**
+     * Sélectionne le document entier (le bouton de l'hôte, le menu du
+     * clavier) : l'ancre au début, le curseur à la fin.
+     */
+    public void selectAll() {
+        setSelection(0, buffer.length());
+    }
+
     @Override
     public boolean onCheckIsTextEditor() {
         return true;
@@ -563,6 +677,7 @@ public final class EditorView extends View {
             case MotionEvent.ACTION_DOWN:
                 touchStartX = event.getX();
                 touchStartY = event.getY();
+                touchDownNanos = System.nanoTime();
                 dragging = false;
                 break;
             case MotionEvent.ACTION_MOVE:
@@ -594,17 +709,41 @@ public final class EditorView extends View {
                     requestFocus();
                     insertSuggestion(event.getX());
                     clearComposing();
+                } else if (heldLongEnough()
+                        || tappedTwice(event.getX(), event.getY())) {
+                    // l'appui long ou le double-tap : le mot sous le
+                    // doigt se sélectionne (la frappe suivante le
+                    // remplacera)
+                    requestFocus();
+                    selectWordAt(event.getX(), event.getY());
+                    clearComposing();
                 } else {
                     requestFocus();
                     placeCaretAt(event.getX(), event.getY());
                     clearComposing();
                     showSoftInput();
                 }
+                lastTapNanos = System.nanoTime();
+                lastTapX = event.getX();
+                lastTapY = event.getY();
                 break;
             default:
                 break;
         }
         return true;
+    }
+
+    /** L'appui courant a-t-il duré au-delà du seuil de l'appui long ? */
+    private boolean heldLongEnough() {
+        return System.nanoTime() - touchDownNanos > 500_000_000L;
+    }
+
+    /** Le tap courant suit-il de près un tap au même endroit ? */
+    private boolean tappedTwice(float x, float y) {
+        return lastTapNanos > 0L
+                && System.nanoTime() - lastTapNanos < 350_000_000L
+                && Math.abs(x - lastTapX) < touchSlop()
+                && Math.abs(y - lastTapY) < touchSlop();
     }
 
     @Override
@@ -618,8 +757,10 @@ public final class EditorView extends View {
         int last = lastVisibleLine();
         updateStructureCaches();
         // la bande de portée se peint avant le texte (le texte se
-        // dessine dessus), les guides et la paire après
+        // dessine dessus), la sélection par-dessus elle, les guides et
+        // la paire après
         drawScopeBand(canvas, first, last, count);
+        drawSelection(canvas, first, last, count);
         for (int line = first; line <= last && line < count; line++) {
             if (isHidden(line)) {
                 continue;
@@ -690,6 +831,36 @@ public final class EditorView extends View {
         float bottom = getPaddingTop() + (visibleIndexOf(to) + 1) * lineHeight - scrollY;
         canvas.drawRect(getPaddingLeft(), top, getWidth() - getPaddingRight(),
                 bottom, scopePaint);
+    }
+
+    /**
+     * La teinte de sélection, ligne visible par ligne visible : de la
+     * borne d'entrée à la fin du texte de la ligne (les lignes
+     * entièrement dedans se teintent entières, celles cachées par un
+     * pli ne se dessinent pas — le plis les remplace visuellement).
+     */
+    private void drawSelection(Canvas canvas, int first, int last, int count) {
+        if (!hasSelection()) {
+            return;
+        }
+        int from = selectionStart();
+        int to = selectionEnd();
+        for (int line = first; line <= last && line < count; line++) {
+            if (isHidden(line)) {
+                continue;
+            }
+            int lineStart = buffer.getLineStart(line);
+            int lineEnd = buffer.getLineEnd(line);
+            int start = Math.max(from, lineStart);
+            int end = Math.min(to, lineEnd);
+            if (end <= start) {
+                continue;
+            }
+            float left = getPaddingLeft() + (start - lineStart) * charWidth;
+            float right = getPaddingLeft() + (end - lineStart) * charWidth;
+            float top = getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
+            canvas.drawRect(left, top, right, top + lineHeight, selectionPaint);
+        }
     }
 
     /**
@@ -1100,6 +1271,11 @@ public final class EditorView extends View {
      * jamais dans une trame.
      */
     private void refreshAnalysis() {
+        if (analysisSuspended) {
+            // les documents ne sont pas ceux du texte courant (changement
+            // de document en cours) : aucune passe ne part sur ce mélange
+            return;
+        }
         if (indexBuilder == null && symbolIndex != null
                 && buffer.getRevision() == analysisRevision) {
             return;
@@ -1317,7 +1493,63 @@ public final class EditorView extends View {
                 ? clampToRange((int) ((x - getPaddingLeft()) / charWidth), 0, lineEnd - lineStart)
                 : 0;
         caretOffset = buffer.offsetOfPosition(line, column);
+        // un tap pose le curseur : la sélection se range
+        selectionAnchor = -1;
         invalidate();
+    }
+
+    /**
+     * Sélectionne le mot sous le doigt : les bornes du mot se lisent
+     * dans la fenêtre de la ligne (jamais le document pour un mot).
+     */
+    private void selectWordAt(float x, float y) {
+        int line = buffer.getLineCount() - 1;
+        if (lineHeight > 0.0f) {
+            line = lineOfVisibleIndex(
+                    (int) ((y - getPaddingTop() + scrollY) / lineHeight));
+        }
+        int lineStart = buffer.getLineStart(line);
+        int lineEnd = buffer.getLineEnd(line);
+        int column = charWidth > 0.0f
+                ? clampToRange((int) ((x - getPaddingLeft()) / charWidth), 0, lineEnd - lineStart)
+                : 0;
+        int offset = buffer.offsetOfPosition(line, column);
+        int wordStart = wordBoundsStart(offset, lineStart);
+        int wordEnd = wordBoundsEnd(offset, lineEnd);
+        // le curseur d'abord (le poser range la sélection), l'ancre
+        // ensuite la rouvre
+        selectionAnchor = -1;
+        caretTo(offset);
+        if (wordEnd > wordStart) {
+            selectionAnchor = wordStart;
+            caretOffset = wordEnd;
+            invalidate();
+        }
+    }
+
+    /** Le début du mot qui contient l'offset (ou l'offset lui-même). */
+    private int wordBoundsStart(int offset, int lineStart) {
+        int at = offset;
+        while (at > lineStart
+                && isWordChar(buffer.charAt(at - 1))) {
+            at--;
+        }
+        return at;
+    }
+
+    /** La fin du mot qui contient l'offset (ou l'offset lui-même). */
+    private int wordBoundsEnd(int offset, int lineEnd) {
+        int at = offset;
+        while (at < lineEnd
+                && isWordChar(buffer.charAt(at))) {
+            at++;
+        }
+        return at;
+    }
+
+    /** Un caractère de mot : identifiant Java ou lettre large (accentuée). */
+    private static boolean isWordChar(char c) {
+        return Character.isJavaIdentifierPart(c) || Character.isLetter(c);
     }
 
     /** Amène le curseur dans la fenêtre visible (frappe en bord bas) ; un pli qui le cache s'ouvre. */
@@ -1400,18 +1632,50 @@ public final class EditorView extends View {
             transaction.replace(start, end, text);
         }
         caretOffset = Math.min(start + text.length(), buffer.length());
+        // toute édition directe réduit la sélection (le curseur porte
+        // la fin, l'ancre ne survit pas à ce qu'elle désignait)
+        selectionAnchor = -1;
         invalidate();
     }
 
     /**
+     * L'ancre survit aux éditions qui ne viennent pas d'elle : décalée
+     * après la zone remplacée, tenue avant, ramenée au début de la
+     * zone si elle vivait dedans (une ancre intérieure ne désigne plus
+     * rien de stable).
+     *
+     * @param start          début de la zone remplacée
+     * @param removedLength  caractères retirés
+     * @param insertedLength caractères insérés
+     */
+    private void shiftSelection(int start, int removedLength, int insertedLength) {
+        if (selectionAnchor < 0) {
+            return;
+        }
+        if (selectionAnchor <= start) {
+            return;
+        }
+        if (selectionAnchor >= start + removedLength) {
+            selectionAnchor += insertedLength - removedLength;
+        } else {
+            selectionAnchor = start;
+        }
+    }
+
+    /**
      * Supprime autour du curseur (le chemin Suppr : la demande IME et
-     * l'événement clavier y passent).
+     * l'événement clavier y passent). Une sélection en cours passe
+     * avant : c'est ELLE que Suppr efface, pas le voisin du curseur.
      *
      * @param leftLength  caractères à gauche du curseur
      * @param rightLength caractères à droite du curseur
      */
     void deleteAround(int leftLength, int rightLength) {
         clearComposing();
+        if (hasSelection()) {
+            applyEdit(selectionStart(), selectionEnd(), "");
+            return;
+        }
         int start = Math.max(0, caretOffset - leftLength);
         int end = Math.min(buffer.length(), caretOffset + rightLength);
         if (end > start) {
@@ -1484,8 +1748,10 @@ public final class EditorView extends View {
 
         @Override
         public boolean commitText(CharSequence text, int newCursorPosition) {
-            int start = editor.composingStart >= 0 ? editor.composingStart : editor.caretOffset;
-            int end = editor.composingStart >= 0 ? editor.composingEnd : editor.caretOffset;
+            int start = editor.composingStart >= 0 ? editor.composingStart
+                    : editor.hasSelection() ? editor.selectionStart() : editor.caretOffset;
+            int end = editor.composingStart >= 0 ? editor.composingEnd
+                    : editor.hasSelection() ? editor.selectionEnd() : editor.caretOffset;
             editor.applyEdit(start, end, text);
             editor.clearComposing();
             return true;
@@ -1557,8 +1823,30 @@ public final class EditorView extends View {
          */
         @Override
         public boolean performEditorAction(int actionCode) {
-            editor.applyEdit(editor.caretOffset, editor.caretOffset, "\n");
+            editor.applyEdit(editor.hasSelection()
+                    ? editor.selectionStart() : editor.caretOffset,
+                    editor.hasSelection() ? editor.selectionEnd() : editor.caretOffset,
+                    "\n");
             return true;
+        }
+
+        /**
+         * Le clavier déplace la sélection (le champ de recherche du
+         * clavier, la poignée du texte sélectionné) : l'ancre et le
+         * curseur suivent, la sélection vient.
+         */
+        @Override
+        public boolean setSelection(int start, int end) {
+            editor.setSelection(start, end);
+            return true;
+        }
+
+        /**
+         * Le texte sélectionné (le copier du clavier le demande).
+         */
+        @Override
+        public CharSequence getSelectedText(int flags) {
+            return editor.hasSelection() ? editor.selectedText() : null;
         }
     }
 }

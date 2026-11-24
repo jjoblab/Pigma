@@ -66,6 +66,10 @@ public final class MainActivity extends Activity {
     private Button redoButton;
     private Button copyButton;
 
+    private Button selectButton;
+
+    private Button copyTextButton;
+
     private final List<String> scenarioLog = new ArrayList<>();
     private String currentScenario = "Java (démo)";
     private boolean loggedFirstColoration;
@@ -120,6 +124,12 @@ public final class MainActivity extends Activity {
         copyButton = new Button(this);
         copyButton.setText("Copier les mesures");
         copyButton.setOnClickListener(this::onCopyClicked);
+        selectButton = new Button(this);
+        selectButton.setText("Tout sélectionner");
+        selectButton.setOnClickListener(this::onSelectAllClicked);
+        copyTextButton = new Button(this);
+        copyTextButton.setText("Copier texte");
+        copyTextButton.setOnClickListener(this::onCopyTextClicked);
 
         setContentView(buildLayout());
         editorView.getBuffer().addListener(statusListener);
@@ -157,7 +167,7 @@ public final class MainActivity extends Activity {
                 themeButton("Sombre", EditorThemes.DARK, EditorThemes.DARK_BACKGROUND),
                 undoButton, redoButton));
 
-        root.addView(row(margin, copyButton));
+        root.addView(row(margin, copyButton, selectButton, copyTextButton));
 
         LinearLayout.LayoutParams diagnosticsParams =
                 new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
@@ -226,6 +236,36 @@ public final class MainActivity extends Activity {
                 (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
         clipboard.setPrimaryClip(ClipData.newPlainText("mesures Pigma", measures));
         Toast.makeText(this, "Mesures copiées (" + scenarioLog.size() + " lignes)",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    /**
+     * Tout sélectionner, ou quitter la sélection si elle est déjà
+     * entière : le bouton démontre la sélection (la frappe suivante
+     * remplacera, Suppr l'effacera, « Copier texte » la lira).
+     */
+    private void onSelectAllClicked(View button) {
+        if (editorView.hasSelection()
+                && editorView.selectionStart() == 0
+                && editorView.selectionEnd() == editorView.getBuffer().length()) {
+            editorView.caretTo(0);
+            selectButton.setText("Tout sélectionner");
+        } else {
+            editorView.selectAll();
+            selectButton.setText("Quitter la sélection");
+        }
+    }
+
+    /**
+     * Copie le texte sélectionné (le presse-papiers système) : la
+     * taille dit si la sélection tient.
+     */
+    private void onCopyTextClicked(View button) {
+        CharSequence selected = editorView.selectedText();
+        ClipboardManager clipboard =
+                (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        clipboard.setPrimaryClip(ClipData.newPlainText("sélection Pigma", selected));
+        Toast.makeText(this, selected.length() + " caractère(s) copié(s)",
                 Toast.LENGTH_SHORT).show();
     }
 
