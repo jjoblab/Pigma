@@ -1,5 +1,6 @@
 package jo.pigma.editor;
 
+import jo.pigma.editor.gutter.Gutter;
 import jo.pigma.editor.popups.InfoPopup;
 import jo.pigma.editor.render.RenderCache;
 import jo.pigma.editor.popups.PopupMetrics;
@@ -227,6 +228,9 @@ public final class EditorView extends View {
     /** Le bandeau de complétion — état et dessin au paquet des popups. */
     private SuggestionBand suggestionBand;
 
+    /** La gouttière — les numéros de ligne, au paquet du même nom. */
+    private Gutter gutter;
+
     /** La borne de début du mot courant (l'insertion remplace le préfixe). */
     private int suggestionWordStart = -1;
 
@@ -379,10 +383,11 @@ public final class EditorView extends View {
         diagnosticPaint.setStrokeWidth(dp(2));
         diagnosticPaint.setColor(0xFFFF3B30);
         suggestionBand = new SuggestionBand(dp(1));
+        gutter = new Gutter(dp(1));
         trackedLineCount = buffer.getLineCount();
         buffer.addListener(modelListener);
         int padding = dp(12);
-        setPadding(padding, dp(16), padding, dp(16));
+        setPadding(dp(44), dp(16), padding, dp(16));
         setFocusable(true);
         setFocusableInTouchMode(true);
     }
@@ -733,6 +738,10 @@ public final class EditorView extends View {
      * @param newBackground couleur ARGB du fond
      */
     public void applyTheme(SyntaxTheme newTheme, int newBackground) {
+        int luminance = ((newBackground >>> 16) & 0xFF) * 30
+                + ((newBackground >>> 8) & 0xFF) * 59
+                + (newBackground & 0xFF) * 11;
+        gutter.setTextColor(luminance >= 12800 ? 0xFF8A8A8E : 0xFF8E8E93);
         theme = newTheme;
         themeBackground = newBackground;
         // les plans portent des couleurs résolues : re-rendu, jamais
@@ -1476,6 +1485,7 @@ public final class EditorView extends View {
         // dessine dessus), la sélection par-dessus elle, la recherche
         // par-dessus tout ça (la correspondance courante domine), les
         // guides et la paire après
+        drawGutter(canvas, first, last, count);
         drawScopeBand(canvas, first, last, count);
         drawSelection(canvas, first, last, count);
         drawSearchHighlights(canvas, first, last, count);
@@ -1654,6 +1664,22 @@ public final class EditorView extends View {
         return new PopupMetrics(getPaddingLeft(), getPaddingTop(),
                 getPaddingRight(), getPaddingBottom(), getWidth(), getHeight(),
                 lineHeight, charWidth, dp(1));
+    }
+
+    /**
+     * La gouttière : le numéro de chaque ligne visible, aligné à
+     * droite avant la zone du marqueur de pli — le pinceau vit au
+     * paquet, la vue ne fournit que la géométrie (la baseline, le
+     * bord droit du champ des numéros).
+     */
+    private void drawGutter(Canvas canvas, int first, int last, int count) {
+        for (int line = first; line <= last && line < count; line++) {
+            if (isHidden(line)) {
+                continue;
+            }
+            gutter.drawNumber(canvas, line, lineBaseline(line),
+                    getPaddingLeft() - dp(11));
+        }
     }
 
     /**
