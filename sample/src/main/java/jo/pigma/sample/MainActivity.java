@@ -634,8 +634,15 @@ public final class MainActivity extends Activity {
             // premier lancement) — sans lui l'écriture du démo échoue et
             // le serveur ne part jamais
             java.nio.file.Files.createDirectories(resources.toPath());
-            java.nio.file.Files.writeString(document.toPath(), DemoTexts.LUA,
-                    java.nio.charset.StandardCharsets.UTF_8);
+            // writeString n'existe pas dans android.jar (Java 11, jamais
+            // porté) — l'écriture classique y va, byte par byte
+            java.io.FileOutputStream out = new java.io.FileOutputStream(document);
+            try {
+                out.write(DemoTexts.LUA.getBytes(
+                        java.nio.charset.StandardCharsets.UTF_8));
+            } finally {
+                out.close();
+            }
         } catch (java.io.IOException noFile) {
             Toast.makeText(this, "l'espace de travail ne s'écrit pas : "
                     + noFile.getMessage(), Toast.LENGTH_SHORT).show();
