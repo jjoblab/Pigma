@@ -20,6 +20,9 @@ import java.util.Locale;
 
 import jo.pigma.editor.EditorThemes;
 import jo.pigma.editor.EditorView;
+import jo.pigma.editor.popups.DiagnosticCard;
+import jo.pigma.editor.popups.PopupStyle;
+import jo.pigma.editor.popups.QuickActionCard;
 import jo.pigma.core.TextBuffer;
 import jo.pigma.core.TextListener;
 import jo.pigma.core.TextPosition;
@@ -100,6 +103,9 @@ public final class MainActivity extends Activity {
 
     /** Les diagnostics du dernier avis du serveur (le panneau les lit). */
     private volatile int lspDiagnosticCount = -1;
+
+    /** Les diagnostics du dernier avis du serveur, pour la carte de diagnostic. */
+    private volatile java.util.List<LspDiagnostic> lspDiagnostics = java.util.List.of();
 
     /** Le préfixe du dernier envoi de complétion (la clef du cache). */
     private volatile String completionPrefix;
@@ -226,12 +232,73 @@ public final class MainActivity extends Activity {
         // contenu — ici la démo Java (le chargement n'est pas une
         // édition à défaire, l'histoire repart vide)
         editorView.setLanguage(Languages.JAVA, DemoTexts.JAVA);
+        // le style des popups : l'hôte pose le sien — fond translucide
+        // un peu plus léger, coins plus ronds, largeur accrue (l'API
+        // de la bibliothèque, tout y se règle)
+        editorView.setPopupStyle(PopupStyle.builder()
+                .backgroundArgb(0xD9F6F8FA)
+                .borderArgb(0xA8B5B5B5)
+                .cornerRadiusDp(20)
+                .minCardWidthDp(400)
+                .maxCardWidthDp(500)
+                .build());
+        // les diagnostics du serveur de langage montent à la carte de
+        // diagnostic (le marqueur de la gouttière en vit, le doigt y
+        // l'ouvre)
+        editorView.setDiagnosticProvider(this::diagnosticsOfServer);
+        // les intentions de l'hôte : l'ampoule jaune de la gouttière
+        // les porte avec celles de l'éditeur
+        editorView.setQuickActionProvider(this::hostQuickActions);
         editorView.getUndoStack().clear();
         updateStatus();
         updateDiagnostics();
         // la première coloration est paresseuse (au premier dessin) et
         // le remplissage avance par tranches : le panneau suit
         editorView.post(this::watchDiagnostics);
+    }
+
+    /**
+     * Les diagnostics du serveur à une ligne (la carte de diagnostic
+     * les lit au toucher du marqueur) — la sévérité du protocole y
+     * garde son rang (erreur, avertissement, information).
+     *
+     * @param line l'indice de la ligne
+     * @return les diagnostics du serveur sur la ligne, jamais null
+     */
+    private java.util.List<DiagnosticCard.Entry> diagnosticsOfServer(int line) {
+        java.util.List<DiagnosticCard.Entry> found = new java.util.ArrayList<>();
+        for (LspDiagnostic diagnostic : lspDiagnostics) {
+            if (diagnostic.range().start().line() == line) {
+                found.add(new DiagnosticCard.Entry(
+                        diagnostic.severity() == 1 ? DiagnosticCard.SEVERITY_ERROR
+                                : diagnostic.severity() == 2 ? DiagnosticCard.SEVERITY_WARNING
+                                : DiagnosticCard.SEVERITY_INFO,
+                        diagnostic.message()));
+            }
+        }
+        return found;
+    }
+
+    /**
+     * Les intentions de l'hôte à une ligne (l'ampoule les porte) : la
+     * date du jour au curseur, les statistiques du document.
+     *
+     * @param line   l'indice de la ligne
+     * @param column la colonne du curseur
+     * @return les actions de l'hôte, jamais null
+     */
+    private java.util.List<QuickActionCard.Entry> hostQuickActions(int line, int column) {
+        return java.util.List.of(
+                new QuickActionCard.Entry("Insérer la date du jour", this::insertToday),
+                new QuickActionCard.Entry("Ouvrir la recherche", editorView::toggleSearchPopup));
+    }
+
+    /**
+     * L'intention de date : la date du jour se pose au curseur (une
+     * unité d'annulation).
+     */
+    private void insertToday() {
+        editorView.insertAtCaret(java.time.LocalDate.now().toString());
     }
 
     private View buildLayout() {
@@ -553,7 +620,11 @@ public final class MainActivity extends Activity {
             public void onDiagnostics(String uri,
                     java.util.List<LspDiagnostic> diagnostics) {
                 lspDiagnosticCount = diagnostics.size();
-                runOnUiThread(MainActivity.this::updateDiagnostics);
+                lspDiagnostics = java.util.List.copyOf(diagnostics);
+                runOnUiThread(() -> {
+                    updateDiagnostics();
+                    editorView.invalidate();
+                });
             }
         };
     }
@@ -567,6 +638,7 @@ public final class MainActivity extends Activity {
         editorView.setInfoProvider(null);
         editorView.setSuggestionProvider(null);
         editorView.setSignatureProvider(null);
+        lspDiagnostics = java.util.List.of();
         signatureGeneration.incrementAndGet();
         signatureCaret = -1;
         signatureAnswer = null;

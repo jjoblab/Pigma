@@ -23,35 +23,26 @@ import jo.pigma.editor.EditorView;
  */
 public final class HistoryCard {
 
-    /** La hauteur d'une rangée repliée (dp). */
-    private static final int ROW_HEIGHT_DP = 44;
-
     /** La hauteur de l'en-tête (dp). */
-    private static final int HEADER_DP = 40;
+    private static final int HEADER_DP = 46;
 
     /** La hauteur du pied de carte (dp). */
-    private static final int FOOTER_DP = 24;
+    private static final int FOOTER_DP = 30;
 
     /** La hauteur d'une ligne de texte dépliée (dp). */
-    private static final int EXPAND_ROW_DP = 18;
+    private static final int EXPAND_ROW_DP = 22;
 
     /** Le plafond de lignes dépliées d'une trace (dp au-delà : « … »). */
     private static final int EXPAND_ROWS = 4;
 
     /** La hauteur de la pastille Restaurer (dp). */
-    private static final int RESTORE_DP = 30;
+    private static final int RESTORE_DP = 38;
 
     /** La marge aux murs de la vue (dp). */
     private static final int MARGIN_DP = 8;
 
     /** L'écart à la sélection (dp). */
     private static final int GAP_DP = 4;
-
-    /** La largeur plancher de la carte (dp). */
-    private static final int MIN_WIDTH_DP = 260;
-
-    /** La largeur plafond de la carte (dp). */
-    private static final int MAX_WIDTH_DP = 340;
 
     /** Le plafond de traces visibles (la carte défile au-delà). */
     private static final int MAX_VISIBLE_TRACES = 6;
@@ -87,6 +78,9 @@ public final class HistoryCard {
 
     private float density = 1.0f;
 
+    /** Le style posé par l'hôte : fond translucide, encres, tailles, largeur, forme. */
+    private PopupStyle style = PopupStyle.defaults();
+
     private EditorView editor;
 
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -102,34 +96,62 @@ public final class HistoryCard {
     private final Paint restoreTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     /**
-     * Une carte neuve, ses pinceaux propres.
+     * Une carte neuve, ses pinceaux propres au style par défaut.
      *
      * @param density la densité de l'écran (le dp en pixels)
      */
     public HistoryCard(float density) {
-        cardPaint.setColor(0xFFF6F8FA);
-        borderPaint.setColor(0xFFB5B5B5);
+        this.density = density;
+        applyStyle();
+    }
+
+    /**
+     * Pose le style de l'hôte : le fond translucide, les encres, la
+     * taille des textes, la largeur des cartes, la forme — les
+     * pinceaux s'y reconfigurent entiers.
+     *
+     * @param fresh le style posé, null pour celui par défaut
+     */
+    public void setStyle(PopupStyle fresh) {
+        style = fresh == null ? PopupStyle.defaults() : fresh;
+        applyStyle();
+    }
+
+    /** Le style courant (le harnais le lit). */
+    public PopupStyle style() {
+        return style;
+    }
+
+    /** La hauteur d'une rangée repliée : le style la porte. */
+    private float rowHeight() {
+        return dp(style.rowHeightDp() - 2);
+    }
+
+    /** Reconfigure les pinceaux au style courant. */
+    private void applyStyle() {
+        cardPaint.setColor(style.backgroundArgb());
+        borderPaint.setColor(style.borderArgb());
         borderPaint.setStyle(Paint.Style.STROKE);
         borderPaint.setStrokeWidth(1.0f);
-        titlePaint.setColor(0xFF202124);
+        titlePaint.setColor(style.textArgb());
         titlePaint.setFakeBoldText(true);
-        titlePaint.setTextSize(14.0f * density);
-        spanPaint.setColor(0xFF1A73E8);
-        spanPaint.setTextSize(11.0f * density);
-        textPaint.setColor(0xFF202124);
-        textPaint.setTextSize(13.0f * density);
-        timePaint.setColor(0xFF80868B);
-        timePaint.setTextSize(11.0f * density);
-        snippetPaint.setColor(0xFF5F6368);
-        snippetPaint.setTextSize(12.0f * density);
-        footerPaint.setColor(0xFF80868B);
-        footerPaint.setTextSize(11.0f * density);
-        glyphPaint.setColor(0xFF5F6368);
+        titlePaint.setTextSize((style.textSizeSp() - 2.0f) * density);
+        spanPaint.setColor(style.accentArgb());
+        spanPaint.setTextSize((style.secondarySizeSp() - 2.0f) * density);
+        textPaint.setColor(style.textArgb());
+        textPaint.setTextSize((style.secondarySizeSp() - 1.0f) * density);
+        timePaint.setColor(style.hintArgb());
+        timePaint.setTextSize((style.secondarySizeSp() - 2.0f) * density);
+        snippetPaint.setColor(style.secondaryArgb());
+        snippetPaint.setTextSize((style.secondarySizeSp() - 2.0f) * density);
+        footerPaint.setColor(style.hintArgb());
+        footerPaint.setTextSize((style.secondarySizeSp() - 2.0f) * density);
+        glyphPaint.setColor(style.secondaryArgb());
         glyphPaint.setStyle(Paint.Style.STROKE);
         glyphPaint.setStrokeWidth(1.4f);
-        restorePaint.setColor(0xFF1A73E8);
+        restorePaint.setColor(style.accentArgb());
         restoreTextPaint.setColor(0xFFFFFFFF);
-        restoreTextPaint.setTextSize(12.0f * density);
+        restoreTextPaint.setTextSize((style.secondarySizeSp() - 2.0f) * density);
     }
 
     /**
@@ -202,14 +224,14 @@ public final class HistoryCard {
         float cursor = poseY + dp(HEADER_DP);
         for (int at = topTrace; at < topTrace + visibleTraces
                 && at < traces.size(); at++) {
-            float rowH = dp(ROW_HEIGHT_DP)
+            float rowH = rowHeight()
                     + (at == expanded ? expandedHeight(at) : 0.0f);
             if (y >= cursor && y < cursor + rowH) {
                 if (at == expanded) {
                     // la pastille Restaurer vit au bas de la rangée
                     // dépliée : la moitié haute replie, la pastille
                     // restaure
-                    float restoreTop = cursor + dp(ROW_HEIGHT_DP)
+                    float restoreTop = cursor + rowHeight()
                             + expandedHeight(at) - dp(RESTORE_DP) - dp(6);
                     if (y >= restoreTop) {
                         restore(traces.get(at));
@@ -248,7 +270,7 @@ public final class HistoryCard {
             return;
         }
         place(anchorTop, anchorBottom, centerX, metrics);
-        float radius = dp(10);
+        float radius = dp(style.cornerRadiusDp());
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, cardPaint);
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
@@ -258,7 +280,7 @@ public final class HistoryCard {
         for (int at = topTrace; at < topTrace + visibleTraces
                 && at < traces.size(); at++) {
             drawTrace(canvas, traces.get(at), cursor, at == expanded, at);
-            cursor += dp(ROW_HEIGHT_DP) + (at == expanded ? expandedHeight(at) : 0.0f);
+            cursor += rowHeight() + (at == expanded ? expandedHeight(at) : 0.0f);
         }
         drawFooter(canvas, cursor);
     }
@@ -304,9 +326,9 @@ public final class HistoryCard {
         for (int at = topTrace; at < topTrace + visibleTraces
                 && at < traces.size(); at++) {
             if (at - topTrace == trace) {
-                return cursor + dp(ROW_HEIGHT_DP) / 2.0f;
+                return cursor + rowHeight() / 2.0f;
             }
-            cursor += dp(ROW_HEIGHT_DP) + (at == expanded ? expandedHeight(at) : 0.0f);
+            cursor += rowHeight() + (at == expanded ? expandedHeight(at) : 0.0f);
         }
         return -1.0f;
     }
@@ -330,10 +352,10 @@ public final class HistoryCard {
         float cursor = poseY + dp(HEADER_DP);
         for (int at = topTrace; at <= trace; at++) {
             if (at == trace) {
-                return cursor + dp(ROW_HEIGHT_DP) + expandedHeight(at)
+                return cursor + rowHeight() + expandedHeight(at)
                         - dp(RESTORE_DP) / 2.0f - dp(6);
             }
-            cursor += dp(ROW_HEIGHT_DP) + (at == expanded ? expandedHeight(at) : 0.0f);
+            cursor += rowHeight() + (at == expanded ? expandedHeight(at) : 0.0f);
         }
         return -1.0f;
     }
@@ -347,11 +369,12 @@ public final class HistoryCard {
             float centerX, PopupMetrics metrics) {
         float margin = dp(MARGIN_DP);
         float gap = dp(GAP_DP);
-        cardW = Math.min(dp(MAX_WIDTH_DP), metrics.viewWidth() - 2 * margin);
-        cardW = Math.max(cardW, Math.min(dp(MIN_WIDTH_DP),
-                metrics.viewWidth() - 2 * margin));
+        cardW = Math.min(Math.min(dp(style.maxCardWidthDp() - 60),
+                metrics.viewWidth() - 2 * margin),
+                Math.max(dp(style.minCardWidthDp() - 60),
+                        metrics.viewWidth() - 2 * margin));
         visibleTraces = Math.min(MAX_VISIBLE_TRACES, traces.size());
-        cardH = dp(HEADER_DP) + visibleTraces * dp(ROW_HEIGHT_DP)
+        cardH = dp(HEADER_DP) + visibleTraces * rowHeight()
                 + (expanded >= 0 ? expandedHeight(expanded) : 0.0f) + dp(FOOTER_DP);
         float belowTop = anchorBottom + gap;
         float aboveBottom = anchorTop - gap;
@@ -392,7 +415,7 @@ public final class HistoryCard {
      */
     private void drawTrace(Canvas canvas, LocalHistory.Trace trace,
             float top, boolean unfolded, int at) {
-        float rowH = dp(ROW_HEIGHT_DP);
+        float rowH = rowHeight();
         String when = moment(trace.millis());
         String caption = when + " · " + trace.gesture();
         canvas.drawText(caption, poseX + dp(14), top + rowH * 0.34f, timePaint);

@@ -21,17 +21,11 @@ import android.graphics.Paint;
  */
 public final class SignatureCard {
 
-    /** La hauteur de la rangée (dp). */
-    private static final int ROW_HEIGHT_DP = 40;
-
     /** La marge aux murs de la vue (dp). */
     private static final int MARGIN_DP = 8;
 
     /** L'écart entre la ligne du caret et la carte (dp). */
     private static final int GAP_DP = 2;
-
-    /** La largeur plancher de la carte (dp). */
-    private static final int MIN_WIDTH_DP = 240;
 
     /** La signature montrée (null : la carte est rangée). */
     private String label;
@@ -49,6 +43,9 @@ public final class SignatureCard {
 
     private float density = 1.0f;
 
+    /** Le style posé par l'hôte : fond translucide, encres, tailles, forme. */
+    private PopupStyle style = PopupStyle.defaults();
+
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -56,21 +53,43 @@ public final class SignatureCard {
     private final Paint mutedPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     /**
-     * Une carte neuve, ses pinceaux propres.
+     * Une carte neuve, ses pinceaux propres au style par défaut.
      *
      * @param density la densité de l'écran (le dp en pixels)
      */
     public SignatureCard(float density) {
-        cardPaint.setColor(0xFFF6F8FA);
-        borderPaint.setColor(0xFFB5B5B5);
+        this.density = density;
+        applyStyle();
+    }
+
+    /**
+     * Pose le style de l'hôte : le fond translucide, les encres, la
+     * taille des textes, la forme — les pinceaux s'y reconfigurent.
+     *
+     * @param fresh le style posé, null pour celui par défaut
+     */
+    public void setStyle(PopupStyle fresh) {
+        style = fresh == null ? PopupStyle.defaults() : fresh;
+        applyStyle();
+    }
+
+    /** Le style courant (le harnais le lit). */
+    public PopupStyle style() {
+        return style;
+    }
+
+    /** Reconfigure les pinceaux au style courant. */
+    private void applyStyle() {
+        cardPaint.setColor(style.backgroundArgb());
+        borderPaint.setColor(style.borderArgb());
         borderPaint.setStyle(Paint.Style.STROKE);
         borderPaint.setStrokeWidth(1.0f);
-        textPaint.setColor(0xFF202124);
-        textPaint.setTextSize(14.0f * density);
-        accentPaint.setColor(0xFF1A73E8);
-        accentPaint.setTextSize(14.0f * density);
-        mutedPaint.setColor(0xFF80868B);
-        mutedPaint.setTextSize(14.0f * density);
+        textPaint.setColor(style.textArgb());
+        textPaint.setTextSize(style.textSizeSp() * density);
+        accentPaint.setColor(style.accentArgb());
+        accentPaint.setTextSize(style.textSizeSp() * density);
+        mutedPaint.setColor(style.hintArgb());
+        mutedPaint.setTextSize(style.textSizeSp() * density);
     }
 
     /**
@@ -132,12 +151,13 @@ public final class SignatureCard {
             return;
         }
         place(metrics);
-        float radius = dp(10);
+        float radius = dp(style.cornerRadiusDp());
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, cardPaint);
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, borderPaint);
-        drawSignature(canvas, poseX + dp(12), poseY + dp(ROW_HEIGHT_DP) * 0.68f);
+        drawSignature(canvas, poseX + dp(14),
+                poseY + dp(style.rowHeightDp()) * 0.68f);
     }
 
     /** L'abscisse posée (le harnais la lit). */
@@ -168,10 +188,10 @@ public final class SignatureCard {
     private void place(PopupMetrics metrics) {
         float margin = dp(MARGIN_DP);
         float gap = dp(GAP_DP);
-        cardW = Math.min(Math.max(textPaint.measureText(label) + 2 * dp(12),
-                dp(MIN_WIDTH_DP)),
+        cardW = Math.min(Math.max(textPaint.measureText(label) + 2 * dp(14),
+                dp(style.minCardWidthDp() - 80)),
                 metrics.viewWidth() - 2 * margin);
-        cardH = dp(ROW_HEIGHT_DP);
+        cardH = dp(style.rowHeightDp());
         float aboveBottom = metrics.caretY() - gap;
         float aboveTop = aboveBottom - cardH;
         if (aboveTop >= margin) {

@@ -32,20 +32,8 @@ public final class SearchBar implements KeyboardCard {
     /** L'amortissement de la recherche incrémentale (ms). */
     private static final long SEARCH_DEBOUNCE_MS = 150L;
 
-    /** La hauteur d'une rangée de la carte (dp). */
-    private static final int ROW_HEIGHT_DP = 44;
-
     /** La respiration intérieure de la carte (dp). */
     private static final int PAD_DP = 8;
-
-    /** La largeur d'un glyphe d'action (dp). */
-    private static final int GLYPH_DP = 44;
-
-    /** La largeur plancher de la carte (dp). */
-    private static final int MIN_WIDTH_DP = 320;
-
-    /** La largeur plafond de la carte (dp). */
-    private static final int MAX_WIDTH_DP = 400;
 
     private final StringBuilder query = new StringBuilder();
 
@@ -74,6 +62,9 @@ public final class SearchBar implements KeyboardCard {
     private float ancreY;
     private float density;
 
+    /** Le style posé par l'hôte : fond translucide, tailles, largeur, forme. */
+    private PopupStyle style = PopupStyle.defaults();
+
     private final Runnable searchSync = this::runIncrementalSearch;
 
     private EditorView editor;
@@ -88,27 +79,50 @@ public final class SearchBar implements KeyboardCard {
     private final Paint activePaint = new Paint();
 
     /**
-     * Une carte neuve, ses pinceaux propres.
+     * Une carte neuve, ses pinceaux propres au style par défaut.
      *
      * @param density la densité de l'écran (le dp en pixels)
      */
     public SearchBar(float density) {
-        cardPaint.setColor(0xFFF3F3F3);
-        borderPaint.setColor(0xFFB5B5B5);
+        this.density = density;
+        applyStyle();
+    }
+
+    /**
+     * Pose le style de l'hôte : le fond translucide, les encres, la
+     * taille des textes, la largeur des cartes, la forme — les
+     * pinceaux s'y reconfigurent entiers.
+     *
+     * @param fresh le style posé, null pour celui par défaut
+     */
+    public void setStyle(PopupStyle fresh) {
+        style = fresh == null ? PopupStyle.defaults() : fresh;
+        applyStyle();
+    }
+
+    /** Le style courant (le harnais le lit). */
+    public PopupStyle style() {
+        return style;
+    }
+
+    /** Reconfigure les pinceaux au style courant. */
+    private void applyStyle() {
+        cardPaint.setColor(style.backgroundArgb());
+        borderPaint.setColor(style.borderArgb());
         borderPaint.setStyle(Paint.Style.STROKE);
         borderPaint.setStrokeWidth(1.0f);
-        textPaint.setColor(0xFF202124);
-        textPaint.setTextSize(16.0f * density);
-        hintPaint.setColor(0xFF80868B);
-        hintPaint.setTextSize(16.0f * density);
-        counterPaint.setColor(0xFF5F6368);
-        counterPaint.setTextSize(13.0f * density);
-        zeroCounterPaint.setColor(0xFFC62828);
-        zeroCounterPaint.setTextSize(13.0f * density);
-        glyphPaint.setColor(0xFF5F6368);
+        textPaint.setColor(style.textArgb());
+        textPaint.setTextSize(style.textSizeSp() * density);
+        hintPaint.setColor(style.hintArgb());
+        hintPaint.setTextSize(style.textSizeSp() * density);
+        counterPaint.setColor(style.secondaryArgb());
+        counterPaint.setTextSize(style.secondarySizeSp() * density);
+        zeroCounterPaint.setColor(style.errorArgb());
+        zeroCounterPaint.setTextSize(style.secondarySizeSp() * density);
+        glyphPaint.setColor(style.secondaryArgb());
         glyphPaint.setStyle(Paint.Style.STROKE);
         glyphPaint.setStrokeWidth(1.6f * density);
-        activePaint.setColor(0xFF1A73E8);
+        activePaint.setColor(style.accentArgb());
     }
 
     /**
@@ -173,9 +187,9 @@ public final class SearchBar implements KeyboardCard {
         ancreY = metrics.caretY();
         float margin = dp(8);
         float pad = dp(PAD_DP);
-        float rowHeight = dp(ROW_HEIGHT_DP);
+        float rowHeight = dp(style.rowHeightDp());
         cardW = Math.max(Math.min(metrics.viewWidth() - 2 * margin,
-                dp(MAX_WIDTH_DP)), Math.min(dp(MIN_WIDTH_DP),
+                dp(style.maxCardWidthDp())), Math.min(dp(style.minCardWidthDp()),
                         metrics.viewWidth() - 2 * margin));
         cardH = 2 * pad + rowHeight * (replaceShown ? 2 : 1);
         float gap = dp(4);
@@ -196,13 +210,13 @@ public final class SearchBar implements KeyboardCard {
      */
     public void draw(Canvas canvas, PopupMetrics metrics) {
         poser(metrics);
-        float radius = dp(12);
+        float radius = dp(style.cornerRadiusDp());
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, cardPaint);
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, borderPaint);
         float pad = dp(PAD_DP);
-        float rowHeight = dp(ROW_HEIGHT_DP);
+        float rowHeight = dp(style.rowHeightDp());
         float row1Top = poseY + pad;
         float row2Top = row1Top + rowHeight;
         drawRow1(canvas, row1Top);
@@ -227,8 +241,8 @@ public final class SearchBar implements KeyboardCard {
             return false;
         }
         float pad = dp(PAD_DP);
-        float rowHeight = dp(ROW_HEIGHT_DP);
-        float glyphW = dp(GLYPH_DP);
+        float rowHeight = dp(style.rowHeightDp());
+        float glyphW = dp(style.rowHeightDp() - 2);
         boolean inRow1 = y < poseY + pad + rowHeight;
         if (inRow1) {
             float right = poseX + cardW - dp(2);
@@ -458,8 +472,8 @@ public final class SearchBar implements KeyboardCard {
 
     /** La rangée de recherche : le rabat, la requête, le compte, les chevrons, la croix. */
     private void drawRow1(Canvas canvas, float rowTop) {
-        float glyphW = dp(GLYPH_DP);
-        float rowHeight = dp(ROW_HEIGHT_DP);
+        float glyphW = dp(style.rowHeightDp() - 2);
+        float rowHeight = dp(style.rowHeightDp());
         float baseline = rowTop + rowHeight * 0.7f;
         // le rabat : deux chevrons tête-bêche
         float toggleCx = poseX + dp(2) + glyphW / 2;
@@ -503,8 +517,8 @@ public final class SearchBar implements KeyboardCard {
 
     /** La rangée du remplacement : le champ, remplacer, tout remplacer. */
     private void drawRow2(Canvas canvas, float rowTop) {
-        float glyphW = dp(GLYPH_DP);
-        float rowHeight = dp(ROW_HEIGHT_DP);
+        float glyphW = dp(style.rowHeightDp() - 2);
+        float rowHeight = dp(style.rowHeightDp());
         float baseline = rowTop + rowHeight * 0.7f;
         float textX = poseX + dp(10);
         float actionsX = poseX + cardW - dp(2) - 2 * glyphW;

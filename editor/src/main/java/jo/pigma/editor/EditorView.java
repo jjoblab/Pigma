@@ -13,6 +13,9 @@ import jo.pigma.editor.popups.GotoBar;
 import jo.pigma.editor.popups.HistoryCard;
 import jo.pigma.editor.popups.InfoPopup;
 import jo.pigma.editor.popups.LocalHistory;
+import jo.pigma.editor.popups.DiagnosticCard;
+import jo.pigma.editor.popups.PopupStyle;
+import jo.pigma.editor.popups.QuickActionCard;
 import jo.pigma.editor.render.RenderCache;
 import jo.pigma.editor.popups.PopupMetrics;
 import jo.pigma.editor.popups.SearchBar;
@@ -269,6 +272,33 @@ public final class EditorView extends View {
     /** La carte de l'historique local — l'histoire d'une plage de lignes. */
     private HistoryCard historyCard;
 
+    /** La carte de diagnostic — les erreurs et avertissements d'une ligne. */
+    private DiagnosticCard diagnosticCard;
+
+    /** La carte d'actions rapides — l'ampoule de la gouttière. */
+    private QuickActionCard quickActionCard;
+
+    /** Le style des popups posé par l'hôte (fond translucide, tailles, forme). */
+    private PopupStyle popupStyle = PopupStyle.defaults();
+
+    /** Le fournisseur de diagnostics de l'hôte (le LSP y monte ses erreurs). */
+    private DiagnosticProvider diagnosticProvider;
+
+    /** Le fournisseur d'actions rapides de l'hôte (l'ampoule les porte). */
+    private QuickActionProvider quickActionProvider;
+
+    /** Les actions rapides vivantes de la ligne du curseur (l'ampoule en vit). */
+    private List<QuickActionCard.Entry> quickActions = List.of();
+
+    /** La ligne des actions rapides courantes (-1 : jamais calculées). */
+    private int quickActionsLine = -1;
+
+    /** La révision des actions rapides courantes. */
+    private int quickActionsRevision = -1;
+
+    /** Le caret des actions rapides courantes. */
+    private int quickActionsCaret = -1;
+
     /** Les actions de l'hôte sur la barre de sélection (posées par l'app). */
     private final List<SelectionBar.HostAction> hostSelectionActions =
             new ArrayList<>();
@@ -475,12 +505,17 @@ public final class EditorView extends View {
         localHistory = new LocalHistory();
         historyCard = new HistoryCard(dp(1));
         historyCard.bind(this);
+        diagnosticCard = new DiagnosticCard(dp(1));
+        quickActionCard = new QuickActionCard(dp(1));
         gutter = new Gutter(dp(1));
         inputContract = createInputContract();
         trackedLineCount = buffer.getLineCount();
         buffer.addListener(modelListener);
         int padding = dp(12);
-        setPadding(dp(44), dp(16), padding, dp(16));
+        // la gouttière élargie : la colonne des marqueurs (erreur,
+        // avertissement, ampoule) vit AVANT les numéros — le pli
+        // demeure au bord du texte
+        setPadding(dp(64), dp(16), padding, dp(16));
         setFocusable(true);
         setFocusableInTouchMode(true);
     }
@@ -539,6 +574,257 @@ public final class EditorView extends View {
         invalidate();
     }
 
+    /**
+     * Pose le STYLE DES POPUPS de l'hôte : le fond translucide, les
+     * encres, la taille des textes, la hauteur des rangées, la
+     * largeur et la forme des cartes — toutes les cartes et la
+     * gouttière s'y reconfigurent, la trame suivante les porte.
+     *
+     * @param fresh le style posé, null pour celui par défaut
+     */
+    public void setPopupStyle(PopupStyle fresh) {
+        popupStyle = fresh == null ? PopupStyle.defaults() : fresh;
+        infoPopup.setStyle(popupStyle);
+        completionCard.setStyle(popupStyle);
+        signatureCard.setStyle(popupStyle);
+        selectionBar.setStyle(popupStyle);
+        overflowCard.setStyle(popupStyle);
+        historyCard.setStyle(popupStyle);
+        diagnosticCard.setStyle(popupStyle);
+        quickActionCard.setStyle(popupStyle);
+        gutter.setStyle(popupStyle);
+        if (searchBar != null) {
+            searchBar.setStyle(popupStyle);
+        }
+        if (gotoBar != null) {
+            gotoBar.setStyle(popupStyle);
+        }
+        invalidate();
+    }
+
+    /** Le style des popups courant (le harnais le lit). */
+    public PopupStyle popupStyle() {
+        return popupStyle;
+    }
+
+    /**
+     * La carte de diagnostic (les erreurs et avertissements d'une
+     * ligne — le harnais la lit).
+     *
+     * @return la carte, jamais null
+     */
+    public DiagnosticCard diagnosticCard() {
+        return diagnosticCard;
+    }
+
+    /**
+     * La carte d'actions rapides (l'ampoule de la gouttière — le
+     * harnais la lit).
+     *
+     * @return la carte, jamais null
+     */
+    public QuickActionCard quickActionCard() {
+        return quickActionCard;
+    }
+
+    /**
+     * Le fournisseur de diagnostics de l'hôte : l'application
+     * porteuse (le serveur de langage) y monte les erreurs et les
+     * avertissements d'une ligne — la carte de diagnostic les lit au
+     * toucher, le marqueur de la gouttière en vit.
+     *
+     * @param provider le fournisseur, null pour le ranger
+     */
+    public void setDiagnosticProvider(DiagnosticProvider provider) {
+        diagnosticProvider = provider;
+        invalidate();
+    }
+
+    /**
+     * Le fournisseur d'actions rapides de l'hôte : l'application
+     * porteuse y pose ses intentions — l'ampoule de la gouttière
+     * les porte avec celles de l'éditeur.
+     *
+     * @param provider le fournisseur, null pour le ranger
+     */
+    public void setQuickActionProvider(QuickActionProvider provider) {
+        quickActionProvider = provider;
+        quickActionsRevision = -1;
+        invalidate();
+    }
+
+    /**
+     * Le fournisseur de diagnostics de l'hôte — les erreurs et les
+     * avertissements d'une ligne, à la sévérité près.
+     */
+    public interface DiagnosticProvider {
+
+        /**
+         * Les diagnostics d'une ligne.
+         *
+         * @param line l'indice de la ligne
+         * @return les diagnostics, jamais null (vide : aucun)
+         */
+        List<DiagnosticCard.Entry> diagnosticsAt(int line);
+    }
+
+    /**
+     * Le fournisseur d'actions rapides de l'hôte — ses intentions à
+     * une ligne.
+     */
+    public interface QuickActionProvider {
+
+        /**
+         * Les actions rapides d'une ligne.
+         *
+         * @param line   l'indice de la ligne
+         * @param column la colonne du curseur sur la ligne
+         * @return les actions, jamais null (vide : aucune)
+         */
+        List<QuickActionCard.Entry> quickActionsAt(int line, int column);
+    }
+
+    /**
+     * Les diagnostics d'une ligne : ceux de l'hôte d'abord (le
+     * serveur de langage y dit ses erreurs et ses avertissements),
+     * les signes mésappariés de l'appariement ensuite (toujours des
+     * erreurs) — le harnais les lit.
+     *
+     * @param line l'indice de la ligne
+     * @return les diagnostics, jamais null
+     */
+    public List<DiagnosticCard.Entry> diagnosticsOfLine(int line) {
+        List<DiagnosticCard.Entry> found = new ArrayList<>();
+        if (diagnosticProvider != null) {
+            List<DiagnosticCard.Entry> hosted = diagnosticProvider.diagnosticsAt(line);
+            if (hosted != null) {
+                found.addAll(hosted);
+            }
+        }
+        if (diagnostics != null && analysisRevision == buffer.getRevision()) {
+            int lineStart = buffer.getLineStart(line);
+            int lineEnd = buffer.getLineEnd(line);
+            for (DiagnosticsDocument.Diagnostic local
+                    : diagnostics.betweenLines(line, line)) {
+                if (local.start() >= lineStart && local.start() < lineEnd) {
+                    found.add(new DiagnosticCard.Entry(
+                            DiagnosticCard.SEVERITY_ERROR, local.message()));
+                }
+            }
+        }
+        return found;
+    }
+
+    /**
+     * La ligne porte-t-elle un diagnostic ? (le marqueur de la
+     * gouttière en vit — le harnais le vérifie.)
+     *
+     * @param line l'indice de la ligne
+     * @return vrai quand la ligne porte erreur ou avertissement
+     */
+    public boolean lineHasDiagnostics(int line) {
+        return !diagnosticsOfLine(line).isEmpty();
+    }
+
+    /**
+     * Les actions rapides d'une ligne : celles de l'éditeur (le
+     * commentaire au préfixe du langage, la casse d'une sélection,
+     * dupliquer, supprimer la ligne) et celles de l'hôte — le
+     * harnais les lit.
+     *
+     * @param line l'indice de la ligne
+     * @return les actions, jamais null
+     */
+    public List<QuickActionCard.Entry> quickActionsOfLine(int line) {
+        List<QuickActionCard.Entry> actions = new ArrayList<>();
+        if (!lineCommentPrefix().isEmpty()) {
+            actions.add(new QuickActionCard.Entry(
+                    "Commenter / décommenter", this::toggleLineComment));
+        }
+        if (hasSelection()) {
+            actions.add(new QuickActionCard.Entry(
+                    "En majuscules", this::uppercaseSelection));
+            actions.add(new QuickActionCard.Entry(
+                    "En minuscules", this::lowercaseSelection));
+        }
+        actions.add(new QuickActionCard.Entry(
+                "Dupliquer la ligne", this::duplicateLine));
+        actions.add(new QuickActionCard.Entry(
+                "Supprimer la ligne", this::deleteLines));
+        if (quickActionProvider != null) {
+            int caretOffset = Math.min(selection.caret(), buffer.length());
+            int column = caretOffset - buffer.getLineStart(line);
+            List<QuickActionCard.Entry> hosted =
+                    quickActionProvider.quickActionsAt(line, column);
+            if (hosted != null) {
+                actions.addAll(hosted);
+            }
+        }
+        return actions;
+    }
+
+    /**
+     * Ouvre la carte de diagnostic d'une ligne — le doigt sur le
+     * marqueur de la gouttière ou sur le souligné rouge y va, l'hôte
+     * y va aussi ; la ligne sans diagnostic ne l'ouvre pas.
+     *
+     * @param line l'indice de la ligne
+     * @return vrai quand la carte s'est ouverte
+     */
+    public boolean openDiagnosticsAtLine(int line) {
+        if (line < 0 || line >= buffer.getLineCount()) {
+            return false;
+        }
+        List<DiagnosticCard.Entry> found = diagnosticsOfLine(line);
+        if (found.isEmpty()) {
+            return false;
+        }
+        quickActionCard.close();
+        diagnosticCard.open(line, found);
+        invalidate();
+        return true;
+    }
+
+    /**
+     * Ouvre la carte d'actions rapides de la ligne — l'ampoule de la
+     * gouttière y va, l'hôte y va aussi.
+     *
+     * @param line l'indice de la ligne
+     * @return vrai quand la carte s'est ouverte
+     */
+    public boolean openQuickActionsAtLine(int line) {
+        if (line < 0 || line >= buffer.getLineCount()) {
+            return false;
+        }
+        List<QuickActionCard.Entry> actions = quickActionsOfLine(line);
+        if (actions.isEmpty()) {
+            return false;
+        }
+        diagnosticCard.close();
+        quickActionCard.open(line, actions);
+        invalidate();
+        return true;
+    }
+
+    /**
+     * Les actions rapides vivantes de la ligne du curseur (l'ampoule
+     * en vit — la trame les recalcule au caret et à la révision).
+     */
+    private void updateQuickActions() {
+        int caretOffset = Math.min(selection.caret(), buffer.length());
+        int line = buffer.lineOfOffset(caretOffset);
+        if (line == quickActionsLine && buffer.getRevision() == quickActionsRevision
+                && caretOffset == quickActionsCaret) {
+            return;
+        }
+        quickActionsLine = line;
+        quickActionsRevision = buffer.getRevision();
+        quickActionsCaret = caretOffset;
+        quickActions = quickActionsOfLine(line);
+        if (quickActionCard.isShown() && quickActionCard.line() != line) {
+            quickActionCard.close();
+        }
+    }
     /**
      * La paire d'appariement du curseur (L2) : la dernière calculée au
      * dessin — le harnais s'en sert pour vérifier la marche.
@@ -765,6 +1051,10 @@ public final class EditorView extends View {
         selectionBar.hide();
         overflowCard.close();
         historyCard.close();
+        diagnosticCard.close();
+        quickActionCard.close();
+        quickActionsRevision = -1;
+        quickActions = List.of();
         // autre document : l'histoire locale du précédent n'y désigne
         // plus rien (les lignes d'avant parlent d'un autre texte)
         localHistory.clear();
@@ -1134,6 +1424,7 @@ public final class EditorView extends View {
         if (searchBar == null) {
             searchBar = new SearchBar(dp(1));
             searchBar.bind(this);
+            searchBar.setStyle(popupStyle);
         }
         searchBar.show();
         // la carte naît clavier levé : le champ de requête attend une
@@ -1170,6 +1461,7 @@ public final class EditorView extends View {
         if (gotoBar == null) {
             gotoBar = new GotoBar(dp(1));
             gotoBar.bind(this);
+            gotoBar.setStyle(popupStyle);
         }
         gotoBar.show();
         // la carte naît clavier levé : les chiffres attendent une
@@ -1618,16 +1910,26 @@ public final class EditorView extends View {
                     && searchBar.onTouchArea(event.getX(), event.getY());
             boolean touchedGoto = !touchedSearch && gotoBar != null && gotoBar.isShown()
                     && gotoBar.onTouchArea(event.getX(), event.getY());
+            // la barre et ses cartes ne prennent le doigt que d'une
+            // sélection VIVANTE : une sélection morte sans trame
+            // intermédiaire y laisserait une barre périmée — le doigt
+            // passerait à travers le texte (la sélection se range à
+            // la trame suivante, la barre l'ignore entre-temps)
+            boolean selectionAlive = hasSelection() && selectionDragBound == 0;
             downOnCard = touchedSearch || touchedGoto
                     || (completionCard != null && completionCard.isShown()
                             && completionCard.onTouchArea(event.getX(), event.getY()))
                     || (signatureCard != null && signatureCard.isShown()
                             && signatureCard.onTouchArea(event.getX(), event.getY()))
-                    || (historyCard != null && historyCard.isShown()
+                    || (historyCard != null && historyCard.isShown() && selectionAlive
                             && historyCard.onTouchArea(event.getX(), event.getY()))
-                    || (selectionBar != null && selectionBar.isShown()
+                    || (diagnosticCard != null && diagnosticCard.isShown()
+                            && diagnosticCard.onTouchArea(event.getX(), event.getY()))
+                    || (quickActionCard != null && quickActionCard.isShown()
+                            && quickActionCard.onTouchArea(event.getX(), event.getY()))
+                    || (selectionBar != null && selectionBar.isShown() && selectionAlive
                             && selectionBar.onTouchArea(event.getX(), event.getY()))
-                    || (overflowCard != null && overflowCard.isShown()
+                    || (overflowCard != null && overflowCard.isShown() && selectionAlive
                             && overflowCard.onTouchArea(event.getX(), event.getY()));
             if (downOnCard) {
                 // le doigt vise un CHAMP de la carte : le clavier se
@@ -1652,8 +1954,11 @@ public final class EditorView extends View {
                 touchStartY = event.getY();
                 touchDownNanos = System.nanoTime();
                 // un nouvel appui masque la popup d'info (l'appui long
-                // pourra en rouvrir une sur le mot touché)
+                // pourra en rouvrir une sur le mot touché) et range les
+                // cartes de diagnostic et d'ampoule
                 dismissInfoPopup();
+                diagnosticCard.close();
+                quickActionCard.close();
                 dragging = false;
                 selectionDragBound = 0;
                 dragFixedBound = -1;
@@ -1760,11 +2065,21 @@ public final class EditorView extends View {
                 if (dragging) {
                     dragging = false;
                 } else if (event.getX() < getPaddingLeft()) {
-                    // la gouttière : le pli de la ligne touchée se
-                    // retourne (le clavier ne s'y ouvre pas)
+                    // la gouttière : la colonne des marqueurs d'abord —
+                    // l'erreur ouvre sa carte de diagnostic, l'ampoule
+                    // ouvre ses actions rapides — le pli de la ligne
+                    // touchée se retourne sinon (le clavier ne s'y ouvre
+                    // pas)
                     requestFocus();
-                    toggleFoldAt(lineOfVisibleIndex(
-                            (int) ((event.getY() - getPaddingTop() + scrollY) / lineHeight)));
+                    int line = lineOfVisibleIndex(
+                            (int) ((event.getY() - getPaddingTop() + scrollY) / lineHeight));
+                    if (event.getX() < dp(24)
+                            && handleGutterMarkerTap(line)) {
+                        clearComposing();
+                        lastTapNanos = 0L;
+                        break;
+                    }
+                    toggleFoldAt(line);
                     clearComposing();
                 } else if (heldLongEnough()
                         || tappedTwice(event.getX(), event.getY())) {
@@ -1776,9 +2091,15 @@ public final class EditorView extends View {
                     clearComposing();
                 } else {
                     requestFocus();
-                    placeCaretAt(event.getX(), event.getY());
-                    clearComposing();
-                    showSoftInput();
+                    // le souligné rouge d'un diagnostic : la carte
+                    // s'y ouvre — le doigt vise le signe mésapparié, le
+                    // curseur ne bouge pas
+                    int offset = offsetNearest(event.getX(), event.getY());
+                    if (!openDiagnosticAtTap(offset)) {
+                        placeCaretAt(event.getX(), event.getY());
+                        clearComposing();
+                        showSoftInput();
+                    }
                 }
                 lastTapNanos = System.nanoTime();
                 lastTapX = event.getX();
@@ -1985,10 +2306,13 @@ public final class EditorView extends View {
         updateSuggestions();
         updateSignature();
         updateSelectionBar();
+        updateQuickActions();
         drawDiagnostics(canvas, first, last, count);
         drawCompletionCard(canvas);
         drawInfoPopup(canvas);
         drawSignatureCard(canvas);
+        drawDiagnosticCard(canvas);
+        drawQuickActionCard(canvas);
         drawSelectionBar(canvas);
         // les cartes de recherche et d'aller-à, par-dessus tout :
         // dessinées dans la vue, posées au
@@ -2149,17 +2473,53 @@ public final class EditorView extends View {
 
     /**
      * La gouttière : le numéro de chaque ligne visible, aligné à
-     * droite avant la zone du marqueur de pli — le pinceau vit au
-     * paquet, la vue ne fournit que la géométrie (la baseline, le
-     * bord droit du champ des numéros).
+     * droite avant la zone du marqueur de pli — puis la colonne des
+     * MARQUEURS à gauche des numéros : le rond rouge de l'erreur, le
+     * triangle ambre de l'avertissement (la ligne qui porte un
+     * diagnostic), l'ampoule jaune (les actions rapides de la ligne
+     * du curseur) — le pinceau vit au paquet, la vue ne fournit que
+     * la géométrie.
      */
     private void drawGutter(Canvas canvas, int first, int last, int count) {
+        float markerCx = dp(12);
+        int caretLine = caretLine();
         for (int line = first; line <= last && line < count; line++) {
             if (isHidden(line)) {
                 continue;
             }
             gutter.drawNumber(canvas, line, lineBaseline(line),
-                    getPaddingLeft() - dp(11));
+                    getPaddingLeft() - dp(14));
+            boolean error = false;
+            boolean warning = false;
+            if (diagnostics != null && analysisRevision == buffer.getRevision()) {
+                for (DiagnosticsDocument.Diagnostic diagnostic
+                        : diagnostics.betweenLines(line, line)) {
+                    if (diagnostic.start() >= buffer.getLineStart(line)
+                            && diagnostic.start() < buffer.getLineEnd(line)) {
+                        error = true;
+                    }
+                }
+            }
+            if (diagnosticProvider != null) {
+                for (DiagnosticCard.Entry hosted
+                        : diagnosticsOfLine(line)) {
+                    if (hosted.severity() == DiagnosticCard.SEVERITY_ERROR) {
+                        error = true;
+                    } else {
+                        warning = true;
+                    }
+                }
+            }
+            float cy = lineBaseline(line)
+                    + (fontMetrics.top + fontMetrics.bottom) / 2.0f;
+            if (error) {
+                gutter.drawMarker(canvas, Gutter.MARKER_ERROR, markerCx, cy);
+            } else if (warning) {
+                gutter.drawMarker(canvas, Gutter.MARKER_WARNING, markerCx, cy);
+            }
+            if (line == caretLine && !quickActions.isEmpty()) {
+                gutter.drawMarker(canvas, Gutter.MARKER_LIGHTBULB, markerCx, cy);
+            }
         }
     }
 
@@ -2239,6 +2599,53 @@ public final class EditorView extends View {
     }
 
     // --------------------------------------------------- plis (régions repliables)
+
+    /**
+     * Le doigt sur la colonne des marqueurs de la gouttière : la
+     * ligne qui porte un diagnostic y ouvre sa carte, l'ampoule de
+     * la ligne du curseur y ouvre ses actions rapides — une ligne
+     * sans marqueur ne prend rien (le pli vit derrière).
+     *
+     * @param line la ligne touchée
+     * @return vrai quand un marqueur a pris le geste
+     */
+    private boolean handleGutterMarkerTap(int line) {
+        if (line < 0 || line >= buffer.getLineCount()) {
+            return false;
+        }
+        if (lineHasDiagnostics(line)) {
+            return openDiagnosticsAtLine(line);
+        }
+        if (line == caretLine()) {
+            return openQuickActionsAtLine(line);
+        }
+        return false;
+    }
+
+    /**
+     * Le doigt sur le SOULIGNÉ ROUGE d'un diagnostic (le signe
+     * mésapparié, à une colonne près) : la carte de diagnostic de la
+     * ligne s'y ouvre — le curseur ne bouge pas.
+     *
+     * @param offset le tap le plus proche du doigt
+     * @return vrai quand un souligné a pris le geste
+     */
+    private boolean openDiagnosticAtTap(int offset) {
+        if (diagnostics == null || analysisRevision != buffer.getRevision()) {
+            return false;
+        }
+        int line = buffer.lineOfOffset(Math.min(offset, buffer.length()));
+        int column = Math.min(offset, buffer.length()) - buffer.getLineStart(line);
+        for (DiagnosticsDocument.Diagnostic local
+                : diagnostics.betweenLines(line, line)) {
+            int startCol = local.start() - buffer.getLineStart(line);
+            int endCol = local.end() - buffer.getLineStart(line);
+            if (column >= startCol - 1 && column <= endCol + 1) {
+                return openDiagnosticsAtLine(line);
+            }
+        }
+        return false;
+    }
 
     /**
      * Replie ou déplie le bloc ouvert à cette ligne (la gouttière le
@@ -3289,6 +3696,38 @@ public final class EditorView extends View {
     }
 
     /**
+     * La carte de diagnostic : les erreurs et avertissements de la
+     * ligne ancrée — posée sous la ligne (au-dessus sans la place),
+     * bornée aux murs.
+     */
+    private void drawDiagnosticCard(Canvas canvas) {
+        if (!diagnosticCard.isShown()) {
+            return;
+        }
+        int line = Math.min(diagnosticCard.line(),
+                Math.max(0, buffer.getLineCount() - 1));
+        float top = getPaddingTop()
+                + visibleIndexOf(line) * lineHeight - scrollY;
+        diagnosticCard.draw(canvas, top, top + lineHeight, popupMetrics());
+    }
+
+    /**
+     * La carte d'actions rapides : l'ampoule de la gouttière y ouvre
+     * les actions de la ligne ancrée — posée sous la ligne
+     * (au-dessus sans la place), bornée aux murs.
+     */
+    private void drawQuickActionCard(Canvas canvas) {
+        if (!quickActionCard.isShown()) {
+            return;
+        }
+        int line = Math.min(quickActionCard.line(),
+                Math.max(0, buffer.getLineCount() - 1));
+        float top = getPaddingTop()
+                + visibleIndexOf(line) * lineHeight - scrollY;
+        quickActionCard.draw(canvas, top, top + lineHeight, popupMetrics());
+    }
+
+    /**
      * La carte de complétion : les candidats du mot courant en rangées
      * verticales au caret — la pose se recalcule au dessin, le caret la
      * suit (le clavier délégué y navigue, le doigt y insère).
@@ -3313,6 +3752,24 @@ public final class EditorView extends View {
             pendingEditLabel = "complétion";
             applyEdit(suggestionWordStart, end, candidate);
         }
+    }
+
+    /**
+     * Pose un texte au curseur (une unité d'annulation) : l'hôte y met
+     * ce qu'il veut — une intention de son ampoule, un gabarit… ; la
+     * sélection vivante se remplace.
+     *
+     * @param text le texte posé, null ou vide : rien
+     */
+    public void insertAtCaret(String text) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        pendingEditLabel = "insertion";
+        int start = hasSelection() ? selectionStart()
+                : Math.min(selection.caret(), buffer.length());
+        int end = hasSelection() ? selectionEnd() : start;
+        applyEdit(start, end, text);
     }
 
     /**

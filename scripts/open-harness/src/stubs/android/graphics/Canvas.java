@@ -180,6 +180,27 @@ public final class Canvas {
     }
 
     /**
+     * Peint un point (le point d'exclamation d'un marqueur).
+     *
+     * @param cx    abscisse du point
+     * @param cy    ordonnée du point
+     * @param paint pinceau
+     */
+    public void drawPoint(float cx, float cy, Paint paint) {
+        lineCount++;
+    }
+
+    /**
+     * Peint un chemin (le triangle d'un marqueur, l'ampoule).
+     *
+     * @param path  le chemin
+     * @param paint pinceau
+     */
+    public void drawPath(Path path, Paint paint) {
+        roundRectCount++;
+    }
+
+    /**
      * Peint un rectangle arrondi (une popup, un bandeau).
      *
      * @param left   bord gauche

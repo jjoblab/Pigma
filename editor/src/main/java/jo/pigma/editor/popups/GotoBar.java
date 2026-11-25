@@ -22,20 +22,8 @@ import jo.pigma.editor.EditorView;
  */
 public final class GotoBar implements KeyboardCard {
 
-    /** La hauteur d'une rangée de la carte (dp). */
-    private static final int ROW_HEIGHT_DP = 44;
-
     /** La respiration intérieure de la carte (dp). */
     private static final int PAD_DP = 8;
-
-    /** La largeur d'un glyphe d'action (dp). */
-    private static final int GLYPH_DP = 44;
-
-    /** La largeur plancher de la carte (dp). */
-    private static final int MIN_WIDTH_DP = 300;
-
-    /** La largeur plafond de la carte (dp). */
-    private static final int MAX_WIDTH_DP = 360;
 
     private final StringBuilder digits = new StringBuilder();
     private String feedback = "";
@@ -54,6 +42,9 @@ public final class GotoBar implements KeyboardCard {
     private float ancreY;
     private float density;
 
+    /** Le style posé par l'hôte : fond translucide, tailles, largeur, forme. */
+    private PopupStyle style = PopupStyle.defaults();
+
     private EditorView editor;
 
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -64,22 +55,45 @@ public final class GotoBar implements KeyboardCard {
     private final Paint glyphPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     /**
-     * Une carte neuve, ses pinceaux propres.
+     * Une carte neuve, ses pinceaux propres au style par défaut.
      *
      * @param density la densité de l'écran (le dp en pixels)
      */
     public GotoBar(float density) {
-        cardPaint.setColor(0xFFF3F3F3);
-        borderPaint.setColor(0xFFB5B5B5);
+        this.density = density;
+        applyStyle();
+    }
+
+    /**
+     * Pose le style de l'hôte : le fond translucide, les encres, la
+     * taille des textes, la largeur des cartes, la forme — les
+     * pinceaux s'y reconfigurent entiers.
+     *
+     * @param fresh le style posé, null pour celui par défaut
+     */
+    public void setStyle(PopupStyle fresh) {
+        style = fresh == null ? PopupStyle.defaults() : fresh;
+        applyStyle();
+    }
+
+    /** Le style courant (le harnais le lit). */
+    public PopupStyle style() {
+        return style;
+    }
+
+    /** Reconfigure les pinceaux au style courant. */
+    private void applyStyle() {
+        cardPaint.setColor(style.backgroundArgb());
+        borderPaint.setColor(style.borderArgb());
         borderPaint.setStyle(Paint.Style.STROKE);
         borderPaint.setStrokeWidth(1.0f);
-        textPaint.setColor(0xFF202124);
-        textPaint.setTextSize(16.0f * density);
-        hintPaint.setColor(0xFF80868B);
-        hintPaint.setTextSize(16.0f * density);
-        smallPaint.setColor(0xFF5F6368);
-        smallPaint.setTextSize(13.0f * density);
-        glyphPaint.setColor(0xFF5F6368);
+        textPaint.setColor(style.textArgb());
+        textPaint.setTextSize(style.textSizeSp() * density);
+        hintPaint.setColor(style.hintArgb());
+        hintPaint.setTextSize(style.textSizeSp() * density);
+        smallPaint.setColor(style.secondaryArgb());
+        smallPaint.setTextSize(style.secondarySizeSp() * density);
+        glyphPaint.setColor(style.secondaryArgb());
         glyphPaint.setStyle(Paint.Style.STROKE);
         glyphPaint.setStrokeWidth(1.6f * density);
     }
@@ -138,11 +152,11 @@ public final class GotoBar implements KeyboardCard {
         ancreY = metrics.caretY();
         float margin = dp(8);
         float pad = dp(PAD_DP);
-        float rowHeight = dp(ROW_HEIGHT_DP);
+        float rowHeight = dp(style.rowHeightDp());
         cardW = Math.max(Math.min(metrics.viewWidth() - 2 * margin,
-                dp(MAX_WIDTH_DP)), Math.min(dp(MIN_WIDTH_DP),
+                dp(style.maxCardWidthDp())), Math.min(dp(style.minCardWidthDp()),
                         metrics.viewWidth() - 2 * margin));
-        cardH = 2 * pad + rowHeight + dp(20);
+        cardH = 2 * pad + rowHeight + dp(22);
         float gap = dp(4);
         float below = ancreY + metrics.lineHeight() + gap;
         poseY = below + cardH <= metrics.viewHeight() - margin
@@ -161,13 +175,13 @@ public final class GotoBar implements KeyboardCard {
      */
     public void draw(Canvas canvas, PopupMetrics metrics) {
         poser(metrics);
-        float radius = dp(12);
+        float radius = dp(style.cornerRadiusDp());
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, cardPaint);
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, borderPaint);
         float pad = dp(PAD_DP);
-        float rowHeight = dp(ROW_HEIGHT_DP);
+        float rowHeight = dp(style.rowHeightDp());
         float rowTop = poseY + pad;
         float baseline = rowTop + rowHeight * 0.7f;
         // l'invite d'Android Studio, puis les chiffres (l'indication
@@ -177,15 +191,15 @@ public final class GotoBar implements KeyboardCard {
         canvas.drawText(digits.length() == 0 ? "numéro" : digits.toString(),
                 poseX + dp(10) + inviteWidth + dp(4), baseline,
                 digits.length() == 0 ? hintPaint : textPaint);
-        float glyphW = dp(GLYPH_DP);
+        float glyphW = dp(style.rowHeightDp() - 2);
         float cy = rowTop + rowHeight / 2;
         float crossCx = poseX + cardW - dp(2) - glyphW / 2;
-        float s = dp(6);
+        float s = dp(7);
         canvas.drawLine(crossCx - s, cy - s, crossCx + s, cy + s, glyphPaint);
         canvas.drawLine(crossCx - s, cy + s, crossCx + s, cy - s, glyphPaint);
         // le retour grisonne dessous
         canvas.drawText(feedback, poseX + dp(10),
-                rowTop + rowHeight + dp(14), smallPaint);
+                rowTop + rowHeight + dp(16), smallPaint);
     }
 
     /**
@@ -205,8 +219,8 @@ public final class GotoBar implements KeyboardCard {
             return false;
         }
         float pad = dp(PAD_DP);
-        float rowHeight = dp(ROW_HEIGHT_DP);
-        float glyphW = dp(GLYPH_DP);
+        float rowHeight = dp(style.rowHeightDp());
+        float glyphW = dp(style.rowHeightDp() - 2);
         if (y < poseY + pad + rowHeight
                 && x >= poseX + cardW - dp(2) - glyphW) {
             close();

@@ -15,9 +15,12 @@ import android.widget.Toast;
 import jo.pigma.core.TextBuffer;
 import jo.pigma.editor.EditorView;
 import jo.pigma.editor.popups.CompletionCard;
+import jo.pigma.editor.popups.DiagnosticCard;
 import jo.pigma.editor.popups.GotoBar;
 import jo.pigma.editor.popups.HistoryCard;
 import jo.pigma.editor.popups.LocalHistory;
+import jo.pigma.editor.popups.PopupStyle;
+import jo.pigma.editor.popups.QuickActionCard;
 import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.editor.popups.SignatureCard;
 import jo.pigma.syntax.SyntaxDocument;
@@ -116,6 +119,7 @@ public final class OpenHarness {
         quickDoc();
         selectionBar();
         popupsSecondGeneration();
+        diagnosticsAndAmpoule();
         languageServer();
         copyMeasures();
 
@@ -398,6 +402,12 @@ public final class OpenHarness {
     private static void dragDropText() throws InterruptedException {
         begin("traîné-déposé : la sélection se déplace au doigt");
         openLanguage("Java", 10_000L);
+        // le caret du scénario précédent vit sur un mot : la carte de
+        // complétion grand format le couvre — elle se range d'abord
+        // (le caret au départ du document, une trame) pour que le
+        // double-tap atteigne le mot « graine »
+        editor.caretTo(0);
+        frame();
         doubleTapOfWord("graine");
         frame();
         TextBuffer buffer = editor.getBuffer();
@@ -1499,6 +1509,14 @@ public final class OpenHarness {
         click("Annuler");
         check("l'annulation rend la casse d'avant",
                 editor.getBuffer().toString().equals(original));
+        // la sélection du mot vit encore après l'annulation : sa barre
+        // grand format couvre la ligne AU-DESSUS, la complétion du
+        // caret restauré couvre la région du tap — le caret se pose au
+        // départ du document (aucun mot n'y naît), la trame range tout,
+        // le double-tap sur SEUIL atteint alors le mot
+        editor.caretTo(0);
+        frame();
+        check("la sélection se range avant le commentaire", !editor.hasSelection());
         // le commentaire de ligne se pose et se retire
         doubleTapOfWord("SEUIL");
         frame();
@@ -1511,8 +1529,14 @@ public final class OpenHarness {
         check("la ligne se commente au préfixe du langage",
                 editor.getBuffer().toString().contains("// private static final double SEUIL"));
         click("Annuler");
+        check("le commentaire se retire",
+                editor.getBuffer().toString().equals(original));
         // la duplication et la suppression de ligne se tiennent la main
+        // (même rangement d'abord : le caret au départ, la trame range
+        // la complétion du caret restauré par l'annulation)
         int lineCount = editor.getBuffer().getLineCount();
+        editor.caretTo(0);
+        frame();
         doubleTapOfWord("graine");
         frame();
         tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
@@ -1544,6 +1568,11 @@ public final class OpenHarness {
         android.content.Context.harnessClipboard().setPrimaryClip(null);
         boolean[] ran = {false};
         editor.addSelectionAction("Test", () -> ran[0] = true);
+        // même rangement : le caret au départ, la trame range les cartes
+        editor.caretTo(0);
+        frame();
+        check("la sélection se range avant la pastille de l'hôte",
+                !editor.hasSelection());
         doubleTapOfWord("graine");
         frame();
         check("la pastille de l'hôte vit sur la barre",
@@ -1612,6 +1641,157 @@ public final class OpenHarness {
         check("la double annulation rend la ligne d'avant",
                 editor.getBuffer().toString().equals(original));
         detail("historique local : " + editor.localHistory().size() + " trace(s)");
+    }
+
+    /**
+     * Les diagnostics et l'ampoule de la gouttière, le style de
+     * l'hôte : le fermant orphelin naît d'une frappe, son marqueur
+     * rouge ouvre la carte de diagnostic (le souligné y va aussi) ;
+     * l'ampoule jaune de la ligne du curseur ouvre les actions
+     * rapides (celles de l'éditeur ET celles de l'hôte — la date du
+     * jour de l'application porteuse) ; le style posé par l'hôte
+     * porte le fond translucide, la forme, la taille.
+     */
+    private static void diagnosticsAndAmpoule() throws InterruptedException {
+        begin("diagnostics, ampoule et style : la gouttière parle");
+        openLanguage("Java", 10_000L);
+        String original = editor.getBuffer().toString();
+        // LE STYLE DE L'HÔTE : le fond translucide, la forme, la
+        // taille — l'API de la bibliothèque les porte, la vue les
+        // applique à toutes ses cartes
+        PopupStyle custom = PopupStyle.builder()
+                .backgroundArgb(0xCCF6F8FA)
+                .borderArgb(0x99B5B5B5)
+                .cornerRadiusDp(24)
+                .textSizeSp(20.0f)
+                .minCardWidthDp(420)
+                .maxCardWidthDp(520)
+                .build();
+        editor.setPopupStyle(custom);
+        frame();
+        check("le style posé par l'hôte vit", editor.popupStyle() == custom);
+        check("le fond se porte translucide",
+                (editor.popupStyle().backgroundArgb() >>> 24) < 0xFF);
+        check("la forme demandée se lit",
+                editor.popupStyle().cornerRadiusDp() == 24);
+        // LE DIAGNOSTIC : un fermant orphelin naît d'une frappe en
+        // tête de document (la profondeur tolérante le refuse)
+        editor.caretTo(0);
+        connection.commitText(")", 1);
+        frame();
+        Thread.sleep(600L);
+        frame();
+        View.harnessDrain(2_000L);
+        frame();
+        check("le fermant orphelin se diagnostique",
+                editor.diagnosticCount() > 0);
+        check("la première ligne porte le marqueur",
+                editor.lineHasDiagnostics(0));
+        // le doigt sur le marqueur de la gouttière : la carte de
+        // diagnostic s'ouvre (l'icône de sévérité, le message)
+        float markerY = lineTop(0) + LINE_HEIGHT / 2.0f;
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
+                24.0f, markerY));
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
+                24.0f, markerY));
+        frame();
+        check("la carte de diagnostic s'ouvre au marqueur",
+                editor.diagnosticCard().isShown());
+        boolean orphan = false;
+        for (DiagnosticCard.Entry entry : editor.diagnosticCard().entries()) {
+            if (entry.message().contains("fermant orphelin")) {
+                orphan = entry.severity() == DiagnosticCard.SEVERITY_ERROR;
+            }
+        }
+        check("le message porte la sévérité d'erreur", orphan);
+        // le souligné rouge du texte y va aussi : la carte se rouvre
+        // au doigt sur le signe mésapparié
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
+                400.0f, 80.0f));
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
+                400.0f, 80.0f));
+        check("la carte se range au nouvel appui",
+                !editor.diagnosticCard().isShown());
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
+                editor.getPaddingLeft() + editor.charWidth() / 2.0f, markerY));
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
+                editor.getPaddingLeft() + editor.charWidth() / 2.0f, markerY));
+        frame();
+        check("le souligné rouge ouvre la carte",
+                editor.diagnosticCard().isShown());
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
+                400.0f, 80.0f));
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
+                400.0f, 80.0f));
+        check("la carte se range au tap suivant",
+                !editor.diagnosticCard().isShown());
+        // L'AMPOULE JAUNE : la ligne du curseur porte les actions
+        // rapides — celles de l'éditeur et celles de l'hôte (la date
+        // du jour de l'application porteuse)
+        int classLine = editor.getBuffer().toString()
+                .indexOf("public final class Lot");
+        int classLineIndex = editor.getBuffer().lineOfOffset(
+                Math.min(classLine, editor.getBuffer().length()));
+        editor.caretTo(editor.getBuffer().getLineStart(classLineIndex));
+        frame();
+        boolean hasBuiltIn = false;
+        boolean hasHost = false;
+        for (QuickActionCard.Entry action : editor.quickActionsOfLine(classLineIndex)) {
+            if ("Commenter / décommenter".equals(action.label())) {
+                hasBuiltIn = true;
+            }
+            if (action.label().contains("date")) {
+                hasHost = true;
+            }
+        }
+        check("les actions rapides de l'éditeur vivent", hasBuiltIn);
+        check("les actions rapides de l'hôte vivent (l'ampoule ouverte)",
+                hasHost);
+        // le doigt sur l'ampoule : la carte s'ouvre
+        float bulbY = lineTop(classLineIndex) + LINE_HEIGHT / 2.0f;
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
+                24.0f, bulbY));
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
+                24.0f, bulbY));
+        frame();
+        check("la carte d'actions rapides s'ouvre à l'ampoule",
+                editor.quickActionCard().isShown());
+        // le choix d'une rangée la REFERME avant d'exécuter : la ligne
+        // du curseur se commente
+        int commentRow = -1;
+        java.util.List<QuickActionCard.Entry> actions =
+                editor.quickActionCard().entries();
+        for (int at = 0; at < actions.size(); at++) {
+            if ("Commenter / décommenter".equals(actions.get(at).label())) {
+                commentRow = at;
+            }
+        }
+        check("la rangée du commentaire se trouve", commentRow >= 0);
+        if (commentRow >= 0) {
+            editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
+                    editor.quickActionCard().poseX() + 40.0f,
+                    editor.quickActionCard().rowCenterY(commentRow)));
+            editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
+                    editor.quickActionCard().poseX() + 40.0f,
+                    editor.quickActionCard().rowCenterY(commentRow)));
+            frame();
+        }
+        check("la ligne du curseur se commente depuis l'ampoule",
+                editor.getBuffer().toString().contains("// public final class Lot"));
+        check("la carte d'actions se range après le choix",
+                !editor.quickActionCard().isShown());
+        click("Annuler");
+        click("Annuler");
+        check("le texte revient après l'éprouve",
+                editor.getBuffer().toString().substring(1).equals(original)
+                        || editor.getBuffer().toString().equals(original));
+        // le style de l'hôte se rend à la trame suivante — les cartes
+        // par défaut reviennent (null rend celui par défaut)
+        editor.setPopupStyle(null);
+        frame();
+        check("le style par défaut revient",
+                editor.popupStyle().backgroundArgb() == PopupStyle.defaults()
+                        .backgroundArgb());
     }
 
     /** Le serveur de langage : diagnostics, survol, débranchement. */

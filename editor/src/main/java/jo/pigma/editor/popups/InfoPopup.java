@@ -25,7 +25,6 @@ public final class InfoPopup {
 
     /** Le nombre maximal de rangées du corps (la queue s'abrège). */
     private static final int MAX_BODY_ROWS = 8;
-
     /** Le titre montré (null : aucun titre, ou la popup est rangée). */
     private String title;
 
@@ -43,22 +42,49 @@ public final class InfoPopup {
     private final Paint background = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
 
+    /** Le style posé par l'hôte : fond translucide, encres, tailles, forme. */
+    private PopupStyle style = PopupStyle.defaults();
+
+    private float density = 1.0f;
+
     /**
-     * Une popup neuve, ses pinceaux propres.
+     * Une popup neuve, ses pinceaux propres au style par défaut.
      *
      * @param density la densité de l'écran (le dp en pixels)
      */
     public InfoPopup(float density) {
-        titlePaint.setColor(0xFF202124);
-        titlePaint.setTextSize(14.0f * density);
+        this.density = density;
+        applyStyle();
+    }
+
+    /**
+     * Pose le style de l'hôte : le fond translucide, les encres, la
+     * taille des textes, la forme — les pinceaux s'y reconfigurent.
+     *
+     * @param fresh le style posé, null pour celui par défaut
+     */
+    public void setStyle(PopupStyle fresh) {
+        style = fresh == null ? PopupStyle.defaults() : fresh;
+        applyStyle();
+    }
+
+    /** Le style courant (le harnais le lit). */
+    public PopupStyle style() {
+        return style;
+    }
+
+    /** Reconfigure les pinceaux au style courant. */
+    private void applyStyle() {
+        titlePaint.setColor(style.textArgb());
+        titlePaint.setTextSize(style.textSizeSp() * density);
         titlePaint.setFakeBoldText(true);
-        bodyPaint.setColor(0xFF3C4043);
-        bodyPaint.setTextSize(14.0f * density);
+        bodyPaint.setColor(style.hintArgb());
+        bodyPaint.setTextSize(style.textSizeSp() * density);
         background.setStyle(Paint.Style.FILL);
-        background.setColor(0xF2FFFFFF);
+        background.setColor(style.backgroundArgb());
         border.setStyle(Paint.Style.STROKE);
         border.setStrokeWidth(density);
-        border.setColor(0xFF1B6FE0);
+        border.setColor(style.accentArgb());
     }
 
     /**
@@ -148,11 +174,11 @@ public final class InfoPopup {
             return;
         }
         float density = metrics.density();
-        float padding = 10.0f * density;
+        float padding = 12.0f * density;
         float available = metrics.viewWidth() - metrics.paddingLeft()
                 - metrics.paddingRight() - 2.0f * padding;
         List<String> rows = wrap(body, bodyPaint, available, MAX_BODY_ROWS);
-        float rowHeight = -bodyPaint.getFontMetrics().top + 3.0f * density;
+        float rowHeight = -bodyPaint.getFontMetrics().top + 4.0f * density;
         int rowCount = (title == null ? 0 : 1) + rows.size();
         float boxWidth = boxWidth(available, rows, padding);
         float boxHeight = padding + rowCount * rowHeight + padding / 2.0f;
@@ -167,10 +193,11 @@ public final class InfoPopup {
             top = Math.min(anchorTop + metrics.lineHeight() + 4.0f * density,
                     metrics.viewHeight() - boxHeight);
         }
+        float radius = style.cornerRadiusDp() * density;
         canvas.drawRoundRect(left, top, left + boxWidth, top + boxHeight,
-                8.0f * density, 8.0f * density, background);
+                radius, radius, background);
         canvas.drawRoundRect(left, top, left + boxWidth, top + boxHeight,
-                8.0f * density, 8.0f * density, border);
+                radius, radius, border);
         float baseline = top + padding - bodyPaint.getFontMetrics().top;
         if (title != null) {
             canvas.drawText(title, left + padding, baseline, titlePaint);

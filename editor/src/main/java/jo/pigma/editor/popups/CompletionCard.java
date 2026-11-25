@@ -33,20 +33,11 @@ public final class CompletionCard {
     /** Le plancher de rangées quand la place manque sous le caret. */
     private static final int MIN_ROWS = 3;
 
-    /** La hauteur d'une rangée (dp). */
-    private static final int ROW_HEIGHT_DP = 36;
-
     /** La hauteur du pied de carte (dp). */
-    private static final int FOOTER_DP = 26;
+    private static final int FOOTER_DP = 32;
 
     /** La respiration intérieure de la carte (dp). */
     private static final int PAD_DP = 4;
-
-    /** La largeur plancher de la carte (dp). */
-    private static final int MIN_WIDTH_DP = 240;
-
-    /** La largeur plafond de la carte (dp). */
-    private static final int MAX_WIDTH_DP = 340;
 
     /** La marge aux murs de la vue (dp). */
     private static final int MARGIN_DP = 8;
@@ -55,10 +46,13 @@ public final class CompletionCard {
     private static final int GAP_DP = 2;
 
     /** La colonne d'icône : sa largeur (dp). */
-    private static final int ICON_DP = 24;
+    private static final int ICON_DP = 28;
+
+    /** Le côté d'une icône de nature (dp). */
+    private static final int ICON_SIDE_DP = 20;
 
     /** Le filet d'accent de la rangée courante (dp). */
-    private static final int ACCENT_BAR_DP = 3;
+    private static final int ACCENT_BAR_DP = 4;
 
     /** La nature inconnue : le carré neutre, aucune lettre dedans. */
     public static final int KIND_UNKNOWN = 0;
@@ -116,6 +110,9 @@ public final class CompletionCard {
 
     private float density = 1.0f;
 
+    /** Le style posé par l'hôte : fond translucide, encres, tailles, largeur, forme. */
+    private PopupStyle style = PopupStyle.defaults();
+
     private EditorView editor;
 
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -132,30 +129,54 @@ public final class CompletionCard {
     private final Paint footerRulePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     /**
-     * Une carte neuve, ses pinceaux propres.
+     * Une carte neuve, ses pinceaux propres au style par défaut.
      *
      * @param density la densité de l'écran (le dp en pixels)
      */
     public CompletionCard(float density) {
-        cardPaint.setColor(0xFFF6F8FA);
-        borderPaint.setColor(0xFFB5B5B5);
+        this.density = density;
+        applyStyle();
+    }
+
+    /**
+     * Pose le style de l'hôte : le fond translucide, les encres, la
+     * taille des textes, la largeur des cartes, la forme — les
+     * pinceaux s'y reconfigurent entiers.
+     *
+     * @param fresh le style posé, null pour celui par défaut
+     */
+    public void setStyle(PopupStyle fresh) {
+        style = fresh == null ? PopupStyle.defaults() : fresh;
+        applyStyle();
+    }
+
+    /** Le style courant (le harnais le lit). */
+    public PopupStyle style() {
+        return style;
+    }
+
+    /** Reconfigure les pinceaux au style courant. */
+    private void applyStyle() {
+        cardPaint.setColor(style.backgroundArgb());
+        borderPaint.setColor(style.borderArgb());
         borderPaint.setStyle(Paint.Style.STROKE);
         borderPaint.setStrokeWidth(1.0f);
-        textPaint.setColor(0xFF202124);
-        textPaint.setTextSize(14.0f * density);
-        accentPaint.setColor(0xFF1A73E8);
-        accentPaint.setTextSize(14.0f * density);
-        detailPaint.setColor(0xFF80868B);
-        detailPaint.setTextSize(12.0f * density);
-        footerPaint.setColor(0xFF5F6368);
-        footerPaint.setTextSize(11.0f * density);
-        selectionPaint.setColor(0x1F1A73E8);
-        accentBarPaint.setColor(0xFF1A73E8);
-        scrollbarPaint.setColor(0x66B5B5B5);
+        textPaint.setColor(style.textArgb());
+        textPaint.setTextSize((style.textSizeSp() - 2.0f) * density);
+        accentPaint.setColor(style.accentArgb());
+        accentPaint.setTextSize((style.textSizeSp() - 2.0f) * density);
+        detailPaint.setColor(style.hintArgb());
+        detailPaint.setTextSize(style.secondarySizeSp() * density);
+        footerPaint.setColor(style.secondaryArgb());
+        footerPaint.setTextSize((style.secondarySizeSp() - 2.0f) * density);
+        selectionPaint.setColor((style.accentArgb() & 0x00FFFFFF) | 0x1F000000);
+        accentBarPaint.setColor(style.accentArgb());
+        scrollbarPaint.setColor((style.borderArgb() & 0x00FFFFFF) | 0x66000000);
         iconPaint.setStyle(Paint.Style.FILL);
         iconLetterPaint.setColor(0xFFFFFFFF);
-        iconLetterPaint.setTextSize(10.0f * density);
+        iconLetterPaint.setTextSize((style.secondarySizeSp() - 3.0f) * density);
         iconLetterPaint.setFakeBoldText(true);
+        footerRulePaint.setColor(style.borderArgb());
     }
 
     /**
@@ -289,7 +310,7 @@ public final class CompletionCard {
                 || y < poseY || y >= poseY + cardH) {
             return false;
         }
-        float rowH = dp(ROW_HEIGHT_DP);
+        float rowH = rowHeight();
         float rowsBottom = poseY + dp(PAD_DP) + shownRows * rowH;
         if (y < rowsBottom) {
             int row = (int) ((y - poseY - dp(PAD_DP)) / rowH) + topRow;
@@ -319,12 +340,12 @@ public final class CompletionCard {
             return;
         }
         place(metrics);
-        float radius = dp(10);
+        float radius = dp(style.cornerRadiusDp());
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, cardPaint);
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, borderPaint);
-        float rowH = dp(ROW_HEIGHT_DP);
+        float rowH = rowHeight();
         float pad = dp(PAD_DP);
         float rowsBottom = poseY + pad + shownRows * rowH;
         for (int at = topRow; at < topRow + shownRows && at < entries.size(); at++) {
@@ -336,14 +357,14 @@ public final class CompletionCard {
                         poseX + 1.0f + dp(ACCENT_BAR_DP), top + rowH, accentBarPaint);
             }
             drawIcon(canvas, entries.get(at).kind(),
-                    poseX + dp(8), top + rowH / 2.0f);
+                    poseX + dp(10), top + rowH / 2.0f);
             drawLabel(canvas, ellipsize(entries.get(at).name(), nameColumnWidth()),
-                    poseX + dp(ICON_DP) + dp(6), top + rowH * 0.68f, at == highlighted);
+                    poseX + dp(ICON_DP) + dp(8), top + rowH * 0.68f, at == highlighted);
             String detail = entries.get(at).detail();
             if (!detail.isEmpty()) {
                 String shown = shrink(detail, detailPaint, detailColumnWidth());
                 canvas.drawText(shown,
-                        poseX + cardW - dp(12) - detailPaint.measureText(shown),
+                        poseX + cardW - dp(14) - detailPaint.measureText(shown),
                         top + rowH * 0.68f, detailPaint);
             }
         }
@@ -382,7 +403,12 @@ public final class CompletionCard {
             return -1.0f;
         }
         return poseY + dp(PAD_DP)
-                + (index - topRow + 0.5f) * dp(ROW_HEIGHT_DP);
+                + (index - topRow + 0.5f) * rowHeight();
+    }
+
+    /** La hauteur d'une rangée : le style la porte, la carte y respire. */
+    private float rowHeight() {
+        return dp(style.rowHeightDp() - 8);
     }
 
     /**
@@ -394,10 +420,12 @@ public final class CompletionCard {
     private void place(PopupMetrics metrics) {
         float margin = dp(MARGIN_DP);
         float gap = dp(GAP_DP);
-        float rowH = dp(ROW_HEIGHT_DP);
+        float rowH = rowHeight();
         float pad = dp(PAD_DP);
-        cardW = Math.min(Math.max(measuredWidth(), dp(MIN_WIDTH_DP)),
-                dp(MAX_WIDTH_DP));
+        cardW = Math.min(Math.max(measuredWidth(),
+                dp(style.minCardWidthDp() - 80)),
+                Math.min(dp(style.maxCardWidthDp() - 60),
+                        metrics.viewWidth() - 2 * margin));
         int rows = Math.min(MAX_ROWS, entries.size());
         // la place de chaque côté : la carte vit du côté qui en a le
         // plus — le dessous d'abord quand les deux tiennent
@@ -435,13 +463,14 @@ public final class CompletionCard {
                         detailPaint.measureText(entry.detail()));
             }
         }
-        return dp(ICON_DP) + dp(6) + widestName + (widestDetail > 0 ? dp(16) + widestDetail : 0)
-                + 2 * dp(12);
+        return dp(ICON_DP) + dp(8) + widestName
+                + (widestDetail > 0 ? dp(16) + widestDetail : 0)
+                + 2 * dp(14);
     }
 
     /** La largeur de la colonne du nom. */
     private float nameColumnWidth() {
-        return cardW - dp(ICON_DP) - dp(6) - detailReserved() - 2 * dp(12);
+        return cardW - dp(ICON_DP) - dp(8) - detailReserved() - 2 * dp(14);
     }
 
     /** La largeur de la colonne du détail. */
@@ -454,7 +483,7 @@ public final class CompletionCard {
         for (Entry entry : entries) {
             if (!entry.detail().isEmpty()) {
                 // un tiers de la carte, plafonné au plus large détail
-                return Math.min(dp(120), measuredDetailWidth() + dp(8));
+                return Math.min(dp(140), measuredDetailWidth() + dp(8));
             }
         }
         return 0.0f;
@@ -522,11 +551,11 @@ public final class CompletionCard {
      * nature neutre garde le carré vide et pâle.
      */
     private void drawIcon(Canvas canvas, int kind, float left, float cy) {
-        float side = dp(16);
+        float side = dp(ICON_SIDE_DP);
         float top = cy - side / 2.0f;
         iconPaint.setColor(iconColor(kind));
         canvas.drawRoundRect(left, top, left + side, top + side,
-                dp(3), dp(3), iconPaint);
+                dp(4), dp(4), iconPaint);
         String letter = iconLetter(kind);
         if (!letter.isEmpty()) {
             float letterW = iconLetterPaint.measureText(letter);
@@ -596,16 +625,16 @@ public final class CompletionCard {
      * cache le dit aussi), l'indice des touches à droite.
      */
     private void drawFooter(Canvas canvas, float footerTop) {
-        float baseline = footerTop + dp(FOOTER_DP) * 0.66f;
+        float baseline = footerTop + dp(FOOTER_DP) * 0.68f;
         String count = entries.size() == 1 ? "1 candidat"
                 : entries.size() + " candidats";
         if (shownRows < entries.size()) {
             count += " · " + (entries.size() - shownRows) + " cachés";
         }
-        canvas.drawText(count, poseX + dp(12), baseline, footerPaint);
+        canvas.drawText(count, poseX + dp(14), baseline, footerPaint);
         String hint = "↑↓ naviguer · Entrée insère";
         canvas.drawText(hint,
-                poseX + cardW - dp(12) - footerPaint.measureText(hint),
+                poseX + cardW - dp(14) - footerPaint.measureText(hint),
                 baseline, footerPaint);
         // un filet sépare les rangées du pied
         footerRulePaint.setStrokeWidth(1.0f);

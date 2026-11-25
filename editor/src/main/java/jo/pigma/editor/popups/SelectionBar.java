@@ -29,9 +29,6 @@ import jo.pigma.editor.EditorView;
  */
 public final class SelectionBar {
 
-    /** La hauteur du contenu de la pilule (dp). */
-    private static final int HEIGHT_DP = 34;
-
     /** La respiration horizontale d'un libellé (dp). */
     private static final int PAD_X_DP = 12;
 
@@ -41,14 +38,11 @@ public final class SelectionBar {
     /** Le budget du filet séparateur (dp). */
     private static final int RULE_DP = 6;
 
-    /** La largeur d'une icône (dp). */
-    private static final int ICON_DP = 28;
-
     /** La respiration verticale de la carte autour de la pilule (dp). */
     private static final int PAD_Y_DP = 3;
 
     /** Le budget de largeur au-delà duquel l'hôte débordé se replie (dp). */
-    private static final int HOST_BUDGET_DP = 400;
+    private static final int HOST_BUDGET_DP = 420;
 
     /** L'identifiant d'action de la pastille Copier. */
     private static final int ACT_COPY = 0;
@@ -110,6 +104,9 @@ public final class SelectionBar {
 
     private float density = 1.0f;
 
+    /** Le style posé par l'hôte : fond translucide, encres, tailles, forme. */
+    private PopupStyle style = PopupStyle.defaults();
+
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint chipPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -119,23 +116,56 @@ public final class SelectionBar {
     private final Paint glyphPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     /**
-     * Une barre neuve, ses pinceaux propres.
+     * Une barre neuve, ses pinceaux propres au style par défaut.
      *
      * @param density la densité de l'écran (le dp en pixels)
      */
     public SelectionBar(float density) {
-        cardPaint.setColor(0xFFF3F3F3);
-        borderPaint.setColor(0xFFB5B5B5);
+        this.density = density;
+        applyStyle();
+    }
+
+    /**
+     * Pose le style de l'hôte : le fond translucide, les encres, la
+     * taille des textes, la hauteur de la pilule — les pinceaux
+     * s'y reconfigurent entiers.
+     *
+     * @param fresh le style posé, null pour celui par défaut
+     */
+    public void setStyle(PopupStyle fresh) {
+        style = fresh == null ? PopupStyle.defaults() : fresh;
+        applyStyle();
+    }
+
+    /** Le style courant (le harnais le lit). */
+    public PopupStyle style() {
+        return style;
+    }
+
+    /** Reconfigure les pinceaux au style courant. */
+    private void applyStyle() {
+        cardPaint.setColor(style.backgroundArgb());
+        borderPaint.setColor(style.borderArgb());
         borderPaint.setStyle(Paint.Style.STROKE);
         borderPaint.setStrokeWidth(1.0f);
-        chipPaint.setColor(0x1F1A73E8);
+        chipPaint.setColor((style.accentArgb() & 0x00FFFFFF) | 0x1F000000);
         chipHostPaint.setColor(0x1FE8710A);
-        textPaint.setColor(0xFF202124);
-        textPaint.setTextSize(14.0f * density);
-        rulePaint.setColor(0xFFB5B5B5);
-        glyphPaint.setColor(0xFF5F6368);
+        textPaint.setColor(style.textArgb());
+        textPaint.setTextSize((style.textSizeSp() - 2.0f) * density);
+        rulePaint.setColor(style.borderArgb());
+        glyphPaint.setColor(style.secondaryArgb());
         glyphPaint.setStyle(Paint.Style.STROKE);
         glyphPaint.setStrokeWidth(1.4f);
+    }
+
+    /** La hauteur du contenu de la pilule : le style la porte. */
+    private float pillHeight() {
+        return dp(style.rowHeightDp() - 12);
+    }
+
+    /** La largeur d'une icône de la barre : le style la porte. */
+    private float iconWidth() {
+        return dp(style.rowHeightDp() - 20);
     }
 
     /**
@@ -209,7 +239,7 @@ public final class SelectionBar {
 
     /** L'ordonnée du centre de la pilule (le harnais y vise le doigt). */
     public float centerY() {
-        return poseY + dp(PAD_Y_DP) + dp(HEIGHT_DP) / 2.0f;
+        return poseY + dp(PAD_Y_DP) + pillHeight() / 2.0f;
     }
 
     /**
@@ -219,7 +249,7 @@ public final class SelectionBar {
      * @return l'abscisse du centre (après un dessin de la barre)
      */
     public float docsCenterX() {
-        return iconStart() + dp(ICON_DP) / 2.0f;
+        return iconStart() + iconWidth() / 2.0f;
     }
 
     /**
@@ -229,7 +259,7 @@ public final class SelectionBar {
      * @return l'abscisse du centre (après un dessin de la barre)
      */
     public float overflowCenterX() {
-        return iconStart() + dp(ICON_DP) + dp(ICON_DP) / 2.0f;
+        return iconStart() + iconWidth() + iconWidth() / 2.0f;
     }
 
     /**
@@ -273,7 +303,7 @@ public final class SelectionBar {
 
     /** La hauteur de la pilule (le harnais la lit). */
     public float height() {
-        return 2.0f * dp(PAD_Y_DP) + dp(HEIGHT_DP);
+        return 2.0f * dp(PAD_Y_DP) + pillHeight();
     }
 
     /**
@@ -364,8 +394,8 @@ public final class SelectionBar {
         canvas.drawRoundRect(poseX, poseY, poseX + contentW, poseY + barH,
                 radius, radius, borderPaint);
         float top = poseY + dp(PAD_Y_DP);
-        float cy = top + dp(HEIGHT_DP) / 2.0f;
-        float baseline = top + dp(HEIGHT_DP) * 0.68f;
+        float cy = top + pillHeight() / 2.0f;
+        float baseline = top + pillHeight() * 0.68f;
         float cursor = poseX;
         for (int at = 0; at < entries.size(); at++) {
             cursor = drawChip(canvas, entries.get(at), cursor, top, baseline, cy);
@@ -374,10 +404,10 @@ public final class SelectionBar {
             // le filet séparateur du groupe texte et du groupe icônes
             float ruleX = cursor + dp(GAP_DP) + dp(RULE_DP) / 2.0f;
             canvas.drawLine(ruleX, top + dp(4), ruleX,
-                    top + dp(HEIGHT_DP) - dp(4), rulePaint);
+                    top + pillHeight() - dp(4), rulePaint);
             cursor += dp(GAP_DP) + dp(RULE_DP);
             drawDocsIcon(canvas, cursor, cy);
-            cursor += dp(ICON_DP);
+            cursor += iconWidth();
             drawOverflowPuce(canvas, cursor, cy);
         }
     }
@@ -436,9 +466,10 @@ public final class SelectionBar {
         String label = labelOf(entry[0], hostIndex);
         float labelW = textPaint.measureText(label);
         float chipW = 2.0f * dp(PAD_X_DP) + labelW;
+        float pillH = pillHeight();
         canvas.drawRoundRect(left + dp(GAP_DP) / 2.0f, top + dp(2),
-                left + chipW - dp(GAP_DP) / 2.0f, top + dp(HEIGHT_DP) - dp(2),
-                dp(HEIGHT_DP) / 2.0f, dp(HEIGHT_DP) / 2.0f,
+                left + chipW - dp(GAP_DP) / 2.0f, top + pillH - dp(2),
+                pillH / 2.0f, pillH / 2.0f,
                 entry[0] == ACT_HOST ? chipHostPaint : chipPaint);
         canvas.drawText(label, left + (chipW - labelW) / 2.0f, baseline, textPaint);
         return left + chipW + dp(GAP_DP);
@@ -446,11 +477,11 @@ public final class SelectionBar {
 
     /** L'icône « i » de documentation : le cercle cerclé, la lettre au centre. */
     private void drawDocsIcon(Canvas canvas, float left, float cy) {
-        float cx = left + dp(ICON_DP) / 2.0f;
+        float cx = left + iconWidth() / 2.0f;
         glyphPaint.setStrokeWidth(1.1f * density);
-        canvas.drawCircle(cx, cy, 6.5f * density, glyphPaint);
+        canvas.drawCircle(cx, cy, 8.0f * density, glyphPaint);
         float letterSize = textPaint.getTextSize();
-        textPaint.setTextSize(11.0f * density);
+        textPaint.setTextSize(12.0f * density);
         canvas.drawText("i", cx - textPaint.measureText("i") / 2.0f,
                 cy + textPaint.measureText("i") * 0.35f, textPaint);
         textPaint.setTextSize(letterSize);
@@ -459,10 +490,10 @@ public final class SelectionBar {
 
     /** La puce « ⋯ » de débordement : trois points à l'encre atténuée. */
     private void drawOverflowPuce(Canvas canvas, float left, float cy) {
-        float cx = left + dp(ICON_DP) / 2.0f;
+        float cx = left + iconWidth() / 2.0f;
         for (int dot = 0; dot < 3; dot++) {
-            float dotY = cy + (dot - 1) * 3.4f * density;
-            canvas.drawCircle(cx, dotY, 1.5f * density, glyphPaint);
+            float dotY = cy + (dot - 1) * 4.0f * density;
+            canvas.drawCircle(cx, dotY, 1.8f * density, glyphPaint);
         }
     }
 
@@ -477,7 +508,7 @@ public final class SelectionBar {
                     + textPaint.measureText(labelOf(entry[0],
                             entry.length > 2 ? entry[2] : -1)) + dp(GAP_DP);
         }
-        return width + dp(RULE_DP) + 2.0f * dp(ICON_DP) + dp(GAP_DP);
+        return width + dp(RULE_DP) + 2.0f * iconWidth() + dp(GAP_DP);
     }
 
     /**
@@ -499,11 +530,11 @@ public final class SelectionBar {
             cursor += chipW + dp(GAP_DP);
         }
         float iconsStart = cursor + dp(GAP_DP) + dp(RULE_DP);
-        if (x >= iconsStart && x < iconsStart + dp(ICON_DP)) {
+        if (x >= iconsStart && x < iconsStart + iconWidth()) {
             return ICON_DOCS;
         }
-        float puceStart = iconsStart + dp(ICON_DP);
-        if (x >= puceStart && x < puceStart + dp(ICON_DP)) {
+        float puceStart = iconsStart + iconWidth();
+        if (x >= puceStart && x < puceStart + iconWidth()) {
             return ICON_OVERFLOW;
         }
         return NO_HIT;

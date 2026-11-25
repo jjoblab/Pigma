@@ -27,12 +27,6 @@ import java.util.List;
  */
 public final class OverflowCard {
 
-    /** La hauteur d'une rangée (dp). */
-    private static final int ROW_HEIGHT_DP = 36;
-
-    /** La hauteur d'un titre d'étage (dp). */
-    private static final int HEADER_DP = 26;
-
     /** La marge aux murs de la vue (dp). */
     private static final int MARGIN_DP = 8;
 
@@ -41,12 +35,6 @@ public final class OverflowCard {
 
     /** La respiration haute et basse de la carte (dp). */
     private static final int PAD_Y_DP = 4;
-
-    /** La largeur plancher de la carte (dp). */
-    private static final int MIN_WIDTH_DP = 200;
-
-    /** La largeur plafond de la carte (dp). */
-    private static final int MAX_WIDTH_DP = 320;
 
     /** Le plafond de rangées visibles (la fenêtre défile au-delà). */
     private static final int MAX_VISIBLE_ROWS = 12;
@@ -88,6 +76,9 @@ public final class OverflowCard {
 
     private float density = 1.0f;
 
+    /** Le style posé par l'hôte : fond translucide, encres, tailles, largeur, forme. */
+    private PopupStyle style = PopupStyle.defaults();
+
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -95,21 +86,44 @@ public final class OverflowCard {
     private final Paint rulePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     /**
-     * Une carte neuve, ses pinceaux propres.
+     * Une carte neuve, ses pinceaux propres au style par défaut.
      *
      * @param density la densité de l'écran (le dp en pixels)
      */
     public OverflowCard(float density) {
-        cardPaint.setColor(0xFFF6F8FA);
-        borderPaint.setColor(0xFFB5B5B5);
+        this.density = density;
+        applyStyle();
+    }
+
+    /**
+     * Pose le style de l'hôte : le fond translucide, les encres, la
+     * taille des textes, la largeur des cartes, la forme — les
+     * pinceaux s'y reconfigurent entiers.
+     *
+     * @param fresh le style posé, null pour celui par défaut
+     */
+    public void setStyle(PopupStyle fresh) {
+        style = fresh == null ? PopupStyle.defaults() : fresh;
+        applyStyle();
+    }
+
+    /** Le style courant (le harnais le lit). */
+    public PopupStyle style() {
+        return style;
+    }
+
+    /** Reconfigure les pinceaux au style courant. */
+    private void applyStyle() {
+        cardPaint.setColor(style.backgroundArgb());
+        borderPaint.setColor(style.borderArgb());
         borderPaint.setStyle(Paint.Style.STROKE);
         borderPaint.setStrokeWidth(1.0f);
-        textPaint.setColor(0xFF202124);
-        textPaint.setTextSize(14.0f * density);
-        headerPaint.setColor(0xFF1A73E8);
-        headerPaint.setTextSize(11.0f * density);
+        textPaint.setColor(style.textArgb());
+        textPaint.setTextSize((style.textSizeSp() - 2.0f) * density);
+        headerPaint.setColor(style.accentArgb());
+        headerPaint.setTextSize(style.secondarySizeSp() * density);
         headerPaint.setFakeBoldText(true);
-        rulePaint.setColor(0xFFDDDDDD);
+        rulePaint.setColor(style.borderArgb());
     }
 
     /**
@@ -226,7 +240,7 @@ public final class OverflowCard {
             return;
         }
         place(anchorTop, anchorBottom, centerX, metrics);
-        float radius = dp(10);
+        float radius = dp(style.cornerRadiusDp());
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, cardPaint);
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
@@ -235,7 +249,7 @@ public final class OverflowCard {
                 && flat < flatCount(); flat++) {
             if (leadsFamily(flat) && !familyOf(flat).title().isEmpty()) {
                 drawHeader(canvas, familyOf(flat), rowTops[flat - topRow]
-                        - dp(HEADER_DP));
+                        - headerHeight());
             }
             drawRowLabel(canvas, flatRow(flat), rowTops[flat - topRow]);
         }
@@ -274,7 +288,17 @@ public final class OverflowCard {
                 || row >= flatCount()) {
             return -1.0f;
         }
-        return rowTops[row - topRow] + dp(ROW_HEIGHT_DP) / 2.0f;
+        return rowTops[row - topRow] + rowHeight() / 2.0f;
+    }
+
+    /** La hauteur d'une rangée : le style la porte, l'étage y respire. */
+    private float rowHeight() {
+        return dp(style.rowHeightDp() - 8);
+    }
+
+    /** La hauteur d'un titre d'étage : le style la porte. */
+    private float headerHeight() {
+        return dp(style.headerHeightDp());
     }
 
     /**
@@ -289,8 +313,10 @@ public final class OverflowCard {
             float centerX, PopupMetrics metrics) {
         float margin = dp(MARGIN_DP);
         float gap = dp(GAP_DP);
-        cardW = Math.min(Math.max(measuredWidth(), dp(MIN_WIDTH_DP)),
-                dp(MAX_WIDTH_DP));
+        cardW = Math.min(Math.max(measuredWidth(),
+                dp(style.minCardWidthDp() - 80)),
+                Math.min(dp(style.maxCardWidthDp() - 80),
+                        metrics.viewWidth() - 2 * margin));
         int total = flatCount();
         int rows = Math.min(MAX_VISIBLE_ROWS, total);
         float available = metrics.viewHeight() - 2 * margin
@@ -334,10 +360,10 @@ public final class OverflowCard {
                     // l'étage ouvre ici (dans la fenêtre) : son titre
                     // se paie avant sa première rangée visible
                     if (leadsFamily(flat) && !family.title().isEmpty()) {
-                        cursor += dp(HEADER_DP);
+                        cursor += headerHeight();
                     }
                     rowTops[flat - topRow] = cursor;
-                    cursor += dp(ROW_HEIGHT_DP);
+                    cursor += rowHeight();
                 }
                 flat++;
             }
@@ -360,9 +386,9 @@ public final class OverflowCard {
                     // l'étage ouvre dans la fenêtre : son titre se
                     // paie avant sa première rangée visible
                     if (leadsFamily(flat) && !family.title().isEmpty()) {
-                        height += dp(HEADER_DP);
+                        height += headerHeight();
                     }
-                    height += dp(ROW_HEIGHT_DP);
+                    height += rowHeight();
                     visible++;
                 }
                 flat++;
@@ -426,7 +452,7 @@ public final class OverflowCard {
         for (int flat = topRow; flat < topRow + visibleRows
                 && flat < flatCount(); flat++) {
             float top = rowTops[flat - topRow];
-            if (y >= top && y < top + dp(ROW_HEIGHT_DP)) {
+            if (y >= top && y < top + rowHeight()) {
                 return flat;
             }
         }
@@ -438,10 +464,10 @@ public final class OverflowCard {
         if (family == null || family.title().isEmpty()) {
             return;
         }
-        canvas.drawText(family.title(), poseX + dp(14),
-                top + dp(HEADER_DP) * 0.72f, headerPaint);
-        canvas.drawLine(poseX + dp(12), top + dp(HEADER_DP) - dp(2),
-                poseX + cardW - dp(12), top + dp(HEADER_DP) - dp(2), rulePaint);
+        canvas.drawText(family.title(), poseX + dp(16),
+                top + headerHeight() * 0.72f, headerPaint);
+        canvas.drawLine(poseX + dp(14), top + headerHeight() - dp(2),
+                poseX + cardW - dp(14), top + headerHeight() - dp(2), rulePaint);
     }
 
     /** Une rangée : son libellé dans la hauteur respirée. */
@@ -449,8 +475,8 @@ public final class OverflowCard {
         if (row == null) {
             return;
         }
-        canvas.drawText(row.label(), poseX + dp(16),
-                top + dp(ROW_HEIGHT_DP) * 0.68f, textPaint);
+        canvas.drawText(row.label(), poseX + dp(18),
+                top + rowHeight() * 0.68f, textPaint);
     }
 
     /** La largeur qu'il faut pour le plus large libellé, respiré. */
@@ -461,7 +487,7 @@ public final class OverflowCard {
                 widest = Math.max(widest, textPaint.measureText(row.label()));
             }
         }
-        return widest + 2.0f * dp(16);
+        return widest + 2.0f * dp(18);
     }
 
     private float dp(int value) {
