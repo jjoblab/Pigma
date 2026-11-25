@@ -8,7 +8,7 @@ import jo.pigma.editor.selection.SelectionRenderer;
 import jo.pigma.editor.selection.SelectionState;
 
 
-import jo.pigma.editor.popups.CarteClavier;
+import jo.pigma.editor.popups.KeyboardCard;
 import jo.pigma.editor.popups.GotoBar;
 import jo.pigma.editor.popups.InfoPopup;
 import jo.pigma.editor.render.RenderCache;
@@ -135,14 +135,14 @@ public final class EditorView extends View {
     /** La popup d'info ancrée — état et dessin au paquet des popups. */
     private InfoPopup infoPopup;
 
-    /** La carte de recherche — dessinée dans la vue (à la façon de celeris). */
+    /** La carte de recherche — dessinée dans la vue, jamais de fenêtre flottante. */
     private SearchBar searchBar;
 
     /** La carte « aller à la ligne » — dessinée dans la vue. */
     private GotoBar gotoBar;
 
     /** Le doigt est-il tombé sur une carte ouverte ? — le geste entier lui revient. */
-    private boolean downSurCarte;
+    private boolean downOnCard;
 
     /** L'horodatage de l'appui courant (l'appui long sélectionne le mot). */
     private long touchDownNanos;
@@ -469,7 +469,7 @@ public final class EditorView extends View {
     }
 
     /**
-     * Pose le curseur à un offset (borné au texte) : l'hôte place le
+     * Pose le curseur à un offset (borné au text) : l'hôte place le
      * curseur par programme, la paire d'appariement s'y recalcule au
      * dessin suivant. La sélection se range — poser le curseur, c'est
      * quitter la sélection.
@@ -1033,9 +1033,9 @@ public final class EditorView extends View {
     }
 
     /**
-     * La carte de recherche, à la création de celeris : DESSINÉE DANS
-     * LA VUE — jamais de PopupWindow, pas de jeton de fenêtre, pas de
-     * conflit de focus avec l'IME. PIEGE-27 : la carte ne prend
+     * La carte de recherche, DESSINÉE DANS LA VUE — jamais de
+     * fenêtre flottante, pas de jeton de fenêtre, pas de conflit de
+     * focus avec l'IME. La carte ne prend
      * jamais le focus ; le clavier reste à l'éditeur, qui lui rend
      * les verdicts des touches (le contrat d'entrée route la frappe
      * vers la carte ouverte). Elle se pose AU CARET (dessous si elle
@@ -1044,7 +1044,7 @@ public final class EditorView extends View {
      * « Rechercher » de l'hôte fait bascule.
      */
     public void toggleSearchPopup() {
-        if (searchBar != null && searchBar.estMontrée()) {
+        if (searchBar != null && searchBar.isShown()) {
             dismissSearchPopup();
             return;
         }
@@ -1052,7 +1052,7 @@ public final class EditorView extends View {
             searchBar = new SearchBar();
             searchBar.bind(this);
         }
-        searchBar.montrer();
+        searchBar.show();
         invalidate();
     }
 
@@ -1061,21 +1061,21 @@ public final class EditorView extends View {
      * requête se vide, la recherche se range avec.
      */
     public void dismissSearchPopup() {
-        if (searchBar != null && searchBar.estMontrée()) {
-            searchBar.cacher();
+        if (searchBar != null && searchBar.isShown()) {
+            searchBar.hide();
             clearSearch();
             invalidate();
         }
     }
 
     /**
-     * La carte « aller à la ligne », à la création de celeris :
-     * dessinée dans la vue, posée au caret, le clavier délégué — les
-     * chiffres s'y posent, la validation y va, la croix la range. La
+     * La carte « aller à la ligne », dessinée dans la vue,
+     * posée au caret, le clavier délégué — les chiffres s'y posent, la
+     * validation y va, la croix la range. La
      * même bascule, le même rangement que la recherche.
      */
     public void toggleGotoPopup() {
-        if (gotoBar != null && gotoBar.estMontrée()) {
+        if (gotoBar != null && gotoBar.isShown()) {
             dismissGotoPopup();
             return;
         }
@@ -1083,14 +1083,14 @@ public final class EditorView extends View {
             gotoBar = new GotoBar();
             gotoBar.bind(this);
         }
-        gotoBar.montrer();
+        gotoBar.show();
         invalidate();
     }
 
     /** Range la carte « aller à la ligne ». */
     public void dismissGotoPopup() {
-        if (gotoBar != null && gotoBar.estMontrée()) {
-            gotoBar.cacher();
+        if (gotoBar != null && gotoBar.isShown()) {
+            gotoBar.hide();
             invalidate();
         }
     }
@@ -1106,14 +1106,15 @@ public final class EditorView extends View {
     }
 
     /**
-     * La carte ouverte qui reçoit le clavier (PIEGE-27, à la façon de
-     * celeris) : la recherche ou l'aller-à montrés, aucune sinon.
+     * La carte ouverte qui reçoit le clavier (la règle des popups
+     * dessinées dans la vue) : la recherche ou l'aller-à montrés,
+     * aucune sinon.
      */
-    private CarteClavier carteOuverte() {
-        if (searchBar != null && searchBar.estMontrée()) {
+    private KeyboardCard openCard() {
+        if (searchBar != null && searchBar.isShown()) {
             return searchBar;
         }
-        if (gotoBar != null && gotoBar.estMontrée()) {
+        if (gotoBar != null && gotoBar.isShown()) {
             return gotoBar;
         }
         return null;
@@ -1368,25 +1369,25 @@ public final class EditorView extends View {
 
             @Override
             public void applyEdit(int start, int end, CharSequence text) {
-                // PIEGE-27, à la façon de celeris : la carte ouverte
+                // la règle des popups : la carte ouverte
                 // reçoit le clavier — l'éditeur garde la connexion et
                 // lui rend les verdicts des touches (la validation
                 // Entrée, le texte tapé, la composition du clavier
                 // logiciel qui remplace ce qu'elle avait posé). La
                 // carte décline : la touche retourne à la vie normale
                 // de l'éditeur.
-                CarteClavier carte = carteOuverte();
+                KeyboardCard carte = openCard();
                 if (carte != null) {
                     if (text != null && text.length() == 1
                             && text.charAt(0) == '\n') {
-                        if (carte.surValidation()) {
+                        if (carte.onEnter()) {
                             return;
                         }
                     } else if (composingStart >= 0
                             && start == composingStart && end == composingEnd
-                            && carte.surComposition(text)) {
+                            && carte.onComposition(text)) {
                         return;
-                    } else if (carte.surTexte(text)) {
+                    } else if (carte.onText(text)) {
                         return;
                     }
                 }
@@ -1401,10 +1402,10 @@ public final class EditorView extends View {
             @Override
             public void deleteAround(int left, int right) {
                 // le retour arrière de la carte ouverte efface dans la
-                // carte (le clavier lui est délégué, PIEGE-27)
-                CarteClavier carte = carteOuverte();
+                // carte (le clavier lui est délégué)
+                KeyboardCard carte = openCard();
                 if (carte != null && left == 1 && right == 0
-                        && carte.surRetourArriere()) {
+                        && carte.onBackspace()) {
                     return;
                 }
                 EditorView.this.deleteAround(left, right);
@@ -1419,8 +1420,8 @@ public final class EditorView extends View {
             public void moveCaretVertically(int delta) {
                 // la flèche verticale de la carte ouverte navigue la
                 // carte (les correspondances de la recherche)
-                CarteClavier carte = carteOuverte();
-                if (carte != null && carte.surFleche(delta)) {
+                KeyboardCard carte = openCard();
+                if (carte != null && carte.onArrow(delta)) {
                     return;
                 }
                 EditorView.this.moveCaretVertically(delta);
@@ -1435,23 +1436,23 @@ public final class EditorView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        // les cartes vivantes (la création de celeris : dessinées dans
-        // la vue) : le doigt qui tombe SUR une carte lui appartient —
+        // les cartes vivantes, dessinées dans la
+        // vue : le doigt qui tombe SUR une carte lui appartient —
         // elle agit et le geste entier se consomme ; le doigt hors
         // des cartes poursuit sa vie vers l'éditeur (le caret bouge,
         // la sélection suit)
         if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
-            downSurCarte = (searchBar != null && searchBar.estMontrée()
-                    && searchBar.surTouch(event.getX(), event.getY()))
-                    || (gotoBar != null && gotoBar.estMontrée()
-                            && gotoBar.surTouch(event.getX(), event.getY()));
-            if (downSurCarte) {
+            downOnCard = (searchBar != null && searchBar.isShown()
+                    && searchBar.onTouchArea(event.getX(), event.getY()))
+                    || (gotoBar != null && gotoBar.isShown()
+                            && gotoBar.onTouchArea(event.getX(), event.getY()));
+            if (downOnCard) {
                 return true;
             }
-        } else if (downSurCarte) {
+        } else if (downOnCard) {
             if (event.getActionMasked() == MotionEvent.ACTION_UP
                     || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
-                downSurCarte = false;
+                downOnCard = false;
             }
             return true;
         }
@@ -1779,14 +1780,14 @@ public final class EditorView extends View {
         drawDiagnostics(canvas, first, last, count);
         drawSuggestions(canvas);
         drawInfoPopup(canvas);
-        // les cartes de recherche et d'aller-à, par-dessus tout : la
-        // création de celeris — dessinées dans la vue, posées au
+        // les cartes de recherche et d'aller-à, par-dessus tout :
+        // dessinées dans la vue, posées au
         // caret, le clavier délégué (la pose se recalcule ici : le
         // caret les suit, le harnais la lit)
-        if (searchBar != null && searchBar.estMontrée()) {
+        if (searchBar != null && searchBar.isShown()) {
             searchBar.draw(canvas, popupMetrics());
         }
-        if (gotoBar != null && gotoBar.estMontrée()) {
+        if (gotoBar != null && gotoBar.isShown()) {
             gotoBar.draw(canvas, popupMetrics());
         }
         // la fenêtre visible est payée : le reste remplit au fil de fond
@@ -2640,8 +2641,8 @@ public final class EditorView extends View {
     /**
      * Le doigt du traîné tient-il une zone du bord (haut ou bas) ? Le
      * défilement s'y programme : le point de dépôt se lit dans la
-     * fenêtre visible pendant que la vue glisse — la limitation du
-     * chantier 34 (le dépôt hors fenêtre n'existait pas).
+     * fenêtre visible pendant que la vue glisse (le dépôt hors
+     * fenêtre suivrait sinon).
      */
     private void scheduleEdgeScroll() {
         if (!textDragging || edgeScrollScheduled) {

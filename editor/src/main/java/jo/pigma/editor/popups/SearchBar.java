@@ -9,14 +9,13 @@ import java.util.Locale;
 import jo.pigma.editor.EditorView;
 
 /**
- * La carte de recherche et remplacement — la création à la façon de
- * celeris : DESSINÉE DANS LA VUE (jamais de PopupWindow, pas de
- * jeton de fenêtre, pas de conflit de focus avec l'IME) ; PIEGE-27
- * par construction : rien ne prend le focus, le clavier reste à
- * l'éditeur, qui rend les verdicts des touches à la carte
- * (CarteClavier). La pose est celle du PopupPlacer de celeris : AU
- * CARET — dessous si elle tient, dessus sinon — bornée aux murs de
- * la vue, et le caret la suit à chaque dessin. L'habillage reste
+ * La carte de recherche et remplacement, DESSINÉE DANS LA VUE
+ * (jamais de fenêtre flottante, pas de jeton de fenêtre, pas de
+ * conflit de focus avec l'IME) ; rien ne prend le focus, le
+ * clavier reste à l'éditeur, qui rend les verdicts des touches à la
+ * carte (KeyboardCard). La pose : AU CARET — dessous si elle tient,
+ * dessus sinon — bornée aux murs de la vue, et le caret la suit à
+ * chaque dessin. L'habillage reste
  * celui d'Android Studio : le compte « i/n » qui rougit quand rien
  * ne correspond, les chevrons, la croix, et le remplacement replié
  * sous la recherche (le rabat le montre).
@@ -27,7 +26,7 @@ import jo.pigma.editor.EditorView;
  * (les remplacements vont de la fin vers le début — les positions
  * antérieures restent valides).</p>
  */
-public final class SearchBar implements CarteClavier {
+public final class SearchBar implements KeyboardCard {
 
     /** L'amortissement de la recherche incrémentale (ms). */
     private static final long SEARCH_DEBOUNCE_MS = 150L;
@@ -98,7 +97,7 @@ public final class SearchBar implements CarteClavier {
     }
 
     /** La carte se montre : la recherche part d'un champ vierge. */
-    public void montrer() {
+    public void show() {
         shown = true;
     }
 
@@ -106,7 +105,7 @@ public final class SearchBar implements CarteClavier {
      * La carte se range : la requête et le remplacement se vident, le
      * rabat se replie, la recherche amortie se range avec.
      */
-    public void cacher() {
+    public void hide() {
         shown = false;
         query.setLength(0);
         replacement.setLength(0);
@@ -118,13 +117,13 @@ public final class SearchBar implements CarteClavier {
     }
 
     /** La carte vit-elle ? */
-    public boolean estMontrée() {
+    public boolean isShown() {
         return shown;
     }
 
     /**
-     * Pose la carte au caret — la règle du PopupPlacer de celeris :
-     * dessous si elle tient, dessus sinon, l'abscisse du caret bornée
+     * Pose la carte au caret : dessous si elle tient, dessus sinon,
+     * l'abscisse du caret bornée
      * aux murs. La pose se recalcule à chaque dessin : le caret la
      * suit (défilement, navigation).
      *
@@ -134,18 +133,18 @@ public final class SearchBar implements CarteClavier {
         density = metrics.density();
         ancreX = metrics.caretX();
         ancreY = metrics.caretY();
-        float marge = dp(8);
+        float margin = dp(8);
         float pad = dp(6);
         float rowHeight = dp(34);
-        cardW = Math.min(metrics.viewWidth() - 2 * marge, dp(320));
+        cardW = Math.min(metrics.viewWidth() - 2 * margin, dp(320));
         cardH = 2 * pad + rowHeight * (replaceShown ? 2 : 1);
         float gap = dp(4);
         float below = ancreY + metrics.lineHeight() + gap;
-        poseY = below + cardH <= metrics.viewHeight() - marge
+        poseY = below + cardH <= metrics.viewHeight() - margin
                 ? below
-                : Math.max(marge, ancreY - gap - cardH);
-        poseX = Math.max(marge,
-                Math.min(ancreX, metrics.viewWidth() - cardW - marge));
+                : Math.max(margin, ancreY - gap - cardH);
+        poseX = Math.max(margin,
+                Math.min(ancreX, metrics.viewWidth() - cardW - margin));
     }
 
     /**
@@ -173,8 +172,8 @@ public final class SearchBar implements CarteClavier {
     }
 
     /**
-     * Le doigt tombé sur la carte lui appartient (celeris : les
-     * popups se dessinent et se touchent) : la zone agit, le geste
+     * Le doigt tombé sur la carte lui appartient (les popups se
+     * dessinent et se touchent) : la zone agit, le geste
      * se consomme. Hors de la carte : faux — le geste poursuit sa
      * vie vers l'éditeur.
      *
@@ -182,7 +181,7 @@ public final class SearchBar implements CarteClavier {
      * @param y l'ordonnée du doigt (px, coordonnées de la vue)
      * @return vrai quand la carte a pris le geste
      */
-    public boolean surTouch(float x, float y) {
+    public boolean onTouchArea(float x, float y) {
         if (!shown || x < poseX || x >= poseX + cardW
                 || y < poseY || y >= poseY + cardH) {
             return false;
@@ -194,7 +193,7 @@ public final class SearchBar implements CarteClavier {
         if (inRow1) {
             float right = poseX + cardW - dp(2);
             if (x >= right - glyphW) {
-                fermer();
+                close();
                 return true;
             }
             if (x >= right - 2 * glyphW) {
@@ -217,11 +216,11 @@ public final class SearchBar implements CarteClavier {
         if (replaceShown) {
             float right = poseX + cardW - dp(2);
             if (x >= right - glyphW) {
-                remplacerTout();
+                replaceEverywhere();
                 return true;
             }
             if (x >= right - 2 * glyphW) {
-                remplacerCourant();
+                replaceCurrent();
                 return true;
             }
             // la rangée du remplacement : le clavier délégué lui revient
@@ -236,17 +235,17 @@ public final class SearchBar implements CarteClavier {
      * qui suit, s'il y en a une, remplacera ces caractères).
      */
     @Override
-    public boolean surTexte(CharSequence texte) {
-        if (texte == null || texte.length() == 0 || texte.charAt(0) == '\n') {
+    public boolean onText(CharSequence text) {
+        if (text == null || text.length() == 0 || text.charAt(0) == '\n') {
             return true;
         }
         if (activeReplacement) {
-            replacement.append(texte);
+            replacement.append(text);
         } else {
-            query.append(texte);
+            query.append(text);
             scheduleIncrementalSearch();
         }
-        composedLength = texte.length();
+        composedLength = text.length();
         return true;
     }
 
@@ -256,14 +255,14 @@ public final class SearchBar implements CarteClavier {
      * écrit (la requête relance la recherche amortie).
      */
     @Override
-    public boolean surComposition(CharSequence texte) {
-        if (texte == null || texte.length() == 0) {
+    public boolean onComposition(CharSequence text) {
+        if (text == null || text.length() == 0) {
             return true;
         }
         StringBuilder champ = activeReplacement ? replacement : query;
         champ.setLength(Math.max(0, champ.length() - composedLength));
-        champ.append(texte);
-        composedLength = texte.length();
+        champ.append(text);
+        composedLength = text.length();
         if (!activeReplacement) {
             scheduleIncrementalSearch();
         }
@@ -272,7 +271,7 @@ public final class SearchBar implements CarteClavier {
 
     /** Le retour arrière efface dans le champ actif (la composition se rompt). */
     @Override
-    public boolean surRetourArriere() {
+    public boolean onBackspace() {
         composedLength = 0;
         if (activeReplacement && replacement.length() > 0) {
             replacement.setLength(replacement.length() - 1);
@@ -285,7 +284,7 @@ public final class SearchBar implements CarteClavier {
 
     /** La flèche verticale navigue : bas = suivante, haut = précédente. */
     @Override
-    public boolean surFleche(int pas) {
+    public boolean onArrow(int pas) {
         if (pas > 0) {
             editor.searchNext();
         } else {
@@ -296,39 +295,39 @@ public final class SearchBar implements CarteClavier {
 
     /** La validation (Entrée) va à la correspondance suivante. */
     @Override
-    public boolean surValidation() {
+    public boolean onEnter() {
         editor.searchNext();
         return true;
     }
 
     /** Le rabat montre le remplacement (le clavier délégué y passe). */
-    public void montrerRemplacement() {
+    public void showReplaceRow() {
         replaceShown = true;
         activeReplacement = true;
     }
 
     /** Le remplacement se montre-t-il ? (le harnais le lit) */
-    public boolean remplacementMontré() {
+    public boolean replaceRowShown() {
         return replaceShown;
     }
 
     /** Le clavier délégué revient à la requête. */
-    public void champRecherche() {
+    public void focusQueryField() {
         activeReplacement = false;
     }
 
     /** La requête courante (le harnais la lit). */
-    public String requête() {
+    public String queryText() {
         return query.toString();
     }
 
     /** Le remplacement courant (le harnais le lit). */
-    public String remplacement() {
+    public String replacementText() {
         return replacement.toString();
     }
 
     /** Le compte « i/n » — rouge quand rien ne correspond. */
-    public String compteLibellé() {
+    public String counterLabel() {
         if (editor == null) {
             return "0/0";
         }
@@ -340,7 +339,7 @@ public final class SearchBar implements CarteClavier {
     /**
      * Remplace la correspondance courante : une unité d'annulation.
      */
-    public void remplacerCourant() {
+    public void replaceCurrent() {
         editor.replaceCurrent(replacement.toString());
     }
 
@@ -348,14 +347,14 @@ public final class SearchBar implements CarteClavier {
      * Remplace toutes les correspondances : une seule unité
      * d'annulation, le compte se notifie.
      */
-    public void remplacerTout() {
+    public void replaceEverywhere() {
         int count = editor.replaceAll(replacement.toString());
         Toast.makeText(editor.getContext(), count + " remplacement(s)",
                 Toast.LENGTH_SHORT).show();
     }
 
     /** La croix range la carte (la recherche se range avec). */
-    public void fermer() {
+    public void close() {
         editor.dismissSearchPopup();
     }
 
@@ -380,12 +379,12 @@ public final class SearchBar implements CarteClavier {
     }
 
     /** La largeur de la carte (le harnais la lit). */
-    public float largeur() {
+    public float width() {
         return cardW;
     }
 
     /** La hauteur de la carte (le harnais la lit). */
-    public float hauteur() {
+    public float height() {
         return cardH;
     }
 
@@ -442,7 +441,7 @@ public final class SearchBar implements CarteClavier {
         canvas.drawText(label, textX, baseline,
                 query.length() == 0 ? hintPaint : textPaint);
         // le compte « i/n » — rouge quand rien ne correspond
-        String counter = compteLibellé();
+        String counter = counterLabel();
         int total = editor == null ? 0 : editor.searchMatchCount();
         canvas.drawText(counter,
                 counterX - counterPaint.measureText(counter), baseline,

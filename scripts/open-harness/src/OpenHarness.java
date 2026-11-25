@@ -446,7 +446,7 @@ public final class OpenHarness {
         lineMidY = lineTop(line) + LINE_HEIGHT / 2.0f;
         float upY = lineTop(line - 1) + LINE_HEIGHT / 2.0f;
         // le point de dépôt attendu se calcule AVANT le geste : la
-        // ligne cible change au dépôt (elle reçoit le texte)
+        // ligne cible change au dépôt (elle reçoit le text)
         int upLineStart = buffer.getLineStart(line - 1);
         int upDrop = upLineStart + Math.min(column + (end - start) / 2,
                 buffer.getLineEnd(line - 1) - upLineStart);
@@ -617,20 +617,20 @@ public final class OpenHarness {
         click("Rechercher");
         SearchBar bar = editor.searchBar();
         check("la carte vit DANS la fenêtre de l'éditeur (celeris : jamais de PopupWindow)",
-                bar != null && bar.estMontrée());
+                bar != null && bar.isShown());
         frame();
         check("la carte se pose au caret — dessous ou dessus, dans les murs",
-                (bar.poseY() > bar.ancreY() || bar.poseY() + bar.hauteur() < bar.ancreY())
+                (bar.poseY() > bar.ancreY() || bar.poseY() + bar.height() < bar.ancreY())
                         && bar.poseX() >= 0
-                        && bar.poseX() + bar.largeur() <= editor.getWidth());
+                        && bar.poseX() + bar.width() <= editor.getWidth());
         String text = editor.getBuffer().toString();
         int expected = countOccurrences(text, "graine");
         // la recherche incrémentale : la frappe passe par le clavier
-        // DE L'ÉDITEUR (PIEGE-27 : la carte ne prend jamais le focus,
+        // DE L'ÉDITEUR (la carte ne prend jamais le focus,
         // le contrat d'entrée lui route les touches)
         // le clavier logiciel COMPOSE (setComposingText) : chaque
         // mise à jour REMPLACE la précédente, la validation remplace
-        // la composition — la carte le sait (surComposition)
+        // la composition — la carte le sait (onComposition)
         connection.setComposingText("g", 1);
         View.harnessDrain(400L);
         check("la recherche suit la première frappe (g)",
@@ -646,19 +646,19 @@ public final class OpenHarness {
         connection.commitText("graine", 1);
         View.harnessDrain(400L);
         check("la validation remplace la composition (la requête tient)",
-                bar.requête().equals("graine"));
+                bar.queryText().equals("graine"));
         check("le compte « i/n » se lit sur la carte",
-                bar.compteLibellé().endsWith("/" + expected));
+                bar.counterLabel().endsWith("/" + expected));
         // le remplacement se replie sous la recherche : le rabat le
         // montre (le Ctrl+R de l'atelier)
-        check("le remplacement se replie au départ", !bar.remplacementMontré());
-        bar.montrerRemplacement();
-        check("le rabat montre le remplacement", bar.remplacementMontré());
+        check("le remplacement se replie au départ", !bar.replaceRowShown());
+        bar.showReplaceRow();
+        check("le rabat montre le remplacement", bar.replaceRowShown());
         // la frappe va au champ actif (le remplacement du rabat)
         connection.commitText("GRAINE", 1);
         check("la frappe du rabat écrit le remplacement",
-                bar.remplacement().equals("GRAINE"));
-        bar.champRecherche();
+                bar.replacementText().equals("GRAINE"));
+        bar.focusQueryField();
         // la navigation : les flèches du clavier déléguées à la carte
         int beforeNext = editor.searchCurrentIndex();
         pressKey(KeyEvent.KEYCODE_DPAD_DOWN);
@@ -667,17 +667,17 @@ public final class OpenHarness {
         pressKey(KeyEvent.KEYCODE_DPAD_UP);
         check("la flèche haut recule",
                 editor.searchCurrentIndex() == beforeNext);
-        bar.remplacerCourant();
+        bar.replaceCurrent();
         check("un remplacement a eu lieu",
                 countOccurrences(editor.getBuffer().toString(), "graine") == expected - 1);
         click("Annuler");
         check("l'annulation rend le texte",
                 editor.getBuffer().toString().equals(text));
-        // la recherche revient (l'annulation a rendu le texte)
+        // la recherche revient (l'annulation a rendu le text)
         editor.search("graine");
         check("la recherche revenue compte les correspondances",
                 editor.searchMatchCount() == expected);
-        bar.remplacerTout();
+        bar.replaceEverywhere();
         check("tout remplacer vide les correspondances",
                 countOccurrences(editor.getBuffer().toString(), "graine") == 0);
         boolean toasted = false;
@@ -688,30 +688,30 @@ public final class OpenHarness {
         click("Annuler");
         check("l'annulation rend le texte après le tout",
                 editor.getBuffer().toString().equals(text));
-        // le doigt sur la carte lui appartient (celeris : les popups
+        // le doigt sur la carte lui appartient (les popups
         // se dessinent et se touchent) : le tap s'y consomme, le
         // caret ne bouge pas
         int caretBefore = editor.selectionStart();
-        float tapX = bar.poseX() + bar.largeur() * 0.4f;
-        float tapY = bar.poseY() + bar.hauteur() * 0.25f;
+        float tapX = bar.poseX() + bar.width() * 0.4f;
+        float tapY = bar.poseY() + bar.height() * 0.25f;
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN, tapX, tapY));
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP, tapX, tapY));
         check("le doigt sur la carte s'y consomme (le caret ne bouge pas)",
                 editor.selectionStart() == caretBefore);
-        bar.fermer();
+        bar.close();
         check("la carte se range et la recherche avec",
-                !bar.estMontrée() && editor.searchMatchCount() == 0);
+                !bar.isShown() && editor.searchMatchCount() == 0);
         // la carte suit le caret : ouverte ailleurs, elle s'y repose
         // (l'ancre X se déplace avec la colonne du caret — le
         // défilement n'y touche pas)
         click("Rechercher");
         frame();
-        float premièreAncreX = editor.searchBar().ancreX();
+        float firstAnchorX = editor.searchBar().ancreX();
         editor.caretTo(editor.getBuffer().getLineStart(5) + 3);
         frame();
         check("la carte suit le caret (l'ancre se repose à sa colonne)",
-                editor.searchBar().ancreX() != premièreAncreX);
-        editor.searchBar().fermer();
+                editor.searchBar().ancreX() != firstAnchorX);
+        editor.searchBar().close();
         detail(expected + " correspondances de « graine »");
     }
 
@@ -725,19 +725,20 @@ public final class OpenHarness {
         click("Aller à");
         GotoBar carte = editor.gotoBar();
         check("la carte aller-à vit DANS la fenêtre de l'éditeur",
-                carte != null && carte.estMontrée());
+                carte != null && carte.isShown());
         frame();
         check("la carte se pose au caret — dessous ou dessus, dans les murs",
                 (carte.poseY() > carte.ancreY()
-                        || carte.poseY() + carte.hauteur() < carte.ancreY())
+                        || carte.poseY() + carte.height() < carte.ancreY())
                         && carte.poseX() >= 0
-                        && carte.poseX() + carte.largeur() <= editor.getWidth());
+                        && carte.poseX() + carte.width() <= editor.getWidth());
         check("l'ouverture compte le fichier",
-                carte.retourLibellé().contains("ligne"));
-        // les chiffres passent par le clavier de l'éditeur (PIEGE-27)
+                carte.feedbackLabel().contains("ligne"));
+        // les chiffres passent par le clavier de l'éditeur (la carte
+        // ne prend jamais le focus)
         connection.commitText("999999", 1);
         check("les chiffres se posent sur la carte",
-                carte.chiffres().equals("999999"));
+                carte.digitsText().equals("999999"));
         pressKey(KeyEvent.KEYCODE_ENTER);
         check("le numéro au-delà va à la dernière ligne",
                 editor.selectionStart() == editor.getBuffer().getLineStart(
@@ -761,15 +762,15 @@ public final class OpenHarness {
         check("la touche « Aller » du clavier valide",
                 editor.selectionStart() == editor.getBuffer().getLineStart(2));
         check("le retour dit la ligne où le curseur est tombé",
-                carte.retourLibellé().contains("ligne 3"));
+                carte.feedbackLabel().contains("ligne 3"));
         // la frappe hors chiffres s'avale : rien ne s'écrit dans le
         // document tant que la carte vit
         String avant = editor.getBuffer().toString();
         connection.commitText("x", 1);
         check("la frappe hors chiffres ne touche pas au document",
                 editor.getBuffer().toString().equals(avant));
-        carte.fermer();
-        check("la carte se ferme", !carte.estMontrée());
+        carte.close();
+        check("la carte se ferme", !carte.isShown());
     }
 
     /** Le fichier hors normes : 52 004 lignes, 624 002 jetons. */
@@ -932,16 +933,16 @@ public final class OpenHarness {
         click("Rechercher");
         SearchBar bar = editor.searchBar();
         // la frappe passe par le clavier de l'éditeur (la carte ne
-        // prend jamais le focus — PIEGE-27)
+        // prend jamais le focus)
         connection.commitText("graine", 1);
         View.harnessDrain(400L);
         int matches = editor.searchMatchCount();
         check("la recherche plafonne à dix mille correspondances",
                 matches == 10_000);
-        bar.montrerRemplacement();
+        bar.showReplaceRow();
         connection.commitText("GRAINE", 1);
         long startedAt = System.nanoTime();
-        bar.remplacerTout();
+        bar.replaceEverywhere();
         long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L;
         check("tout remplacer remplace exactement les correspondances portées",
                 countOccurrences(editor.getBuffer().toString(), "graine") == total - matches

@@ -450,7 +450,7 @@ public final class MainActivity extends Activity {
             return;
         }
         // l'éditeur passe au Lua : le serveur analyse ce que l'écran
-        // montre, la coloration suit (le lexeur Lua du chantier 38)
+        // montre, la coloration suit (le lexeur Lua généré)
         editorView.setLanguage(Languages.LUA, DemoTexts.LUA);
         editorView.getUndoStack().clear();
         currentScenario = "Lua (démo)";
@@ -510,11 +510,11 @@ public final class MainActivity extends Activity {
     }
 
     /**
-     * L'écouteur commun des sessions : les diagnostics du serveur
+     * L'écouteur commun des liaisons : les diagnostics du serveur
      * montent au panneau (le compte se rafraîchit sur le fil de
      * l'interface).
      *
-     * @return l'écouteur branché à la session
+     * @return l'écouteur branché à la liaison
      */
     private LspSession.Listener sessionListener() {
         return new LspSession.Listener() {
@@ -528,7 +528,7 @@ public final class MainActivity extends Activity {
     }
 
     /**
-     * Débranche la session vivante (le serveur de démo ou le processus
+     * Débranche la liaison vivante (le serveur de démo ou le processus
      * EmmyLua) : les fournisseurs se retirent, la liaison s'arrête (le
      * processus meurt), le panneau oublie.
      */
@@ -548,7 +548,7 @@ public final class MainActivity extends Activity {
     }
 
     /**
-     * Les fournisseurs de la session branchée : la popup d'info
+     * Les fournisseurs de la liaison branchée : la popup d'info
      * interroge le survol (la réponse du serveur prime sur l'index
      * local — le fournisseur rend null quand le serveur ne sait pas,
      * il attend au plus 200 ms) ; la complétion du serveur monte au

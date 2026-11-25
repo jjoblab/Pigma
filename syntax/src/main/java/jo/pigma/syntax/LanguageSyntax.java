@@ -56,7 +56,7 @@ public final class LanguageSyntax {
     /**
      * La table des portées par type, l'instance du descripteur : les
      * jetons compacts d'une ligne la portent par référence (une par
-     * ligne, pas une par jeton — la compaction du chantier 40).
+     * ligne, pas une par jeton — la table reste partagée).
      *
      * @return la table, indexée par type, jamais {@code null}
      */

@@ -8,19 +8,18 @@ import java.util.Locale;
 import jo.pigma.editor.EditorView;
 
 /**
- * La carte « aller à la ligne » — la création à la façon de celeris :
- * DESSINÉE DANS LA VUE (jamais de PopupWindow, pas de jeton de
- * fenêtre, pas de conflit de focus avec l'IME) ; PIEGE-27 par
- * construction : rien ne prend le focus, le clavier reste à
+ * La carte « aller à la ligne », DESSINÉE DANS LA VUE (jamais de
+ * fenêtre flottante, pas de jeton de fenêtre, pas de conflit de
+ * focus avec l'IME) ; rien ne prend le focus, le clavier reste à
  * l'éditeur, qui rend les verdicts des touches à la carte
- * (CarteClavier — les chiffres s'y posent, la validation y va). La
- * pose est celle du PopupPlacer de celeris : AU CARET — dessous si
- * elle tient, dessus sinon — bornée aux murs, et le caret la suit.
+ * (KeyboardCard — les chiffres s'y posent, la validation y va). La
+ * pose : AU CARET — dessous si elle tient, dessus sinon — bornée
+ * aux murs, et le caret la suit.
  * L'invite reste celle d'Android Studio : « Aller à la ligne : », le
  * numéro se borne au fichier (une ligne au-delà va à la dernière —
  * le retour le dit).
  */
-public final class GotoBar implements CarteClavier {
+public final class GotoBar implements KeyboardCard {
 
     private final StringBuilder digits = new StringBuilder();
     private String feedback = "";
@@ -72,7 +71,7 @@ public final class GotoBar implements CarteClavier {
     }
 
     /** La carte se montre : les chiffres partent vierges, le fichier se compte. */
-    public void montrer() {
+    public void show() {
         shown = true;
         digits.setLength(0);
         feedback = String.format(Locale.ROOT, "sur %d ligne(s)",
@@ -80,20 +79,20 @@ public final class GotoBar implements CarteClavier {
     }
 
     /** La carte se range : les chiffres se vident. */
-    public void cacher() {
+    public void hide() {
         shown = false;
         digits.setLength(0);
     }
 
     /** La carte vit-elle ? */
-    public boolean estMontrée() {
+    public boolean isShown() {
         return shown;
     }
 
     /**
-     * Pose la carte au caret — la règle du PopupPlacer de celeris :
-     * dessous si elle tient, dessus sinon, l'abscisse du caret bornée
-     * aux murs. La pose se recalcule à chaque dessin : le caret la
+     * Pose la carte au caret : dessous si elle tient, dessus sinon,
+     * l'abscisse du caret bornée aux murs. La pose se recalcule à
+     * chaque dessin : le caret la
      * suit (défilement, navigation).
      *
      * @param metrics la géométrie courante de la vue
@@ -102,18 +101,18 @@ public final class GotoBar implements CarteClavier {
         density = metrics.density();
         ancreX = metrics.caretX();
         ancreY = metrics.caretY();
-        float marge = dp(8);
+        float margin = dp(8);
         float pad = dp(6);
         float rowHeight = dp(34);
-        cardW = Math.min(metrics.viewWidth() - 2 * marge, dp(280));
+        cardW = Math.min(metrics.viewWidth() - 2 * margin, dp(280));
         cardH = 2 * pad + rowHeight + dp(16);
         float gap = dp(4);
         float below = ancreY + metrics.lineHeight() + gap;
-        poseY = below + cardH <= metrics.viewHeight() - marge
+        poseY = below + cardH <= metrics.viewHeight() - margin
                 ? below
-                : Math.max(marge, ancreY - gap - cardH);
-        poseX = Math.max(marge,
-                Math.min(ancreX, metrics.viewWidth() - cardW - marge));
+                : Math.max(margin, ancreY - gap - cardH);
+        poseX = Math.max(margin,
+                Math.min(ancreX, metrics.viewWidth() - cardW - margin));
     }
 
     /**
@@ -153,8 +152,8 @@ public final class GotoBar implements CarteClavier {
     }
 
     /**
-     * Le doigt tombé sur la carte lui appartient (celeris : les
-     * popups se dessinent et se touchent) : la croix range la carte,
+     * Le doigt tombé sur la carte lui appartient (les popups se
+     * dessinent et se touchent) : la croix range la carte,
      * le reste s'y consomme. Hors de la carte : faux — le geste
      * poursuit sa vie vers l'éditeur.
      *
@@ -162,7 +161,7 @@ public final class GotoBar implements CarteClavier {
      * @param y l'ordonnée du doigt (px, coordonnées de la vue)
      * @return vrai quand la carte a pris le geste
      */
-    public boolean surTouch(float x, float y) {
+    public boolean onTouchArea(float x, float y) {
         if (!shown || x < poseX || x >= poseX + cardW
                 || y < poseY || y >= poseY + cardH) {
             return false;
@@ -172,7 +171,7 @@ public final class GotoBar implements CarteClavier {
         float glyphW = dp(36);
         if (y < poseY + pad + rowHeight
                 && x >= poseX + cardW - dp(2) - glyphW) {
-            fermer();
+            close();
         }
         return true;
     }
@@ -183,12 +182,12 @@ public final class GotoBar implements CarteClavier {
      * le clavier tant qu'elle vit — rien ne s'écrit dans le document).
      */
     @Override
-    public boolean surTexte(CharSequence texte) {
-        if (texte == null || texte.length() == 0 || texte.charAt(0) == '\n') {
+    public boolean onText(CharSequence text) {
+        if (text == null || text.length() == 0 || text.charAt(0) == '\n') {
             return true;
         }
-        for (int at = 0; at < texte.length() && digits.length() < 9; at++) {
-            char c = texte.charAt(at);
+        for (int at = 0; at < text.length() && digits.length() < 9; at++) {
+            char c = text.charAt(at);
             if (Character.isDigit(c)) {
                 digits.append(c);
             }
@@ -202,13 +201,13 @@ public final class GotoBar implements CarteClavier {
      * nombres — et remplacer ou ajouter, seuls les chiffres passent).
      */
     @Override
-    public boolean surComposition(CharSequence texte) {
-        return surTexte(texte);
+    public boolean onComposition(CharSequence text) {
+        return onText(text);
     }
 
     /** Le retour arrière efface le dernier chiffre. */
     @Override
-    public boolean surRetourArriere() {
+    public boolean onBackspace() {
         if (digits.length() > 0) {
             digits.setLength(digits.length() - 1);
         }
@@ -217,7 +216,7 @@ public final class GotoBar implements CarteClavier {
 
     /** Les flèches ne font rien ici — la carte garde le clavier. */
     @Override
-    public boolean surFleche(int pas) {
+    public boolean onArrow(int pas) {
         return true;
     }
 
@@ -227,23 +226,23 @@ public final class GotoBar implements CarteClavier {
      * dit où il est tombé.
      */
     @Override
-    public boolean surValidation() {
+    public boolean onEnter() {
         go();
         return true;
     }
 
     /** Les chiffres tapés (le harnais les lit). */
-    public String chiffres() {
+    public String digitsText() {
         return digits.toString();
     }
 
     /** Le retour courant (le harnais le lit). */
-    public String retourLibellé() {
+    public String feedbackLabel() {
         return feedback;
     }
 
     /** La croix range la carte. */
-    public void fermer() {
+    public void close() {
         editor.dismissGotoPopup();
     }
 
@@ -268,12 +267,12 @@ public final class GotoBar implements CarteClavier {
     }
 
     /** La largeur de la carte (le harnais la lit). */
-    public float largeur() {
+    public float width() {
         return cardW;
     }
 
     /** La hauteur de la carte (le harnais la lit). */
-    public float hauteur() {
+    public float height() {
         return cardH;
     }
 
