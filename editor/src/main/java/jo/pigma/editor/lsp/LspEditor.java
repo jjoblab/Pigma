@@ -14,9 +14,16 @@ import jo.pigma.core.TextBuffer;
 import jo.pigma.core.TextListener;
 import jo.pigma.editor.EditorView;
 import jo.pigma.editor.popups.DiagnosticCard;
+import jo.pigma.editor.popups.QuickActionCard;
+import jo.pigma.editor.selection.SelectionState;
+import jo.pigma.lsp.LspCapabilities;
+import jo.pigma.lsp.LspCodeAction;
 import jo.pigma.lsp.LspDiagnostic;
+import jo.pigma.lsp.LspLocation;
 import jo.pigma.lsp.LspPosition;
+import jo.pigma.lsp.LspRange;
 import jo.pigma.lsp.LspSession;
+import jo.pigma.lsp.LspTextEdit;
 
 /**
  * La façade du serveur de langage : l'hôte n'a plus RIEN à câbler.
@@ -44,6 +51,23 @@ import jo.pigma.lsp.LspSession;
  * ({@link #disconnect}) coupe tout : les fournisseurs se retirent,
  * les caches se rangent, la liaison s'arrête (le processus meurt).
  * Une liaison neuve se branche à la même vue sans frais.</p>
+ *
+ * <p>LES FONCTIONS DU PROTOCOLE y vivent aussi (la leçon de la
+ * référence — la façade de Sora editor y porte le renommage,
+ * l'aller-à, les références, le formatage) : l'ampoule de la
+ * gouttière les porte APRÈS les intentions de l'hôte ({@link #attach}
+ * y pose le fournisseur du serveur — l'hôte n'a RIEN à câbler), le
+ * surlignage des occurrences suit le curseur (le protocole
+ * {@code textDocument/documentHighlight}, la teinte bleue s'y
+ * distingue de la recherche ambre), le renommage s'y éprouve par la
+ * carte au caret ({@link #requestRename} — la préparation du
+ * protocole y vérifie le symbole, la validation y porte les
+ * remplacements), l'aller-à la définition ({@link #requestDefinition})
+ * et les références ({@link #requestReferences}) y naviguent — les
+ * places du MÊME document y sautent, celles d'un autre document se
+ * laissent à l'écouteur de l'hôte ({@link #setNavigationListener}),
+ * l'éditeur n'en tient qu'un. Le formatage ({@link #formatDocument})
+ * y pose les remplacements du serveur.</p>
  */
 public final class LspEditor {
 
@@ -63,8 +87,31 @@ public final class LspEditor {
         void onDiagnostics(List<LspDiagnostic> diagnostics);
     }
 
+    /**
+     * L'écouteur des places d'un AUTRE document : l'aller-à la
+     * définition ou les références du serveur peuvent viser un autre
+     * fichier — l'éditeur n'en tient qu'un, la place ne peut pas y
+     * sauter. L'écouteur de l'hôte y reçoit les places d'ailleurs
+     * (il tient plusieurs documents, lui) ; sans écouteur, les
+     * places d'ailleurs se laissent (la même leçon que les actions
+     * du protocole — un document par éditeur).
+     */
+    public interface NavigationListener {
+
+        /**
+         * Les places visées dans un autre document que le courant.
+         *
+         * @param uri    le document d'ailleurs
+         * @param places les places visées dans CE document, jamais null
+         */
+        void onExternalPlaces(String uri, List<LspLocation> places);
+    }
+
     /** Le délai amorti du document vers le serveur (les frappes rapides n'envoient qu'un envoi). */
     private static final long DOCUMENT_SYNC_MS = 300L;
+
+    /** Le délai amorti du surlignage des occurrences (le curseur qui glisse ne questionne qu'à la pose). */
+    private static final long HIGHLIGHT_SYNC_MS = 250L;
 
     /** La vue branchée (les fournisseurs y vivent, le tampon y dort). */
     private final EditorView view;
@@ -86,6 +133,9 @@ public final class LspEditor {
 
     /** Les diagnostics montent-ils à la carte (la fonction coupée la rend muette). */
     private boolean diagnosticsEnabled = true;
+
+    /** Le surlignage des occurrences suit-il le curseur (la fonction coupée range la teinte bleue). */
+    private volatile boolean documentHighlightEnabled = true;
 
     /** Le temps d'attente du survol en millisecondes (au-delà, la réponse lente arrivera en asynchrone). */
     private long requestTimeoutMs = 200L;
@@ -111,6 +161,25 @@ public final class LspEditor {
 
     /** L'écouteur de l'hôte (null : personne n'écoute). */
     private volatile DiagnosticsListener diagnosticsListener;
+
+    /** L'écouteur des places d'ailleurs (null : elles se laissent). */
+    private volatile NavigationListener navigationListener;
+
+    /** Ce que le serveur a déclaré savoir (NONE sans initialisation). */
+    private volatile LspCapabilities capabilities = LspCapabilities.NONE;
+
+    /** La génération du surlignage vivant (le curseur bouge : la réponse en vol se périme). */
+    private final AtomicLong highlightGeneration = new AtomicLong();
+
+    /** Le report du surlignage vers le serveur (le curseur qui glisse ne questionne qu'à la pose). */
+    private final Runnable highlightSync = this::pushHighlightToServer;
+
+    /** La ligne des corrections serveur vivantes (la clef du cache des actions). */
+    private volatile int codeActionsLine = -1;
+
+    /** Les corrections du serveur reçues pour la ligne (le fil du lecteur y écrit). */
+    private final List<QuickActionCard.Entry> codeActionsCache =
+            Collections.synchronizedList(new ArrayList<>());
 
     /** Le report du changement de document vers le serveur (la synchronisation intégrale s'amortit). */
     private final Runnable documentSync = this::pushDocumentToServer;
@@ -139,6 +208,14 @@ public final class LspEditor {
     private LspEditor(EditorView view) {
         this.view = view;
         view.getBuffer().addListener(textListener);
+        // le fournisseur du SERVEUR sur l'ampoule : les fonctions du
+        // protocole s'y lisent APRÈS les intentions de l'hôte (le
+        // second slot — la place de l'hôte demeure)
+        view.setServerQuickActionProvider(this::serverQuickActionsAt);
+        // le curseur se suit : le surlignage des occurrences s'y
+        // redemande (amorti — le curseur qui glisse ne questionne
+        // qu'à la pose)
+        view.setSelectionListener(this::onSelectionMoved);
     }
 
     /**
@@ -187,9 +264,23 @@ public final class LspEditor {
         this.session = liaison;
         this.uri = uri;
         resetProviders();
-        liaison.initialize("pigma");
+        liaison.initialize("pigma").whenComplete((result, failure) -> {
+            // les capacités négociées y tombent (le fil du lecteur) :
+            // la façade n'y offre que ce que le serveur a DECLARÉ
+            // savoir — demander une fonction non déclarée offense le
+            // protocole (la leçon de la référence)
+            capabilities = LspCapabilities.fromResult(result);
+            view.post(() -> {
+                view.setServerHighlights(List.of());
+                scheduleHighlightSync();
+            });
+        });
         liaison.didOpen(uri, view.getBuffer().toString(), languageId);
         attachProviders();
+        // le fournisseur du serveur sur l'ampoule se repose : un
+        // débranchement antérieur l'avait retiré (la reconnexion y
+        // remet les fonctions du protocole — l'hôte n'y touche pas)
+        view.setServerQuickActionProvider(this::serverQuickActionsAt);
         // la trame qui suit porte les marqueurs du premier avis
         view.post(view::invalidate);
     }
@@ -214,11 +305,15 @@ public final class LspEditor {
             return;
         }
         view.removeCallbacks(documentSync);
+        view.removeCallbacks(highlightSync);
         view.setInfoProvider(null);
         view.setSuggestionProvider(null);
         view.setSignatureProvider(null);
         view.setDiagnosticProvider(null);
+        view.setServerQuickActionProvider(null);
+        view.setServerHighlights(List.of());
         resetProviders();
+        capabilities = LspCapabilities.NONE;
         session.shutdown();
         session = null;
         uri = null;
@@ -282,6 +377,425 @@ public final class LspEditor {
      */
     public void setDiagnosticsListener(DiagnosticsListener listener) {
         diagnosticsListener = listener;
+    }
+
+    /**
+     * L'écouteur des places d'un AUTRE document : l'aller-à la
+     * définition ou les références du serveur peuvent viser un autre
+     * fichier — l'hôte qui tient plusieurs documents y navigue lui-
+     * même (l'éditeur n'en tient qu'un, les places d'ailleurs se
+     * laissent sans écouteur).
+     *
+     * @param listener l'écouteur (null : personne n'écoute)
+     */
+    public void setNavigationListener(NavigationListener listener) {
+        navigationListener = listener;
+    }
+
+    /**
+     * Le surlignage des occurrences suit-il le curseur (le protocole
+     * {@code textDocument/documentHighlight} — la teinte bleue, la
+     * recherche reste ambre) ? La coupure range la teinte et périmé
+     * l'avis en vol ; le retour REDEMANDE les occurrences du curseur
+     * courant (la teinte revient sans bouger le doigt).
+     *
+     * @param enabled vrai pour suivre (vaut par défaut)
+     */
+    public void setDocumentHighlightEnabled(boolean enabled) {
+        documentHighlightEnabled = enabled;
+        if (!enabled) {
+            highlightGeneration.incrementAndGet();
+            view.removeCallbacks(highlightSync);
+            view.setServerHighlights(List.of());
+        } else if (session != null) {
+            scheduleHighlightSync();
+        }
+    }
+
+    /**
+     * L'aller-à la définition du symbole au curseur : le serveur y
+     * rend ses places — celle du MÊME document y fait sauter le
+     * curseur (la trame suivante y portera la paire d'appariement),
+     * les places d'un autre document partent à l'écouteur de
+     * l'hôte. Le serveur qui ne sait pas (la capacité non déclarée)
+     * ne s'y offense pas ; le serveur qui ne répond rien y dit «
+     * aucune définition ».
+     */
+    public void requestDefinition() {
+        if (session == null || !capabilities.definition()) {
+            return;
+        }
+        LspPosition position = caretPosition();
+        session.definition(uri, position).whenComplete((places, failure) ->
+                view.post(() -> navigateTo(places, "définition")));
+    }
+
+    /**
+     * Les références du symbole au curseur : chaque usage y revient —
+     * les places du MÊME document se surlignent (la teinte bleue du
+     * protocole), la première y fait sauter le curseur ; les places
+     * d'un autre document partent à l'écouteur de l'hôte.
+     */
+    public void requestReferences() {
+        if (session == null || !capabilities.references()) {
+            return;
+        }
+        LspPosition position = caretPosition();
+        session.references(uri, position, true).whenComplete((places, failure) ->
+                view.post(() -> {
+                    navigateTo(places, "référence");
+                    // toutes les places du document se surlignent :
+                    // les usages se lisent d'un coup d'œil
+                    if (places != null && !places.isEmpty()) {
+                        view.setServerHighlights(rangesOf(places));
+                        highlightGeneration.incrementAndGet();
+                    }
+                }));
+    }
+
+    /**
+     * Le renommage du symbole au curseur : la préparation du protocole
+     * ({@code textDocument/prepareRename}) y vérifie d'abord le
+     * symbole — le serveur qui n'offre pas la préparation y tente le
+     * renommage direct. La carte s'ouvre au caret : le nom neuf
+     * démarre du symbole (la façon d'Android Studio), la validation
+     * y part au serveur ({@code textDocument/rename}), les
+     * remplacements de chaque occurrence se posent en UNE unité
+     * d'annulation.
+     */
+    public void requestRename() {
+        if (session == null || !capabilities.rename()) {
+            return;
+        }
+        String symbol = view.wordAtCaret();
+        if (symbol.isEmpty()) {
+            sayAtCaret("aucun symbole au curseur");
+            return;
+        }
+        LspPosition position = caretPosition();
+        if (capabilities.prepareRename()) {
+            session.prepareRename(uri, position).whenComplete((range, failure) ->
+                    view.post(() -> {
+                        if (range == null) {
+                            sayAtCaret("le symbole ne se renomme pas (dit le serveur)");
+                            return;
+                        }
+                        view.showRenamePopup(symbol, this::submitRename);
+                    }));
+            return;
+        }
+        view.showRenamePopup(symbol, this::submitRename);
+    }
+
+    /**
+     * Le formatage du document : le serveur réécrit les lignes
+     * ({@code textDocument/formatting}), les remplacements se posent
+     * en une unité d'annulation — la façon d'Android Studio (Ctrl+Alt+L).
+     */
+    public void formatDocument() {
+        if (session == null || !capabilities.formatting()) {
+            return;
+        }
+        session.formatting(uri, view.tabSize(), true).whenComplete((edits, failure) ->
+                view.post(() -> {
+                    if (!view.applyTextEdits(edits)) {
+                        sayAtCaret("rien à formater (dit le serveur)");
+                    }
+                }));
+    }
+
+    /**
+     * Ce que le serveur a déclaré savoir (la négociation de
+     * l'initialisation — l'hôte y lit ce que la façade offre).
+     *
+     * @return les capacités négociées, NONE sans liaison
+     */
+    public LspCapabilities capabilities() {
+        return capabilities;
+    }
+
+    /**
+     * Les places reçues y naviguent : la première place du MÊME
+     * document fait sauter le curseur (borné au texte), les places
+     * d'un AUTRE document partent à l'écouteur de l'hôte (il tient
+     * plusieurs documents, lui) ; aucune place y dit « non trouvé »
+     * — l'aller-à d'Android Studio parle pareil.
+     *
+     * @param places  les places du serveur, null sans réponse
+     * @param quoi    le nom de la chose cherchée (le message le dit)
+     */
+    private void navigateTo(List<LspLocation> places, String quoi) {
+        if (places == null || places.isEmpty()) {
+            sayAtCaret("aucune " + quoi + " trouvée");
+            return;
+        }
+        boolean jumped = false;
+        List<LspLocation> external = new ArrayList<>();
+        String externalUri = null;
+        for (LspLocation place : places) {
+            if (uri.equals(place.uri())) {
+                if (!jumped) {
+                    view.caretTo(offsetOf(view.getBuffer(), place.range().start()));
+                    jumped = true;
+                }
+            } else {
+                if (externalUri == null) {
+                    externalUri = place.uri();
+                }
+                if (place.uri().equals(externalUri)) {
+                    external.add(place);
+                }
+            }
+        }
+        if (!jumped && navigationListener != null && externalUri != null) {
+            navigationListener.onExternalPlaces(externalUri, List.copyOf(external));
+        } else if (!jumped && navigationListener == null && externalUri != null) {
+            sayAtCaret("la " + quoi + " vit dans un autre document");
+        }
+    }
+
+    /**
+     * La validation du renommage : la requête part au serveur, la
+     * réponse posera les remplacements (chaque occurrence du symbole
+     * — une seule unité d'annulation). Parti : la carte se range.
+     *
+     * @param symbol  le symbole d'origine
+     * @param newName le nom neuf soumis
+     * @return vrai quand la requête part (la carte se range)
+     */
+    private boolean submitRename(String symbol, String newName) {
+        if (session == null) {
+            return false;
+        }
+        LspPosition position = caretPosition();
+        session.rename(uri, position, newName).whenComplete((edits, failure) ->
+                view.post(() -> {
+                    if (!view.applyTextEdits(edits)) {
+                        sayAtCaret("le renommage ne pose rien (dit le serveur)");
+                    }
+                }));
+        return true;
+    }
+
+    /**
+     * Les fonctions du protocole à l'ampoule (APRÈS les intentions de
+     * l'hôte — le second slot) : l'aller-à la définition, les
+     * références, le renommage, le formatage — chacun ne se montre
+     * que sur la capacité DECLAREE (demander une fonction non déclarée
+     * offense le protocole) ; les corrections rapides du serveur
+     * ({@code textDocument/codeAction}) s'y suivent, leur réponse
+     * arrive asynchrone — le cache par ligne y tient, la carte ouverte
+     * se rouvre fraîche à l'arrivée.
+     *
+     * @param line   la ligne du curseur
+     * @param column la colonne du curseur
+     * @return les fonctions du serveur, jamais null
+     */
+    private List<QuickActionCard.Entry> serverQuickActionsAt(int line, int column) {
+        List<QuickActionCard.Entry> actions = new ArrayList<>();
+        if (session == null || uri == null) {
+            return actions;
+        }
+        if (capabilities.definition()) {
+            actions.add(new QuickActionCard.Entry(
+                    "Aller à la définition", this::requestDefinition));
+        }
+        if (capabilities.references()) {
+            actions.add(new QuickActionCard.Entry(
+                    "Trouver les références", this::requestReferences));
+        }
+        if (capabilities.rename()) {
+            actions.add(new QuickActionCard.Entry(
+                    "Renommer le symbole", this::requestRename));
+        }
+        if (capabilities.formatting()) {
+            actions.add(new QuickActionCard.Entry(
+                    "Formater le document", this::formatDocument));
+        }
+        if (capabilities.codeAction()) {
+            actions.addAll(codeActionsAt(line));
+        }
+        return actions;
+    }
+
+    /**
+     * Les corrections rapides du serveur à une ligne : le cache par
+     * ligne (la réponse arrive asynchrone — la première lecture rend
+     * vide, l'arrivée rouvre la carte ouverte, la trame suivante y
+     * porte les correctifs).
+     *
+     * @param line la ligne du curseur
+     * @return les corrections du serveur, jamais null
+     */
+    private List<QuickActionCard.Entry> codeActionsAt(int line) {
+        if (line != codeActionsLine) {
+            codeActionsLine = line;
+            codeActionsCache.clear();
+            askCodeActions(line);
+        }
+        return List.copyOf(codeActionsCache);
+    }
+
+    /**
+     * La demande des corrections part au serveur : la réponse y
+     * construit les entrées (chaque correctif porte ses
+     * remplacements), la carte ouverte à la ligne se rouvre fraîche.
+     *
+     * @param line la ligne demandée
+     */
+    private void askCodeActions(int line) {
+        final int asked = line;
+        LspRange range = lineRange(asked);
+        session.codeActions(uri, range, diagnosticsOf(asked))
+                .whenComplete((answer, failure) -> view.post(() -> {
+                    if (asked != codeActionsLine) {
+                        return; // la ligne a bougé : la réponse ne vaut plus
+                    }
+                    codeActionsCache.clear();
+                    for (LspCodeAction action : answer) {
+                        codeActionsCache.add(new QuickActionCard.Entry(
+                                "Correctif : " + action.title(),
+                                () -> view.applyTextEdits(action.edits())));
+                    }
+                    // la carte ouverte à la ligne se rouvre fraîche ;
+                    // la carte close y laisse la trame suivante lire
+                    if (view.quickActionCard() != null && view.quickActionCard().isShown()
+                            && view.quickActionCard().line() == asked) {
+                        view.openQuickActionsAtLine(asked);
+                    } else {
+                        view.setServerQuickActionProvider(this::serverQuickActionsAt);
+                    }
+                }));
+    }
+
+    /**
+     * Les diagnostics du serveur sur une ligne (le contexte des
+     * corrections — les correctifs du protocole s'y nourrissent).
+     *
+     * @param line la ligne
+     * @return les diagnostics de la ligne, jamais null
+     */
+    private List<LspDiagnostic> diagnosticsOf(int line) {
+        List<LspDiagnostic> found = new ArrayList<>();
+        for (LspDiagnostic diagnostic : diagnostics) {
+            if (diagnostic.range().start().line() == line) {
+                found.add(diagnostic);
+            }
+        }
+        return found;
+    }
+
+    /**
+     * La plage d'une ligne entière (la question des corrections : le
+     * protocole y interroge la ligne du curseur).
+     *
+     * @param line la ligne
+     * @return la plage de la ligne
+     */
+    private LspRange lineRange(int line) {
+        TextBuffer buffer = view.getBuffer();
+        return new LspRange(
+                LspPosition.ofOffset(buffer, buffer.getLineStart(line)),
+                LspPosition.ofOffset(buffer, buffer.getLineEnd(line)));
+    }
+
+    /**
+     * La position LSP du curseur.
+     *
+     * @return la position du curseur au protocole
+     */
+    private LspPosition caretPosition() {
+        TextBuffer buffer = view.getBuffer();
+        return LspPosition.ofOffset(buffer, view.getCaretOffset());
+    }
+
+    /**
+     * L'offset d'une position du protocole, borné au texte.
+     *
+     * @param buffer   le tampon portant le texte
+     * @param position la position du protocole
+     * @return l'offset équivalent
+     */
+    private static int offsetOf(TextBuffer buffer, LspPosition position) {
+        return position.toOffset(buffer);
+    }
+
+    /**
+     * Les plages des places d'un même document.
+     *
+     * @param places les places
+     * @return les plages, jamais null
+     */
+    private static List<LspRange> rangesOf(List<LspLocation> places) {
+        List<LspRange> ranges = new ArrayList<>();
+        for (LspLocation place : places) {
+            if (place != null && place.range() != null) {
+                ranges.add(place.range());
+            }
+        }
+        return ranges;
+    }
+
+    /**
+     * Le curseur a bougé : le surlignage des occurrences se
+     * reprogramme (amorti — le doigt qui traîne ne questionne qu'à
+     * la pose ; le document qui change le range aussi).
+     *
+     * @param caret  le curseur après le mouvement
+     * @param anchor l'ancre après le mouvement (-1 sans sélection)
+     */
+    private void onSelectionMoved(int caret, int anchor) {
+        if (session == null || !documentHighlightEnabled
+                || !capabilities.documentHighlight()) {
+            return;
+        }
+        view.removeCallbacks(highlightSync);
+        view.postDelayed(highlightSync, HIGHLIGHT_SYNC_MS);
+    }
+
+    /**
+     * Le surlignage part au serveur : la génération avance (la
+     * réponse qui reviendra trop tard se périme — le curseur a encore
+     * bougé), la réponse pose les plages à la vue (la teinte bleue,
+     * la recherche reste ambre).
+     */
+    private void pushHighlightToServer() {
+        if (session == null || !documentHighlightEnabled
+                || !capabilities.documentHighlight()) {
+            return;
+        }
+        final long generation = highlightGeneration.incrementAndGet();
+        LspPosition position = caretPosition();
+        session.documentHighlight(uri, position).whenComplete((ranges, failure) ->
+                view.post(() -> {
+                    if (generation == highlightGeneration.get()) {
+                        view.setServerHighlights(ranges);
+                    }
+                }));
+    }
+
+    /**
+     * Le report amorti du surlignage (le branchement y range l'ancien,
+     * le neuve part quand le serveur sait).
+     */
+    private void scheduleHighlightSync() {
+        view.removeCallbacks(highlightSync);
+        view.postDelayed(highlightSync, HIGHLIGHT_SYNC_MS);
+    }
+
+    /**
+     * Un mot au caret : la popup d'info le dit (les réponses vides y
+     * parlent — « aucune définition trouvée », la façon d'Android
+     * Studio).
+     *
+     * @param message le mot à dire
+     */
+    private void sayAtCaret(String message) {
+        TextBuffer buffer = view.getBuffer();
+        int caret = view.getCaretOffset();
+        int line = buffer.lineOfOffset(Math.min(caret, buffer.length()));
+        int column = caret - buffer.getLineStart(line);
+        view.showInfoPopup(message, line, column);
     }
 
     /**
@@ -453,6 +967,11 @@ public final class LspEditor {
         if (session != null && uri != null) {
             session.didChange(uri, view.getBuffer().toString());
             resetProviders();
+            // les plages surlignées vivaient dans le document d'avant :
+            // elles se rangent (les positions ne valent plus), la
+            // demande amortie en repose des fraîches quand le serveur sait
+            view.setServerHighlights(List.of());
+            scheduleHighlightSync();
             view.post(view::invalidate);
         }
     }
@@ -473,5 +992,9 @@ public final class LspEditor {
         signatureGeneration.incrementAndGet();
         signatureCaret = -1;
         signatureAnswer = null;
+        // les corrections de la ligne d'avant ne valent plus (les
+        // plages du protocole vivent dans le document d'avant)
+        codeActionsLine = -1;
+        codeActionsCache.clear();
     }
 }

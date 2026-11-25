@@ -27,9 +27,13 @@ journal ; les méthodes y courent sur le fil de lecture de lsp4j.
 
 | Classe | Rôle |
 | --- | --- |
-| `LspSession` | la liaison : initialisation, didOpen/didChange (l'ombre du texte porte le delta), requêtes, arrêt |
+| `LspSession` | la liaison : initialisation (négociation des capacités), didOpen/didChange (l'ombre du texte porte le delta), requêtes, arrêt |
+| `LspCapabilities` | ce que le serveur a déclaré savoir — la façade n'y offre que le déclaré (demander une fonction non déclarée offense le protocole) |
 | `LspDiagnostic` | un diagnostic du serveur (plage, sévérité, message) |
 | `LspPosition` / `LspRange` | les positions du protocole (ligne, colonne UTF-16) |
+| `LspLocation` | une place pointée (l'aller-à la définition, les références) |
+| `LspTextEdit` | un remplacement de plage (la correction, le renommage, le formatage) |
+| `LspCodeAction` | une correction rapide (titre + remplacements du document) |
 | `LspSignatureHelp` | l'aide aux paramètres (libellé, paramètre actif) |
 
 ## Les requêtes asynchrones
@@ -40,7 +44,15 @@ session.didOpen(uri, text, "java");
 CompletableFuture<String> survol = session.hover(uri, position);
 CompletableFuture<List<String>> mots = session.completion(uri, position);
 CompletableFuture<LspSignatureHelp> aide = session.signatureHelp(uri, position);
+CompletableFuture<List<LspLocation>> def = session.definition(uri, position);
+CompletableFuture<List<LspLocation>> refs = session.references(uri, position, true);
+CompletableFuture<List<LspRange>> occurrences = session.documentHighlight(uri, position);
+CompletableFuture<LspRange> renommable = session.prepareRename(uri, position);
+CompletableFuture<List<LspTextEdit>> renomme = session.rename(uri, position, "nomNeuf");
+CompletableFuture<List<LspCodeAction>> corrections = session.codeActions(uri, range, diagnostics);
+CompletableFuture<List<LspTextEdit>> formate = session.formatting(uri, 4, true);
 session.didChange(uri, texteEntier);   // la liaison n'envoie que la plage qui a bougé
+session.capabilities();                // ce que le serveur a déclaré savoir
 session.shutdown();                    // l'arrêt propre (le processus meurt)
 ```
 
@@ -63,7 +75,9 @@ l'hôte n'y touche pas.
 
 ## Les tests
 
-`src/test/java` — 10 tests (la liaison par tubes et par processus,
-les deltas incrémentaux, les requêtes, l'arrêt ; le serveur EmmyLua
-réel s'y éprouve par processus). `scripts/run-lsp-tests.sh` ou
+`src/test/java` — 18 tests (la liaison par tubes et par processus,
+les deltas incrémentaux, les requêtes, la négociation des capacités,
+l'aller-à, les références, les corrections, le renommage, le
+surlignage, le formatage, l'arrêt ; le serveur EmmyLua réel s'y
+éprouve par processus). `scripts/run-lsp-tests.sh` ou
 `./gradlew :lsp:test`.

@@ -9,6 +9,10 @@ import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.CompletionParams;
+import org.eclipse.lsp4j.CodeAction;
+import org.eclipse.lsp4j.CodeActionContext;
+import org.eclipse.lsp4j.CodeActionParams;
+import org.eclipse.lsp4j.DefinitionParams;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.eclipse.lsp4j.DidChangeConfigurationParams;
@@ -17,22 +21,37 @@ import org.eclipse.lsp4j.DidChangeWatchedFilesParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.DidSaveTextDocumentParams;
+import org.eclipse.lsp4j.DocumentFormattingParams;
+import org.eclipse.lsp4j.DocumentHighlight;
+import org.eclipse.lsp4j.DocumentHighlightParams;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
+import org.eclipse.lsp4j.Location;
+import org.eclipse.lsp4j.LocationLink;
 import org.eclipse.lsp4j.MarkupContent;
 import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.PrepareRenameDefaultBehavior;
+import org.eclipse.lsp4j.PrepareRenameParams;
+import org.eclipse.lsp4j.PrepareRenameResult;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.Range;
+import org.eclipse.lsp4j.ReferenceContext;
+import org.eclipse.lsp4j.ReferenceParams;
+import org.eclipse.lsp4j.RenameOptions;
+import org.eclipse.lsp4j.RenameParams;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.SignatureHelp;
 import org.eclipse.lsp4j.SignatureHelpOptions;
 import org.eclipse.lsp4j.SignatureHelpParams;
 import org.eclipse.lsp4j.SignatureInformation;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
+import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
+import org.eclipse.lsp4j.WorkspaceEdit;
+import org.eclipse.lsp4j.jsonrpc.messages.Either3;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageClientAware;
 import org.eclipse.lsp4j.services.LanguageServer;
@@ -47,8 +66,14 @@ import org.eclipse.lsp4j.services.WorkspaceService;
  * fait semblant d'être extérieur), le survol rend la description des
  * mots-clés et le compte des occurrences, l'aide aux paramètres rend
  * la signature de la déclaration du nom appelé — à sa façon : les
- * paramètres d'abord, le type de retour après. Le reste de
- * l'interface de service se tait — lsp4j le remplit par défaut.
+ * paramètres d'abord, le type de retour après. Les fonctions de
+ * NAVIGATION s'y suivent (la couverture de la référence — l'aller-à
+ * la définition, les références, le surlignage des occurrences, le
+ * renommage avec sa préparation, les corrections rapides, le
+ * formatage) : le mot au curseur y est la brique — sa ligne de
+ * déclaration s'y trouve, ses occurrences s'y comptent, ses espaces
+ * de fin s'y coupent. Le reste de l'interface de service se tait —
+ * lsp4j le remplit par défaut.
  */
 final class DemoLanguageServer implements LanguageServer, TextDocumentService,
         LanguageClientAware {
@@ -91,7 +116,19 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
         ServerCapabilities capabilities = new ServerCapabilities();
         capabilities.setHoverProvider(true);
         capabilities.setCompletionProvider(new CompletionOptions());
+        capabilities.setSignatureHelpProvider(new SignatureHelpOptions());
         capabilities.setTextDocumentSync(TextDocumentSyncKind.Full);
+        // la couverture de la référence s'y déclare : l'aller-à, les
+        // références, le surlignage, le renommage (avec sa préparation),
+        // les corrections, le formatage
+        capabilities.setDefinitionProvider(true);
+        capabilities.setReferencesProvider(true);
+        capabilities.setDocumentHighlightProvider(true);
+        RenameOptions rename = new RenameOptions();
+        rename.setPrepareProvider(true);
+        capabilities.setRenameProvider(rename);
+        capabilities.setCodeActionProvider(true);
+        capabilities.setDocumentFormattingProvider(true);
         return CompletableFuture.completedFuture(new InitializeResult(capabilities));
     }
 
@@ -283,6 +320,266 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
         }
         return CompletableFuture.completedFuture(new SignatureHelp(
                 List.of(signature), 0, active));
+    }
+
+    @Override
+    public CompletableFuture<Either<List<? extends Location>, List<? extends LocationLink>>> definition(
+            DefinitionParams params) {
+        String word = wordAt(params.getPosition());
+        Location declaration = word == null ? null : declarationOf(word);
+        if (declaration == null) {
+            return CompletableFuture.completedFuture(Either.forLeft(List.of()));
+        }
+        return CompletableFuture.completedFuture(Either.forLeft(List.of(declaration)));
+    }
+
+    @Override
+    public CompletableFuture<List<? extends Location>> references(ReferenceParams params) {
+        String word = wordAt(params.getPosition());
+        List<Location> places = new ArrayList<>();
+        if (word != null) {
+            for (int[] occurrence : occurrencesOf(word)) {
+                places.add(new Location(uri, rangeOf(occurrence)));
+            }
+        }
+        return CompletableFuture.completedFuture(places);
+    }
+
+    @Override
+    public CompletableFuture<List<? extends DocumentHighlight>> documentHighlight(
+            DocumentHighlightParams params) {
+        String word = wordAt(params.getPosition());
+        List<DocumentHighlight> highlights = new ArrayList<>();
+        if (word != null) {
+            for (int[] occurrence : occurrencesOf(word)) {
+                highlights.add(new DocumentHighlight(rangeOf(occurrence),
+                        org.eclipse.lsp4j.DocumentHighlightKind.Text));
+            }
+        }
+        return CompletableFuture.completedFuture(highlights);
+    }
+
+    @Override
+    public CompletableFuture<Either3<Range, PrepareRenameResult, PrepareRenameDefaultBehavior>> prepareRename(
+            PrepareRenameParams params) {
+        String word = wordAt(params.getPosition());
+        if (word == null) {
+            // aucun mot : le symbole ne se renomme pas (le client le dit)
+            return CompletableFuture.completedFuture(null);
+        }
+        int[] bounds = wordBoundsAt(params.getPosition());
+        return CompletableFuture.completedFuture(Either3.forFirst(rangeOf(bounds)));
+    }
+
+    @Override
+    public CompletableFuture<WorkspaceEdit> rename(RenameParams params) {
+        String word = wordAt(params.getPosition());
+        if (word == null) {
+            return CompletableFuture.completedFuture(new WorkspaceEdit());
+        }
+        List<TextEdit> replacements = new ArrayList<>();
+        for (int[] occurrence : occurrencesOf(word)) {
+            replacements.add(new TextEdit(rangeOf(occurrence), params.getNewName()));
+        }
+        WorkspaceEdit edit = new WorkspaceEdit();
+        edit.setChanges(java.util.Map.of(uri, replacements));
+        return CompletableFuture.completedFuture(edit);
+    }
+
+    @Override
+    public CompletableFuture<List<Either<org.eclipse.lsp4j.Command, CodeAction>>> codeAction(
+            CodeActionParams params) {
+        // le correctif de la démonstration : les espaces de fin de la
+        // ligne interrogée s'y coupent (la correction du protocole
+        // porte son remplacement — l'ampoule l'applique)
+        int line = params.getRange().getStart().getLine();
+        int[] bounds = lineBounds(line);
+        String lineText = text.substring(bounds[0], bounds[1]);
+        int content = lineText.stripTrailing().length();
+        if (content == lineText.length()) {
+            // rien à corriger sur la ligne : aucune action
+            return CompletableFuture.completedFuture(List.of());
+        }
+        Range lineSpan = new Range(positionOf(bounds[0]), positionOf(bounds[1]));
+        TextEdit trim = new TextEdit(lineSpan, lineText.stripTrailing());
+        WorkspaceEdit edit = new WorkspaceEdit();
+        edit.setChanges(java.util.Map.of(uri, List.of(trim)));
+        CodeAction fix = new CodeAction("Supprimer les espaces de fin de ligne");
+        fix.setEdit(edit);
+        return CompletableFuture.completedFuture(List.of(Either.forRight(fix)));
+    }
+
+    @Override
+    public CompletableFuture<List<? extends TextEdit>> formatting(
+            DocumentFormattingParams params) {
+        // le formatage du serveur de démonstration : les espaces de
+        // fin de CHAQUE ligne s'y coupent (seules les lignes qui en
+        // portent y paraissent — le remplacement vide ne sert à rien)
+        List<TextEdit> edits = new ArrayList<>();
+        int lineStart = 0;
+        for (int at = 0; at <= text.length(); at++) {
+            if (at == text.length() || text.charAt(at) == '\n') {
+                String line = text.substring(lineStart, at);
+                int content = line.stripTrailing().length();
+                if (content < line.length()) {
+                    edits.add(new TextEdit(
+                            new Range(positionOf(lineStart + content),
+                                    positionOf(lineStart + line.length())),
+                            ""));
+                }
+                lineStart = at + 1;
+            }
+        }
+        return CompletableFuture.completedFuture(edits);
+    }
+
+    /**
+     * La déclaration d'un mot dans le texte : la ligne de méthode
+     * (le mot suivi de parenthèses, la ligne finit au bloc ouvrant)
+     * ou la ligne de champ final (le mot suivi du signe égal, la
+     * ligne porte « final ») — la façon du serveur de trouver la
+     * déclaration (même lecture que la signature).
+     *
+     * @param word le mot cherché
+     * @return la place de la déclaration, null sans déclaration
+     */
+    private Location declarationOf(String word) {
+        for (int at = 0; at + word.length() <= text.length(); at++) {
+            if (!text.startsWith(word, at) || !boundaryBefore(at)) {
+                continue;
+            }
+            int after = at + word.length();
+            while (after < text.length() && Character.isWhitespace(text.charAt(after))) {
+                after++;
+            }
+            if (after >= text.length()) {
+                continue;
+            }
+            char follows = text.charAt(after);
+            int lineStart = text.lastIndexOf('\n', at) + 1;
+            int lineEnd = text.indexOf('\n', at);
+            if (lineEnd < 0) {
+                lineEnd = text.length();
+            }
+            String line = text.substring(lineStart, lineEnd).trim();
+            if (follows == '(' && line.endsWith("{") && line.indexOf('(') >= 0
+                    && line.indexOf(')') >= 0) {
+                // la déclaration de méthode : le nom précède les
+                // parenthèses, la ligne finit au bloc ouvrant
+                return new Location(uri, rangeOf(new int[]{at, at + word.length()}));
+            }
+            if (follows == '=' && line.contains("final") && line.endsWith(";")) {
+                // la déclaration de champ : le nom précède le signe
+                // égal, la ligne porte « final » (une constante)
+                return new Location(uri, rangeOf(new int[]{at, at + word.length()}));
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Les occurrences d'un mot dans le texte, aux bornes de mot près
+     * (la même lecture que le survol qui les compte).
+     *
+     * @param word le mot cherché
+     * @return les couples [début, fin] de chaque occurrence
+     */
+    private List<int[]> occurrencesOf(String word) {
+        List<int[]> occurrences = new ArrayList<>();
+        int at = text.indexOf(word);
+        while (at >= 0) {
+            int end = at + word.length();
+            if (boundaryBefore(at)
+                    && (end >= text.length() || wordBreak(text.charAt(end)))) {
+                occurrences.add(new int[]{at, end});
+            }
+            at = text.indexOf(word, at + word.length());
+        }
+        return occurrences;
+    }
+
+    /**
+     * Le mot à une position du protocole (null : aucun mot là).
+     *
+     * @param position la position interrogée
+     * @return le mot, null sans mot
+     */
+    private String wordAt(Position position) {
+        int[] bounds = wordBoundsAt(position);
+        return bounds[1] > bounds[0] ? text.substring(bounds[0], bounds[1]) : null;
+    }
+
+    /**
+     * Les bornes du mot qui contient une position du protocole.
+     *
+     * @param position la position (ligne, colonne)
+     * @return les bornes absolues [début, fin] du mot
+     */
+    private int[] wordBoundsAt(Position position) {
+        int caret = Math.min(offsetOf(text, position), text.length());
+        int lineStart = text.lastIndexOf('\n', caret) + 1;
+        int lineEnd = text.indexOf('\n', caret);
+        if (lineEnd < 0) {
+            lineEnd = text.length();
+        }
+        int start = caret;
+        while (start > lineStart && !wordBreak(text.charAt(start - 1))) {
+            start--;
+        }
+        int end = caret;
+        while (end < lineEnd && !wordBreak(text.charAt(end))) {
+            end++;
+        }
+        return new int[]{start, end};
+    }
+
+    /**
+     * Les bornes absolues d'une ligne.
+     *
+     * @param line l'indice de la ligne
+     * @return les bornes [début, fin] (la fin exclut le saut de ligne)
+     */
+    private int[] lineBounds(int line) {
+        int start = 0;
+        for (int at = 0; at < text.length() && line > 0; at++) {
+            if (text.charAt(at) == '\n') {
+                line--;
+                start = at + 1;
+            }
+        }
+        int end = text.indexOf('\n', start);
+        if (end < 0) {
+            end = text.length();
+        }
+        return new int[]{start, end};
+    }
+
+    /**
+     * L'intervalle du protocole de bornes absolues.
+     *
+     * @param bounds les bornes [début, fin]
+     * @return l'intervalle équivalent
+     */
+    private Range rangeOf(int[] bounds) {
+        return new Range(positionOf(bounds[0]), positionOf(bounds[1]));
+    }
+
+    /**
+     * La position du protocole d'un décalage absolu.
+     *
+     * @param offset le décalage dans le texte
+     * @return la position (ligne, colonne)
+     */
+    private Position positionOf(int offset) {
+        int line = 0;
+        int lineStart = 0;
+        for (int at = 0; at < offset && at < text.length(); at++) {
+            if (text.charAt(at) == '\n') {
+                line++;
+                lineStart = at + 1;
+            }
+        }
+        return new Position(line, offset - lineStart);
     }
 
     /**

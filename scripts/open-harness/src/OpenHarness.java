@@ -123,6 +123,7 @@ public final class OpenHarness {
         diagnosticsAndAmpoule();
         languageServer();
         lspEditorFacade();
+        lspProtocolFunctions();
         pinchZoom();
         copyMeasures();
 
@@ -2002,6 +2003,310 @@ public final class OpenHarness {
                         && textOf("LSP :") == null && !facade.isConnected());
         // le document revient (l'éprouve suivante part propre)
         openLanguage("Java", 10_000L);
+    }
+
+    /**
+     * Les fonctions étendues du protocole (la couverture de la
+     * référence — Sora editor) : les capacités se négocient, le
+     * surlignage des occurrences suit le curseur (la fonction coupée
+     * les range), l'ampoule porte l'aller-à la définition, les
+     * références surlignent chaque usage, le renommage vit à la carte
+     * (le nom neuf démarre du symbole, une seule unité
+     * d'annulation), la correction rapide du serveur coupe les
+     * espaces de fin, le formatage coupe ceux de toutes les lignes.
+     */
+    private static void lspProtocolFunctions() throws Exception {
+        begin("protocole étendu : capacités, surlignage, aller-à, renommage, correctif, formatage");
+        LspEditor facade = activity.harnessLsp();
+        click("LSP");
+        check("les diagnostics du serveur arrivent", awaitText("LSP :", 8000L));
+        // les capacités se négocient (la réponse d'initialisation y
+        // tombe asynchrone — la façade n'y offre que ce que le serveur
+        // a DECLARÉ savoir)
+        for (int wait = 0; wait < 200 && !(facade.capabilities().definition()
+                && facade.capabilities().references()
+                && facade.capabilities().documentHighlight()
+                && facade.capabilities().rename()
+                && facade.capabilities().prepareRename()
+                && facade.capabilities().codeAction()
+                && facade.capabilities().formatting()); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(50L);
+        }
+        check("les capacités du protocole se négocient",
+                facade.capabilities().definition()
+                        && facade.capabilities().references()
+                        && facade.capabilities().documentHighlight()
+                        && facade.capabilities().rename()
+                        && facade.capabilities().prepareRename()
+                        && facade.capabilities().codeAction()
+                        && facade.capabilities().formatting());
+
+        // le surlignage des occurrences suit le curseur : le doigt
+        // pose le caret sur « MAX » (sa déclaration, la première
+        // dessinée), la demande amortie part, les deux occurrences
+        // du mot se teintent (la déclaration et l'usage)
+        float[] spot = spotOfToken("MAX");
+        tap(spot[0], spot[1]);
+        frame();
+        for (int wait = 0; wait < 100 && editor.serverHighlights().isEmpty(); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            frame();
+        }
+        check("le surlignage des occurrences suit le curseur",
+                editor.serverHighlights().size() == 2);
+        // la fonction coupée : la teinte se range ; revenue : elle
+        // se repose
+        facade.setDocumentHighlightEnabled(false);
+        check("la fonction coupée range la teinte",
+                editor.serverHighlights().isEmpty());
+        facade.setDocumentHighlightEnabled(true);
+        for (int wait = 0; wait < 100 && editor.serverHighlights().isEmpty(); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            frame();
+        }
+        check("la fonction revenue repose la teinte",
+                editor.serverHighlights().size() == 2);
+
+        // le caret se pose sur l'USAGE de « MAX » (la comparaison de
+        // la garde) — l'aller-à la définition y sautera à la
+        // DÉCLARATION (la constante final, huit lignes plus haut)
+        int usageLine = -1;
+        TextBuffer text = editor.getBuffer();
+        for (int line = 0; line < text.getLineCount(); line++) {
+            if (text.getText(text.getLineStart(line), text.getLineEnd(line))
+                    .contains("graine > MAX")) {
+                usageLine = line;
+                break;
+            }
+        }
+        check("la ligne d'usage se trouve", usageLine >= 0);
+        String usageRow = text.getText(
+                text.getLineStart(usageLine), text.getLineEnd(usageLine));
+        editor.caretTo(text.getLineStart(usageLine)
+                + usageRow.indexOf("MAX") + 1);
+        frame();
+
+        // l'ampoule porte les fonctions du protocole APRÈS les
+        // intentions de l'hôte : le doigt sur l'ampoule de la ligne
+        // du curseur, la carte s'y ouvre
+        float bulbY = lineTop(editor.caretLine()) + LINE_HEIGHT / 2.0f;
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN, 24.0f, bulbY));
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP, 24.0f, bulbY));
+        frame();
+        check("la carte d'actions s'ouvre à l'ampoule",
+                editor.quickActionCard().isShown());
+        java.util.List<QuickActionCard.Entry> actions =
+                editor.quickActionCard().entries();
+        boolean hasDefinition = false;
+        boolean hasReferences = false;
+        boolean hasRename = false;
+        boolean hasFormat = false;
+        for (QuickActionCard.Entry action : actions) {
+            if ("Aller à la définition".equals(action.label())) {
+                hasDefinition = true;
+            }
+            if ("Trouver les références".equals(action.label())) {
+                hasReferences = true;
+            }
+            if ("Renommer le symbole".equals(action.label())) {
+                hasRename = true;
+            }
+            if ("Formater le document".equals(action.label())) {
+                hasFormat = true;
+            }
+        }
+        check("l'ampoule porte l'aller-à la définition", hasDefinition);
+        check("l'ampoule porte les références", hasReferences);
+        check("l'ampoule porte le renommage", hasRename);
+        check("l'ampoule porte le formatage", hasFormat);
+        // le choix de la rangée « Aller à la définition » : le caret
+        // saute à la déclaration (la ligne du bloc ouvrant)
+        int definitionRow = -1;
+        for (int at = 0; at < actions.size(); at++) {
+            if ("Aller à la définition".equals(actions.get(at).label())) {
+                definitionRow = at;
+            }
+        }
+        int beforeLine = editor.caretLine();
+        if (definitionRow >= 0) {
+            editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
+                    editor.quickActionCard().poseX() + 40.0f,
+                    editor.quickActionCard().rowCenterY(definitionRow)));
+            editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
+                    editor.quickActionCard().poseX() + 40.0f,
+                    editor.quickActionCard().rowCenterY(definitionRow)));
+        }
+        int declarationLine = -1;
+        for (int wait = 0; wait < 100 && declarationLine < 0; wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            // la déclaration de « MAX » : la ligne de la constante
+            // final (le champ du signe égal)
+            TextBuffer buffer = editor.getBuffer();
+            for (int line = 0; line < buffer.getLineCount(); line++) {
+                String row = buffer.getText(
+                        buffer.getLineStart(line), buffer.getLineEnd(line)).trim();
+                if (row.startsWith("private static final int MAX")) {
+                    declarationLine = line;
+                    break;
+                }
+            }
+        }
+        check("l'aller-à la définition saute à la déclaration",
+                declarationLine >= 0 && editor.caretLine() == declarationLine
+                        && beforeLine != declarationLine);
+        detail("aller-à : ligne " + beforeLine + " → " + editor.caretLine());
+
+        // les références : chaque usage se surligne, la première fait
+        // sauter le caret (la déclaration, première occurrence du
+        // document)
+        facade.requestReferences();
+        int firstOccurrence = -1;
+        for (int wait = 0; wait < 100 && firstOccurrence < 0; wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            TextBuffer buffer = editor.getBuffer();
+            for (int line = 0; line < buffer.getLineCount(); line++) {
+                if (buffer.getText(buffer.getLineStart(line), buffer.getLineEnd(line))
+                        .contains("int MAX")) {
+                    firstOccurrence = line;
+                    break;
+                }
+            }
+        }
+        check("les références sautent à la première occurrence",
+                firstOccurrence >= 0 && editor.caretLine() == firstOccurrence);
+        check("les références surlignent chaque usage",
+                editor.serverHighlights().size() == 2);
+
+        // le renommage : la carte s'ouvre au caret (le nom neuf
+        // démarre du symbole), « PLAFOND » s'y tape, la validation
+        // pose les remplacements — chaque occurrence en UNE unité
+        // d'annulation
+        facade.requestRename();
+        for (int wait = 0; wait < 100
+                && !(editor.renameBar() != null && editor.renameBar().isShown()); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            frame();
+        }
+        check("la carte de renommage s'ouvre au caret",
+                editor.renameBar() != null && editor.renameBar().isShown());
+        check("le nom neuf démarre du symbole",
+                editor.renameBar() != null && "MAX".equals(editor.renameBar().symbol())
+                        && "MAX".equals(editor.renameBar().nameText()));
+        // le nom se corrige : « MAX » s'efface, « PLAFOND » s'écrit,
+        // la validation part (l'Entrée de la carte)
+        for (int del = 0; del < 3; del++) {
+            pressKey(KeyEvent.KEYCODE_DEL);
+        }
+        connection.commitText("PLAFOND", 1);
+        check("le nom corrigé se lit à la carte",
+                editor.renameBar() != null && "PLAFOND".equals(editor.renameBar().nameText()));
+        pressKey(KeyEvent.KEYCODE_ENTER);
+        for (int wait = 0; wait < 100 && !editor.getBuffer().toString()
+                .contains("int PLAFOND"); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            frame();
+        }
+        String renamed = editor.getBuffer().toString();
+        check("le renommage remplace chaque occurrence",
+                renamed.contains("private static final int PLAFOND = 0x1F_FF")
+                        && renamed.contains("graine > PLAFOND &&")
+                        && !renamed.contains("MAX"));
+        check("la carte de renommage se range",
+                editor.renameBar() == null || !editor.renameBar().isShown());
+        // UNE unité d'annulation : le geste suivant rend le texte
+        // d'avant entier (les DEUX occurrences d'un geste)
+        click("Annuler");
+        check("le renommage ne vaut qu'une unité d'annulation",
+                editor.getBuffer().toString().contains("private static final int MAX = 0x1F_FF")
+                        && editor.getBuffer().toString().contains("graine > MAX &&"));
+
+        // la correction rapide du serveur : les espaces de fin de la
+        // ligne du caret s'y coupent (le correctif du protocole porte
+        // son remplacement, l'ampoule l'applique — la réponse arrive
+        // asynchrone, la carte ouverte se rouvre fraîche)
+        TextBuffer buffer = editor.getBuffer();
+        editor.caretTo(buffer.getLineEnd(5));
+        frame();
+        connection.commitText("   ", 1);
+        View.harnessDrain(2_000L);
+        frame();
+        check("les espaces de fin se posent",
+                editor.getBuffer().toString().contains("Lot {   "));
+        bulbY = lineTop(5) + LINE_HEIGHT / 2.0f;
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN, 24.0f, bulbY));
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP, 24.0f, bulbY));
+        frame();
+        int fixRow = -1;
+        for (int wait = 0; wait < 100 && fixRow < 0; wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            frame();
+            java.util.List<QuickActionCard.Entry> served =
+                    editor.quickActionCard().entries();
+            for (int at = 0; at < served.size(); at++) {
+                if (served.get(at).label()
+                        .equals("Correctif : Supprimer les espaces de fin de ligne")) {
+                    fixRow = at;
+                    break;
+                }
+            }
+        }
+        check("la correction du serveur vit à l'ampoule", fixRow >= 0);
+        if (fixRow >= 0) {
+            editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
+                    editor.quickActionCard().poseX() + 40.0f,
+                    editor.quickActionCard().rowCenterY(fixRow)));
+            editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
+                    editor.quickActionCard().poseX() + 40.0f,
+                    editor.quickActionCard().rowCenterY(fixRow)));
+        }
+        for (int wait = 0; wait < 100 && editor.getBuffer().toString()
+                .contains("Lot {   "); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            frame();
+        }
+        check("la correction coupe les espaces de la ligne",
+                !editor.getBuffer().toString().contains("Lot {   "));
+
+        // le formatage : les espaces de fin de TOUTES les lignes se
+        // coupent (la ligne du SEUIL en porte, le formatage s'y éprouve)
+        buffer = editor.getBuffer();
+        editor.caretTo(buffer.getLineEnd(7));
+        frame();
+        connection.commitText("   ", 1);
+        View.harnessDrain(2_000L);
+        frame();
+        check("les espaces de la seconde ligne se posent",
+                editor.getBuffer().toString().contains("0.125e-3;   "));
+        facade.formatDocument();
+        for (int wait = 0; wait < 100 && editor.getBuffer().toString()
+                .contains("0.125e-3;   "); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            frame();
+        }
+        check("le formatage coupe les espaces de toutes les lignes",
+                !editor.getBuffer().toString().contains("   \n"));
+
+        // le débranchement range tout (le surlignage y vit aussi)
+        click("LSP ✔");
+        check("le débranchement rend le bouton",
+                findButton(activity.harnessRootView(), "LSP") != null
+                        && !facade.isConnected());
+        check("le débranchement range la teinte du serveur",
+                editor.serverHighlights().isEmpty());
+        // le texte demeure l'original (les espaces taillés par les
+        // correctifs et le formatage ne l'avaient qu'épaissi) — le
+        // journal des mesures garde sa taille (le relevé du rele-
+        // vant y attend la bascule de thème)
     }
 
     /**

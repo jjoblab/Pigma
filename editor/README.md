@@ -25,10 +25,20 @@ editor.setPopupStyle(PopupStyle.builder()
 
 // optionnel — un serveur de langage, DEUX lignes (la façade câble
 // tout : le document, le survol, la complétion, la signature, les
-// diagnostics — plus rien à porter par l'hôte)
+// diagnostics, le surlignage des occurrences, l'ampoule avec
+// l'aller-à, les références, le renommage, le formatage, les
+// corrections rapides — plus rien à porter par l'hôte)
 LspEditor lsp = LspEditor.attach(editor);
 lsp.setDiagnosticsListener(list -> { /* le panneau de l'hôte */ });
 lsp.connectInProcess(myServer, "file:///demo.java", "java");
+
+// les fonctions du protocole vivent sur la façade — l'hôte les
+// appelle quand il veut (l'ampoule les porte déjà, sans lui) :
+lsp.requestDefinition();      // l'aller-à (saute au document courant)
+lsp.requestReferences();       // les usages (se surlignent en bleu)
+lsp.requestRename();           // la carte au caret, une unité d'annulation
+lsp.formatDocument();          // le formatage du serveur
+lsp.setNavigationListener((uri, places) -> { /* les places d'ailleurs */ });
 ```
 
 Le clavier, le défilement, la sélection et ses poignées, la loupe,
@@ -42,7 +52,7 @@ démonstration, pas de l'intégration.
 | --- | --- |
 | `EditorView` | la vue : rendu, gestes, clavier, curseur — le pilier |
 | `EditorThemes` | les thèmes (clair, sombre) et leurs fonds |
-| `popups/` | les cartes dessinées dans la vue : recherche, aller-à, complétion, signature, info, sélection, débordement, historique, diagnostic, actions rapides |
+| `popups/` | les cartes dessinées dans la vue : recherche, aller-à, complétion, signature, info, sélection, débordement, historique, diagnostic, actions rapides, renommage |
 | `popups/PopupStyle` | le style PORTÉ PAR L'HÔTE : fond translucide, encres, corps des textes, hauteur des rangées, bornes de largeur, rayon des coins |
 | `gutter/` | la gouttière : numéros, marqueurs de diagnostic, l'ampoule des intentions |
 | `lsp/LspEditor` | la façade du serveur de langage (l'étude de Sora editor — voir le README de `:lsp`) |

@@ -1451,6 +1451,16 @@ public final class EditorView extends View {
     }
 
     /**
+     * Les colonnes par niveau d'indentation (les guides de L2 y
+     * vivent, le formatage du serveur y règle ses tabulations).
+     *
+     * @return les colonnes d'un niveau d'indentation
+     */
+    public int tabSize() {
+        return GUIDE_COLUMNS;
+    }
+
+    /**
      * Une sélection est-elle en cours (l'ancre et le curseur
      * désignent des positions différentes) ?
      *
