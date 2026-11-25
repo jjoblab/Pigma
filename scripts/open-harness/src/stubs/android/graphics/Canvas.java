@@ -266,6 +266,23 @@ public final class Canvas {
         return matrixStack.size();
     }
 
+    /**
+     * Empile l'état avec un canal d'alpha (le fondu des popups) — le
+     * stub ne le compose pas (les dessins comptent pareil), la
+     * sémantique d'empilement y vit.
+     *
+     * @param left   bord gauche du calque
+     * @param top    bord haut du calque
+     * @param right  bord droit du calque
+     * @param bottom bord bas du calque
+     * @param alpha  le canal d'alpha (0 à 255)
+     * @return profondeur de pile
+     */
+    public int saveLayerAlpha(float left, float top, float right, float bottom,
+            int alpha) {
+        return save();
+    }
+
     /** Rétablit l'état empilé (sans effet si la pile est vide). */
     public void restore() {
         if (!matrixStack.isEmpty()) {

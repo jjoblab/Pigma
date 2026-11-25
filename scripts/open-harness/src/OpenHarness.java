@@ -1274,6 +1274,18 @@ public final class OpenHarness {
         check("les candidats du gros fichier poursuivent le préfixe",
                 card.words().stream()
                         .allMatch(word -> word.startsWith("bl")));
+        // la FENÊTRE ne rétrécit pas quand la liste se re-filtre : la
+        // carte garde ses rangées montrées (la carte multiple reste
+        // multiple — elle ne retombe pas à une rangée à la frappe).
+        // « blo » y garde bloc et block : la liste re-filtrée vit
+        int rowsShown = card.shownRows();
+        check("la carte multiple montre plusieurs rangées", rowsShown >= 2);
+        connection.commitText("o", 1);
+        frame();
+        check("la carte re-filtrée vit (blo garde ses candidats)",
+                card.isShown() && card.words().size() >= 2);
+        check("la carte re-filtrée garde sa fenêtre de rangées",
+                card.shownRows() >= Math.min(rowsShown, 2));
         pressKey(KeyEvent.KEYCODE_DPAD_DOWN);
         pressKey(KeyEvent.KEYCODE_DPAD_DOWN);
         frame();
@@ -1289,7 +1301,10 @@ public final class OpenHarness {
                 editor.getBuffer().toString().endsWith(second));
         click("Annuler");
         click("Annuler");
-        check("la double annulation rend le gros texte",
+        // le « o » de l'éprouve de stabilité compte une édition de
+        // plus : la triple annulation rend le texte entier
+        click("Annuler");
+        check("la triple annulation rend le gros texte",
                 editor.getBuffer().toString().equals(grosOriginal));
         // le préfixe meurt : la carte se range
         editor.caretTo(editor.getBuffer().length());
@@ -2937,6 +2952,33 @@ public final class OpenHarness {
         int[] twin = table.activeGuides(methodClosing, 4);
         check("le caret sur la fermante illumine le bloc jumeau",
                 twin.length >= 1);
+        // LE FIL DE LA PAIRE (l'autre fil) : le caret sur l'ouvrante de
+        // la méthode — la paire s'y calcule au dessin, le fil s'y
+        // trace (la jambe verticale au bord gauche de l'ouvrante, le
+        // coude horizontal vers la fermante : leurs colonnes diffèrent)
+        int methodOpening = -1;
+        for (int at = 0; at < table.size(); at++) {
+            jo.pigma.editor.folding.StructureGuides.Guide guide = table.guide(at);
+            if (guide.openingColumn() > 20 && guide.openingLine() > 0) {
+                methodOpening = guide.openingLine();
+            }
+        }
+        int methodColumn = -1;
+        for (int at = 0; at < table.size(); at++) {
+            jo.pigma.editor.folding.StructureGuides.Guide guide = table.guide(at);
+            if (guide.openingLine() == methodOpening) {
+                methodColumn = guide.openingColumn();
+            }
+        }
+        editor.caretTo(editor.getBuffer().getLineStart(methodOpening)
+                + methodColumn);
+        frame();
+        check("la paire d'accolades vit au caret posé",
+                editor.bracketPair() != null
+                        && editor.bracketPair().toLine() > editor.bracketPair().fromLine());
+        check("le fil relie des colonnes différentes (le coude se tire)",
+                editor.bracketPair().fromColumn()
+                        != editor.bracketPair().toColumn());
         // la ligne sans bloc ne guide pas : la table au-dessus d'un
         // document d'une seule ligne ne porte rien
         editor.setLanguage(jo.pigma.syntax.Languages.JAVA, "int seul = 1;\n");

@@ -113,6 +113,12 @@ public final class CompletionCard {
     /** Le style posé par l'hôte : fond translucide, encres, tailles, largeur, forme. */
     private PopupStyle style = PopupStyle.defaults();
 
+    /** L'animation d'ouverture et de sortie (le fondu et la glisse). */
+    private final PopupAnimation animation = new PopupAnimation();
+
+    /** La visibilité posée de la trame d'avant (les transitions s'y lisent). */
+    private boolean wasShown;
+
     private EditorView editor;
 
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -334,11 +340,35 @@ public final class CompletionCard {
      */
     public void draw(Canvas canvas, PopupMetrics metrics) {
         density = metrics.density();
-        if (entries.isEmpty()) {
+        boolean shown = !entries.isEmpty();
+        if (shown != wasShown) {
+            // la transition de visibilité joue l'animation : la carte
+            // naît au-caret, la carte qui se range s'efface — la
+            // RE-FILTRATION de la liste n'y passe pas (elle reste
+            // stable, la carte ne clignote pas à la frappe)
+            if (shown) {
+                animation.open();
+            } else {
+                animation.close();
+            }
+            wasShown = shown;
+        }
+        if (!shown && !animation.isClosing()) {
             cardH = 0.0f;
             shownRows = 0;
             return;
         }
+        if (!shown) {
+            return;
+        }
+        int save = canvas.save();
+        // le fondu et la glisse de la transition : l'alpha porte la
+        // carte entière, la glisse la fait naître au caret
+        canvas.translate(0.0f, animation.shiftPx(density));
+        int alpha = (int) (animation.alphaFactor() * 255.0f);
+        canvas.saveLayerAlpha(poseX - dp(2), poseY - dp(2),
+                poseX + cardW + dp(2), poseY + cardH + dp(2),
+                Math.max(0, Math.min(255, alpha)));
         place(metrics);
         float radius = dp(style.cornerRadiusDp());
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
@@ -362,14 +392,24 @@ public final class CompletionCard {
                     poseX + dp(ICON_DP) + dp(8), top + rowH * 0.68f, at == highlighted);
             String detail = entries.get(at).detail();
             if (!detail.isEmpty()) {
-                String shown = shrink(detail, detailPaint, detailColumnWidth());
-                canvas.drawText(shown,
-                        poseX + cardW - dp(14) - detailPaint.measureText(shown),
+                String shownDetail = shrink(detail, detailPaint, detailColumnWidth());
+                canvas.drawText(shownDetail,
+                        poseX + cardW - dp(14) - detailPaint.measureText(shownDetail),
                         top + rowH * 0.68f, detailPaint);
             }
         }
         drawScrollbar(canvas, rowsBottom);
         drawFooter(canvas, rowsBottom);
+        canvas.restore();
+        canvas.restore();
+    }
+
+    /**
+     * L'animation vit-elle encore (la vue y invalide la trame
+     * suivante — le fondu se joue trame après trame).
+     */
+    public boolean isAnimating() {
+        return animation.isRunning();
     }
 
     /** L'abscisse posée (le harnais la lit). */
@@ -412,10 +452,13 @@ public final class CompletionCard {
     }
 
     /**
-     * Pose la carte au caret — dessous si elle tient, dessus sinon —
-     * et resserre la fenêtre de rangées à la place disponible : au
-     * moins {@value #MIN_ROWS}, au plus {@value #MAX_ROWS} et jamais
-     * plus que les candidats posés.
+     * Pose la carte au caret — DESSOUS d'abord (le côté naturel d'une
+     * complétion : la liste descend du mot tapé), AU-DESSUS seulement
+     * quand le dessous ne tient pas le plancher de rangées — et la
+     * fenêtre de rangées prend TOUTE la place du côté choisi : au
+     * moins {@value #MIN_ROWS}, au plus {@value #MAX_ROWS}, jamais
+     * plus que les candidats posés. La carte ne rétrécit plus à une
+     * rangée au premier caret haut : le côté qui a la place la garde.
      */
     private void place(PopupMetrics metrics) {
         float margin = dp(MARGIN_DP);
@@ -427,14 +470,16 @@ public final class CompletionCard {
                 Math.min(dp(style.maxCardWidthDp() - 60),
                         metrics.viewWidth() - 2 * margin));
         int rows = Math.min(MAX_ROWS, entries.size());
-        // la place de chaque côté : la carte vit du côté qui en a le
-        // plus — le dessous d'abord quand les deux tiennent
         float belowTop = metrics.caretY() + metrics.lineHeight() + gap;
         float belowSpace = metrics.viewHeight() - margin - belowTop;
         float aboveSpace = metrics.caretY() - gap - margin;
-        boolean below = belowSpace >= aboveSpace;
+        // le dessous d'abord : il ne faut que le plancher de rangées
+        // pour que le côté naturel gagne (le clavier ouvert lui
+        // laisse souvent moins : la carte survit au-dessus, entière)
+        boolean below = belowSpace >= aboveSpace
+                || rowsFit(belowSpace, pad, rowH) >= MIN_ROWS;
         float space = below ? belowSpace : aboveSpace;
-        int fitting = (int) Math.floor((space - 2 * pad - dp(FOOTER_DP)) / rowH);
+        int fitting = rowsFit(space, pad, rowH);
         rows = Math.max(MIN_ROWS, Math.min(rows, Math.max(fitting, MIN_ROWS)));
         shownRows = Math.min(rows, entries.size());
         cardH = 2 * pad + shownRows * rowH + dp(FOOTER_DP);
@@ -447,6 +492,17 @@ public final class CompletionCard {
         poseX = Math.max(margin,
                 Math.min(metrics.caretX(), metrics.viewWidth() - cardW - margin));
         clampWindow();
+    }
+
+    /**
+     * Le nombre de rangées que la place donnée tient (le pied de
+     * carte et les deux respirations payés d'abord).
+     */
+    private int rowsFit(float space, float pad, float rowH) {
+        if (rowH <= 0.0f) {
+            return 0;
+        }
+        return (int) Math.floor((space - 2 * pad - dp(FOOTER_DP)) / rowH);
     }
 
     /**

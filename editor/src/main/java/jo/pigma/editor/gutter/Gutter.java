@@ -58,14 +58,14 @@ public final class Gutter {
     /** Le corps de repos des numéros (dp). */
     private static final float NUMBER_SIZE_DP = 12.0f;
 
-    /** L'alpha du panneau de la gouttière (60 pour cent). */
-    private static final float PANEL_ALPHA = 0.60f;
+    /** L'alpha du panneau de la gouttière (45 pour cent — discret). */
+    private static final float PANEL_ALPHA = 0.45f;
 
     /** La largeur de l'ombre d'élévation au bord droit (dp). */
-    private static final int SHADOW_WIDTH_DP = 6;
+    private static final int SHADOW_WIDTH_DP = 4;
 
     /** Les marches de l'ombre (le dégradé de l'élévation). */
-    private static final int SHADOW_STEPS = 4;
+    private static final int SHADOW_STEPS = 2;
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
@@ -108,7 +108,7 @@ public final class Gutter {
         panelPaint.setStyle(Paint.Style.FILL);
         panelBorder.setStyle(Paint.Style.STROKE);
         panelBorder.setStrokeWidth(1.0f * density);
-        panelBorder.setColor(0x1F000000);
+        panelBorder.setColor(0x14000000);
         shadowPaint.setStyle(Paint.Style.FILL);
         applyStyle();
     }
@@ -195,7 +195,7 @@ public final class Gutter {
         float step = dp(SHADOW_WIDTH_DP) / SHADOW_STEPS;
         for (int at = 0; at < SHADOW_STEPS; at++) {
             float edge = right + step * at;
-            int alpha = (int) (36.0f * (SHADOW_STEPS - at) / SHADOW_STEPS);
+            int alpha = (int) (22.0f * (SHADOW_STEPS - at) / SHADOW_STEPS);
             shadowPaint.setColor((alpha << 24) | 0x00000000);
             canvas.drawRect(edge, top, edge + step, bottom, shadowPaint);
         }

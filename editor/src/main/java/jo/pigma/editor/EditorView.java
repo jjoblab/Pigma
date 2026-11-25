@@ -119,6 +119,14 @@ public final class EditorView extends View {
      */
     private static final int GUIDE_SHADOW_COLOR = 0x2B808080;
 
+    /**
+     * L'encre des guides ACTIFS : l'encre du curseur à 80 pour cent
+     * (lisible sur tout fond — jamais pâle : le guide de la portée
+     * courante se lit d'un coup d'œil, quel que soit l'endroit des
+     * accolades).
+     */
+    private static final int GUIDE_ACCENT_COLOR = 0xCC2962FF;
+
     /** Plans partagés par contenu, au-delà le plus ancien s'évince. */
     private static final int SHARED_PLANS = 256;
 
@@ -480,6 +488,9 @@ public final class EditorView extends View {
     /** Le surlignage des deux bouts d'une paire (le trait du signe). */
     private final Paint bracketPaint = new Paint();
 
+    /** Le fil de la paire d'accolades (la jambe et son coude). */
+    private final Paint pairLinkPaint = new Paint();
+
     /** Les guides d'indentation de L2 (un par niveau de profondeur). */
     private final Paint guidePaint = new Paint();
 
@@ -598,6 +609,10 @@ public final class EditorView extends View {
         bracketPaint.setStyle(Paint.Style.STROKE);
         bracketPaint.setStrokeWidth(dp(1) * 1.5f);
         bracketPaint.setColor(CARET_COLOR);
+        // le fil de la paire : l'encre du curseur, un peu transparent
+        // (il guide l'œil sans crier sur le texte)
+        pairLinkPaint.setStyle(Paint.Style.STROKE);
+        pairLinkPaint.setColor((CARET_COLOR & 0x00FFFFFF) | 0x66000000);
         guidePaint.setStrokeWidth(dp(1));
         guidePaint.setColor(GUIDE_SHADOW_COLOR);
         scopePaint.setStyle(Paint.Style.FILL);
@@ -2963,6 +2978,12 @@ public final class EditorView extends View {
         if (renameBar != null && renameBar.isShown()) {
             renameBar.draw(canvas, popupMetrics());
         }
+        // une animation de popup vit (ouverture ou sortie) : la trame
+        // suivante se réclame — le fondu se joue trame après trame,
+        // sans fil d'horloge (la trame portante anime)
+        if (completionCard.isAnimating() || infoPopup.isAnimating()) {
+            invalidate();
+        }
         // la fenêtre visible est payée : le reste remplit au fil de fond
         ensureFill();
         lastFrameNanos = System.nanoTime() - frameBegin;
@@ -3279,18 +3300,24 @@ public final class EditorView extends View {
      * dernier, par-dessus le bandeau.
      */
     private void drawInfoPopup(Canvas canvas) {
-        if (infoPopup.text() == null) {
+        if (infoPopup.text() == null && !infoPopup.isAnimating()) {
             return;
         }
-        float anchorTop = getPaddingTop()
-                + visibleIndexOf(infoPopup.line()) * lineHeight - scrollY;
-        // la barre de sélection vit : la documentation s'y empile —
-        // la popup s'ancre au-dessus de la barre (le « i » l'a ouverte
-        // sur la sélection)
-        if (selectionBar.isShown()) {
-            anchorTop = Math.min(anchorTop, selectionBar.poseY());
+        if (infoPopup.text() != null) {
+            float anchorTop = getPaddingTop()
+                    + visibleIndexOf(infoPopup.line()) * lineHeight - scrollY;
+            // la barre de sélection vit : la documentation s'y empile —
+            // la popup s'ancre au-dessus de la barre (le « i » l'a ouverte
+            // sur la sélection)
+            if (selectionBar.isShown()) {
+                anchorTop = Math.min(anchorTop, selectionBar.poseY());
+            }
+            infoPopup.draw(canvas, anchorTop, popupMetrics());
+        } else {
+            // la sortie se joue sur la dernière pose (les ancrages ne
+            // servent plus)
+            infoPopup.draw(canvas, 0.0f, popupMetrics());
         }
-        infoPopup.draw(canvas, anchorTop, popupMetrics());
     }
 
     /**
@@ -3394,10 +3421,53 @@ public final class EditorView extends View {
         if (bracketPair == null) {
             return;
         }
-        highlightPairEnd(canvas, first, last, bracketPair.fromLine(),
-                bracketPair.fromColumn());
-        highlightPairEnd(canvas, first, last, bracketPair.toLine(),
-                bracketPair.toColumn());
+        boolean fromVisible = highlightPairEnd(canvas, first, last,
+                bracketPair.fromLine(), bracketPair.fromColumn());
+        boolean toVisible = highlightPairEnd(canvas, first, last,
+                bracketPair.toLine(), bracketPair.toColumn());
+        // le FIL DE LA PAIRE (l'autre fil) : quand les deux bornes se
+        // voient, une jambe verticale joint l'ouvrante à la fermante —
+        // au bord GAUCHE de l'ouvrante, du bas de son cadre au haut de
+        // celui de la fermante — puis un COUDE HORIZONTAL la rejoint
+        // quand leurs colonnes diffèrent (le zigzag qui guide l'œil
+        // de l'une à l'autre)
+        if (fromVisible && toVisible) {
+            drawPairLink(canvas);
+        }
+    }
+
+    /**
+     * Le fil de la paire d'accolades : la jambe verticale au bord
+     * gauche de l'OUVRANTE, le coude horizontal vers la FERMANTE
+     * quand leur colonne diffère — l'encre du curseur, un trait
+     * assumé (il GUIDE l'œil de l'ouvrante à la fermante, il ne
+     * chuchote pas). Les bornes à la même ligne ne se joignent pas
+     * (les deux cadres se lisent seuls).
+     */
+    private void drawPairLink(Canvas canvas) {
+        if (bracketPair.toLine() <= bracketPair.fromLine()) {
+            return;
+        }
+        float left = getPaddingLeft();
+        float fromX = left + bracketPair.fromColumn() * charWidth - dp(2);
+        float toX = left + bracketPair.toColumn() * charWidth;
+        float fromTop = getPaddingTop()
+                + visibleIndexOf(bracketPair.fromLine()) * lineHeight - scrollY;
+        float toTop = getPaddingTop()
+                + visibleIndexOf(bracketPair.toLine()) * lineHeight - scrollY;
+        float yFrom = fromTop + lineHeight - dp(2);
+        float yTo = toTop + dp(2);
+        if (yTo <= yFrom) {
+            return;
+        }
+        pairLinkPaint.setStrokeWidth(Math.max(1.25f, charWidth * 0.09f));
+        // la jambe verticale : du bas de l'ouvrante au haut de la fermante
+        canvas.drawLine(fromX, yFrom, fromX, yTo, pairLinkPaint);
+        // le coude : quand la fermante vit à une autre colonne, le
+        // trait la rejoint horizontalement — la jonction touche les DEUX
+        if (Math.abs(fromX - toX) > charWidth * 0.5f) {
+            canvas.drawLine(fromX, yTo, toX, yTo, pairLinkPaint);
+        }
     }
 
     /**
@@ -3446,7 +3516,7 @@ public final class EditorView extends View {
             float x = left + guide.column() * charWidth;
             if (contains(active, at)) {
                 guidePaint.setStrokeWidth(accentWidth);
-                guidePaint.setColor(CARET_COLOR);
+                guidePaint.setColor(GUIDE_ACCENT_COLOR);
             } else {
                 guidePaint.setStrokeWidth(shadowWidth);
                 guidePaint.setColor(GUIDE_SHADOW_COLOR);
@@ -3489,16 +3559,22 @@ public final class EditorView extends View {
      * Surligne un bout de paire s'il est visible : un cadre fin autour
      * du signe (la bande verticale de la ligne).
      */
-    private void highlightPairEnd(Canvas canvas, int first, int last,
+    /**
+     * Le cadre d'une borne de la paire du curseur — retourne sa
+     * VISIBILITÉ (dans la fenêtre, pas cachée par un pli) : le fil de
+     * la paire ne se tire qu'entre deux bornes qui se voient.
+     */
+    private boolean highlightPairEnd(Canvas canvas, int first, int last,
             int line, int column) {
         if (line < first || line > last || isHidden(line)) {
-            return;
+            return false;
         }
         float baseline = lineBaseline(line);
         float x = getPaddingLeft() + column * charWidth;
         canvas.drawRect(x - dp(1), baseline + fontMetrics.top + dp(2),
                 x + charWidth + dp(1), baseline + fontMetrics.bottom - dp(2),
                 bracketPaint);
+        return true;
     }
 
     // --------------------------------------------------- plis (régions repliables)

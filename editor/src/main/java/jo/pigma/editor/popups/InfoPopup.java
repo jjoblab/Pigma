@@ -2,6 +2,7 @@ package jo.pigma.editor.popups;
 
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.RectF;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,6 +45,18 @@ public final class InfoPopup {
 
     /** Le style posé par l'hôte : fond translucide, encres, tailles, forme. */
     private PopupStyle style = PopupStyle.defaults();
+
+    /** L'animation d'ouverture et de sortie (le fondu et la glisse). */
+    private final PopupAnimation animation = new PopupAnimation();
+
+    /** La pose de la trame d'avant — la sortie s'y joue. */
+    private final RectF closingBox = new RectF();
+    private String closingTitle;
+    private List<String> closingBodyRows;
+    private float closingLeft;
+    private float closingTop;
+    private float closingRadius;
+    private float closingRowHeight;
 
     private float density = 1.0f;
 
@@ -98,10 +111,14 @@ public final class InfoPopup {
      * @param atColumn   la colonne d'ancrage
      */
     public void show(String shownTitle, String shownBody, int atLine, int atColumn) {
+        boolean wasShown = body != null;
         body = shownBody == null || shownBody.isEmpty() ? null : shownBody;
         title = body == null ? null : shownTitle;
         line = atLine;
         column = atColumn;
+        if (body != null && !wasShown) {
+            animation.open();
+        }
     }
 
     /**
@@ -135,8 +152,19 @@ public final class InfoPopup {
 
     /** Range la popup (l'appui suivant, une édition, un débranchement). */
     public void dismiss() {
+        if (body != null) {
+            animation.close();
+        }
         body = null;
         title = null;
+    }
+
+    /**
+     * L'animation vit-elle encore (ouverture ou sortie) — la vue y
+     * invalide la trame suivante.
+     */
+    public boolean isAnimating() {
+        return animation.isRunning();
     }
 
     /** Le corps montré (null : la popup est rangée). */
@@ -170,7 +198,15 @@ public final class InfoPopup {
      * @param metrics   la géométrie de la vue
      */
     public void draw(Canvas canvas, float anchorTop, PopupMetrics metrics) {
+        boolean closing = animation.isClosing();
+        if (body == null && !closing) {
+            return;
+        }
         if (body == null) {
+            // la sortie se joue sur la dernière pose connue : la
+            // géométrie de la trame d'avant demeure (les champs ne se
+            // touchent pas)
+            drawClosingFrame(canvas);
             return;
         }
         float density = metrics.density();
@@ -194,6 +230,21 @@ public final class InfoPopup {
                     metrics.viewHeight() - boxHeight);
         }
         float radius = style.cornerRadiusDp() * density;
+        // la pose se garde : la sortie s'y jouera (drawClosingFrame)
+        closingBox.set(left, top, left + boxWidth, top + boxHeight);
+        closingRowHeight = rowHeight;
+        closingLeft = left;
+        closingTop = top;
+        closingRadius = radius;
+        closingTitle = title;
+        closingBodyRows = rows;
+        // le fondu et la glisse de l'ouverture
+        float shift = animation.shiftPx(density);
+        int alpha = (int) (animation.alphaFactor() * 255.0f);
+        int save = canvas.save();
+        canvas.translate(0.0f, shift);
+        canvas.saveLayerAlpha(left - 2.0f, top - 2.0f, left + boxWidth + 2.0f,
+                top + boxHeight + 2.0f, Math.max(0, Math.min(255, alpha)));
         canvas.drawRoundRect(left, top, left + boxWidth, top + boxHeight,
                 radius, radius, background);
         canvas.drawRoundRect(left, top, left + boxWidth, top + boxHeight,
@@ -207,6 +258,45 @@ public final class InfoPopup {
             canvas.drawText(row, left + padding, baseline, bodyPaint);
             baseline += rowHeight;
         }
+        canvas.restore();
+        canvas.restore();
+    }
+
+    /**
+     * La trame de SORTIE : la popup se joue sur sa dernière pose
+     * connue — l'alpha descend, la glisse remonte au caret ; les
+     * champs de pose se relisent tels quels.
+     */
+    private void drawClosingFrame(Canvas canvas) {
+        int alpha = (int) (animation.alphaFactor() * 255.0f);
+        if (alpha <= 0) {
+            return;
+        }
+        int save = canvas.save();
+        canvas.translate(0.0f, animation.shiftPx(1.5f));
+        canvas.saveLayerAlpha(closingBox.left - 2.0f, closingBox.top - 2.0f,
+                closingBox.right + 2.0f, closingBox.bottom + 2.0f,
+                Math.max(0, Math.min(255, alpha)));
+        canvas.drawRoundRect(closingBox.left, closingBox.top, closingBox.right,
+                closingBox.bottom, closingRadius, closingRadius, background);
+        canvas.drawRoundRect(closingBox.left, closingBox.top, closingBox.right,
+                closingBox.bottom, closingRadius, closingRadius, border);
+        float baseline = closingTop + 12.0f * 1.5f
+                - bodyPaint.getFontMetrics().top;
+        if (closingTitle != null) {
+            canvas.drawText(closingTitle, closingLeft + 12.0f * 1.5f, baseline,
+                    titlePaint);
+            baseline += closingRowHeight;
+        }
+        if (closingBodyRows != null) {
+            for (String row : closingBodyRows) {
+                canvas.drawText(row, closingLeft + 12.0f * 1.5f, baseline,
+                        bodyPaint);
+                baseline += closingRowHeight;
+            }
+        }
+        canvas.restore();
+        canvas.restore();
     }
 
     /** La largeur de la boîte : la plus large rangée, bornée. */

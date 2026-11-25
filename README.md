@@ -38,6 +38,41 @@ Installer l'APK sur un appareil ou un émulateur :
 
     adb install sample/build/outputs/apk/debug/sample-debug.apk
 
+## Les thèmes : la palette de l'hôte
+
+Six palettes vivent dans `EditorThemes` (clair, sombre, solaire,
+forêt, océan, café) — chacune porte ses portées de coloration ET son
+fond. La vue s'y reconfigure À CHAUD : aucune retokenisation (les
+jetons portent des portées, la couleur se résout au dessin), la
+gouttière se teinte, les guides suivent, et les POPUPS se recalent
+(leur fond prend la teinte du thème, leurs encres s'inversent au
+fond sombre — un style clair posé sur un fond sombre ne devient
+jamais illisible).
+
+Un hôte apporte SA palette par `applyTheme` — un `SyntaxTheme`
+(les portées nommées, hiérarchiques par points : `keyword.control`
+hérite de `keyword`) et la couleur ARGB du fond :
+
+```java
+SyntaxTheme mienne = SyntaxTheme.of(Map.ofEntries(
+        Map.entry("keyword", 0xFF0033B3),
+        Map.entry("comment", 0xFF008000),
+        Map.entry("string", 0xFFA31515),
+        Map.entry("number", 0xFF098658),
+        Map.entry("operator", 0xFF1B1B1F),
+        Map.entry("punct", 0xFF1B1B1F)),
+        0xFF1B1B1F);  // l'encre par défaut (les jetons sans avis)
+editorView.applyTheme(mienne, 0xFFFDFDFD);  // le fond du thème
+```
+
+Les portées reconnues par les lexeurs du dépôt : `keyword`,
+`keyword.control`, `comment`, `comment.doc`, `string`,
+`string.escape`, `number`, `operator`, `punct`, `tag`, `entity`,
+`key` — une portée absente retombe sur son parent, puis sur
+l'encre par défaut (une palette partielle ne casse jamais le
+rendu). La luminance du fond décide le reste : la gouttière, les
+popups et les marqueurs s'y calent seuls.
+
 ## Tester et vérifier
 
     ./gradlew test      # tests unitaires de tous les modules
