@@ -197,8 +197,11 @@ public final class CompletionCard {
 
     /**
      * Pose les candidats détaillés du mot courant et le préfixe tapé —
-     * le premier candidat devient le courant quand la liste change ; la
-     * fenêtre repart du haut. La liste vide range la carte.
+     * le candidat courant SURVIT au changement de liste (la leçon de
+     * la référence : le préfixe croît à la frappe, la sélection ne
+     * saute pas au premier — l'item sélectionné reste sélectionné tant
+     * que son nom vit dans la nouvelle liste, la fenêtre le garde
+     * visible). La liste vide range la carte.
      *
      * @param candidates les candidats, déjà filtrés, jamais null
      * @param typedPrefix le préfixe tapé (vide pour aucun surlignage)
@@ -206,11 +209,26 @@ public final class CompletionCard {
     public void set(List<Entry> candidates, String typedPrefix) {
         List<Entry> fresh = List.copyOf(candidates);
         boolean changed = !fresh.equals(entries);
+        String kept = null;
+        if (changed && highlighted >= 0 && highlighted < entries.size()) {
+            kept = entries.get(highlighted).name();
+        }
         entries = fresh;
         prefix = typedPrefix == null ? "" : typedPrefix;
         if (changed) {
-            highlighted = entries.isEmpty() ? -1 : 0;
-            topRow = 0;
+            highlighted = -1;
+            if (kept != null) {
+                for (int at = 0; at < entries.size(); at++) {
+                    if (entries.get(at).name().equals(kept)) {
+                        highlighted = at;
+                        break;
+                    }
+                }
+            }
+            if (highlighted < 0 && !entries.isEmpty()) {
+                highlighted = 0;
+            }
+            keepCurrentVisible();
         }
     }
 

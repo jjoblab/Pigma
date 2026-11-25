@@ -4003,17 +4003,40 @@ public final class EditorView extends View {
         }
         String prefix = buffer.getText(wordStart, caret).toString();
         suggestionWordStart = wordStart;
+        // la fusion À LA LEÇON DE LA RÉFÉRENCE (sa complétion basique
+        // mêle mots-clés, champs, méthodes et candidats du serveur
+        // DANS LA MÊME liste — le fournisseur extérieur n'évince
+        // personne, il s'y AJOUTE) : les candidats locaux d'abord (les
+        // mots-clés du langage et l'index des symboles — la carte ne
+        // reste jamais vide pendant qu'une requête vole), ceux du
+        // fournisseur ensuite (sa réponse asynchrone remplace la
+        // carte à la trame suivante — le contrat y est documenté).
+        // Les doublons s'y éliminent (le serveur répète souvent le
+        // mot-clé du langage).
+        List<CompletionCard.Entry> merged = new ArrayList<>(
+                localCompletionEntries(prefix));
         if (suggestionProvider != null) {
-            // la source extérieure tire à la trame : elle cache sa
-            // réponse asynchrone (le contrat y est documenté) — les
-            // colonnes de détail vivent vides (la nature neutre) quand
-            // le fournisseur ne rend que des noms
             int line = buffer.lineOfOffset(caret);
-            completionCard.setNames(suggestionProvider.completionsFor(prefix,
-                    line, caret - buffer.getLineStart(line)), prefix);
-            return;
+            List<String> served = suggestionProvider.completionsFor(prefix,
+                    line, caret - buffer.getLineStart(line));
+            for (String word : served) {
+                if (word == null || word.isEmpty()) {
+                    continue;
+                }
+                boolean duplicate = false;
+                for (CompletionCard.Entry entry : merged) {
+                    if (entry.name().equals(word)) {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (!duplicate) {
+                    merged.add(new CompletionCard.Entry(word, "",
+                            CompletionCard.KIND_UNKNOWN));
+                }
+            }
         }
-        completionCard.set(localCompletionEntries(prefix), prefix);
+        completionCard.set(merged, prefix);
     }
 
     /**

@@ -1219,17 +1219,34 @@ public final class LspEditor {
             }
             return null;
         });
-        // la complétion du serveur à la carte : le cache par préfixe
-        // (le même préfixe y rend la même liste, O(1)), la réponse
-        // asynchrone évince l'ancienne si le préfixe n'a pas bougé
+        // la complétion du serveur À LA LEÇON DE LA RÉFÉRENCE (l'IDE de
+        // référence accumule ses candidats et FILTRE CÔTÉ CLIENT à la
+        // frappe — la liste ne se vide JAMAIS pendant qu'une requête
+        // vole) : le cache du dernier préfixe reçu reste posé, la
+        // frappe le FILTRE localement (le préfixe ne fait que croître
+        // dans un mot — les candidats du père portent le fils), et la
+        // réponse du serveur REMPLACE le cache entier à son arrivée si
+        // le préfixe n'a pas bougé. La carte vit pendant l'attente :
+        // le filtrage local y donne les candidats vivants, la réponse
+        // affine (le serveur voit plus que le préfixe : le contexte).
         view.setSuggestionProvider((prefix, line, column) -> {
             if (!completionEnabled || session == null || prefix.isEmpty()) {
                 return List.of();
             }
             if (!prefix.equals(completionPrefix)) {
-                completionPrefix = prefix;
-                completionCache.clear();
                 final String asked = prefix;
+                // le préfixe EXTEND le dernier reçu ? Le cache reste
+                // UNE BONNE INDICATION (la leçon de l'index local :
+                // un index périmé vaut mieux qu'une carte vide) — le
+                // filtrage local ci-dessous l'exploite. Un préfixe qui
+                // RACCOURCIT ou saute (retour arrière, autre mot)
+                // invalide la clef : une requête neuve part, le cache
+                // filtré tient l'attente.
+                boolean extendsCache = completionPrefix != null
+                        && prefix.length() > completionPrefix.length()
+                        && prefix.startsWith(completionPrefix);
+                completionPrefix = prefix;
+                final boolean keepCache = extendsCache;
                 session.completion(documentUri, new LspPosition(line, column))
                         .whenComplete((words, failure) -> {
                             if (asked.equals(completionPrefix) && words != null) {
@@ -1238,8 +1255,21 @@ public final class LspEditor {
                                 view.post(view::invalidate);
                             }
                         });
+                if (!keepCache) {
+                    return List.of();
+                }
             }
-            return List.copyOf(completionCache);
+            // le filtrage CÔTÉ CLIENT (prefixMatches à la référence) :
+            // le candidat dont le nom commence par le préfixe vit,
+            // l'autre attend la réponse — la liste ne se vide jamais
+            // au fil de la frappe
+            List<String> filtered = new ArrayList<>(completionCache.size());
+            for (String word : completionCache) {
+                if (word.regionMatches(true, 0, prefix, 0, prefix.length())) {
+                    filtered.add(word);
+                }
+            }
+            return filtered;
         });
         // l'aide aux paramètres du serveur prime : le cache par
         // curseur, la génération déclasse une réponse du texte

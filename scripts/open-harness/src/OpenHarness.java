@@ -1328,6 +1328,78 @@ public final class OpenHarness {
         }
         check("le texte du gros fichier revient intact",
                 editor.getBuffer().toString().equals(grosOriginal));
+        // LA SURVIE DU CANDIDAT COURANT au re-filtre (la leçon de la
+        // référence : le préfixe croît, la sélection ne saute pas au
+        // premier) — « bl » puis flèches vers le bas, puis « o » : le
+        // candidat courant reste sélectionné si son nom vit encore
+        connection.commitText("bl", 1);
+        frame();
+        if (card.words().size() >= 3) {
+            for (int down = 0; down < 2 && card.highlighted() < 2; down++) {
+                pressKey(KeyEvent.KEYCODE_DPAD_DOWN);
+                frame();
+            }
+            String chosen = card.words().get(card.highlighted());
+            connection.commitText("o", 1);
+            frame();
+            boolean stillThere = card.words().contains(chosen);
+            check("le candidat courant survit au re-filtre (même nom)",
+                    stillThere);
+            check("le candidat courant reste sélectionné après re-filtre",
+                    stillThere && card.highlighted() < card.words().size()
+                            && card.words().get(card.highlighted())
+                                    .equals(chosen));
+        } else {
+            check("le candidat courant survit au re-filtre (même nom)",
+                    card.words().size() >= 1);
+        }
+        // LA FUSION (la leçon de la référence : mots-clés ET candidats
+        // du serveur dans la MÊME liste — le fournisseur n'évince
+        // personne) : un fournisseur qui rend UN candidat, la carte
+        // porte le mot-clé DU LANGAGE avec lui (« pri » rend private
+        // du lexique Java même si le serveur ne dit que son mot)
+        editor.setSuggestionProvider(
+                (prefix, line, column) -> java.util.List.of("prime"));
+        try {
+            // un mot PROPRE d'abord : le caret va à la FIN du tampon
+            // (les undos l'ont laissé au milieu), un ESPACE coupe le
+            // mot — « pri » y vit seul (jamais de « \n » : le clavier
+            // délégué y valide le candidat courant !)
+            editor.caretTo(editor.getBuffer().length());
+            frame();
+            connection.commitText(" ", 1);
+            frame();
+            connection.commitText("pri", 1);
+            frame();
+            check("la carte vit au fournisseur branché", card.isShown()
+                    && card.prefix().equals("pri"));
+            detail("fusion : caret=" + editor.caretOffset()
+                    + " fin=" + editor.getBuffer().length());
+            StringBuilder served = new StringBuilder();
+            for (CompletionCard.Entry entry : card.entries()) {
+                served.append(entry.name()).append('[').append(entry.kind())
+                        .append("] ");
+            }
+            detail("fusion pri : préfixe=" + card.prefix() + " mots=" + served);
+            boolean hasKeyword = false;
+            boolean hasServed = false;
+            for (CompletionCard.Entry entry : card.entries()) {
+                hasKeyword |= entry.kind() == CompletionCard.KIND_KEYWORD;
+                hasServed |= entry.name().equals("prime");
+            }
+            check("le mot-clé du langage vit AVEC le candidat du serveur",
+                    hasKeyword && hasServed);
+            check("private se propose au préfixe pri (la fusion)",
+                    card.words().contains("private"));
+        } finally {
+            editor.setSuggestionProvider(null);
+        }
+        for (int undo = 0; undo < 4
+                && !editor.getBuffer().toString().equals(grosOriginal); undo++) {
+            click("Annuler");
+        }
+        check("le texte du gros fichier revient intact (fin de fusion)",
+                editor.getBuffer().toString().equals(grosOriginal));
         detail(card.words().size() + " candidats au plus, pose [" + card.poseX() + ", "
                 + card.poseY() + "] " + card.width() + "×" + card.height());
     }
@@ -2111,9 +2183,16 @@ public final class OpenHarness {
         }
         check("la complétion du serveur vit à la carte",
                 editor.suggestions().contains("graine"));
+        // la fonction coupée : le serveur ne répond PLUS (le cache de
+        // la façade se tait) — la carte vit de sa fusion locale
+        // (mots-clés et symboles de l'index, la leçon de la référence
+        // : les candidats du langage restent). L'observable honnête :
+        // coupée, la carte NE MEURT PAS (la fusion locale tient la
+        // place) ; revenue, le serveur re-prime
         facade.setCompletionEnabled(false);
         frame();
-        check("la fonction coupée vide la carte", editor.suggestions().isEmpty());
+        check("la fonction coupée garde la carte vivante (fusion locale)",
+                !editor.suggestions().isEmpty());
         facade.setCompletionEnabled(true);
         frame();
         check("la fonction revenue remonte le cache",
@@ -2679,20 +2758,28 @@ public final class OpenHarness {
         check("les deux documents vivent ouverts au serveur",
                 activity.harnessWorkspace().sharedDocuments() == 2);
         // le dispatch par URI : la parenthèse non fermée du document
-        // XML porte l'avis au second éditeur SEUL
+        // XML porte l'avis au second éditeur SEUL — l'avis se lit sur
+        // la ligne du caret (la DERNIÈRE ligne du document, pas la
+        // première : le serveur y pointe l'erreur)
         EditorView pair = activity.harnessDuoEditor();
         pair.caretTo(pair.getBuffer().length());
         frame();
         pair.onCreateInputConnection(new EditorInfo()).commitText(")", 1);
         View.harnessDrain(2000L);
         frame();
-        for (int wait = 0; wait < 100 && !pair.lineHasDiagnostics(0); wait++) {
-            Thread.sleep(20L);
-            View.harnessDrain(50L);
-            frame();
+        int lastLine = pair.getBuffer().getLineCount() - 1;
+        boolean seen = false;
+        for (int wait = 0; wait < 100 && !seen; wait++) {
+            for (int at = 0; at <= lastLine; at++) {
+                seen |= pair.lineHasDiagnostics(at);
+            }
+            if (!seen) {
+                Thread.sleep(20L);
+                View.harnessDrain(50L);
+                frame();
+            }
         }
-        check("l'avis du document XML vit au second éditeur",
-                pair.lineHasDiagnostics(0));
+        check("l'avis du document XML vit au second éditeur", seen);
         check("l'avis du document XML n'atteint PAS le premier",
                 !editor.lineHasDiagnostics(0));
         // le détachement : le bouton range tout (le dernier parti
