@@ -1,6 +1,6 @@
 # État de la mission Pigma
 
-Mise à jour : session 35, le 2026-11-25. Rester factuel et
+Mise à jour : session 35 (correctif appareil), le 2026-11-25. Rester factuel et
 vérifiable face à `git log` : chaque affirmation ci-dessous se
 retrouve dans le dépôt ou dans un journal de build.
 
@@ -17,6 +17,19 @@ aller-à, signature, sélection, copie du texte). Le harnais
 download/.**
 
 ## Session 35 — la refonte du module :sample (2026-11-25)
+
+0. **Le correctif de l'appareil (e12b36e)** : l'écran restait blanc
+   sur téléphone — DrawerPane et BottomSheet portaient des onLayout
+   VIDES (le harnais dimensionne la vue qu'il éprouve ; sur appareil,
+   plus personne ne disposait les enfants). Les deux conteneurs
+   portent la vraie mécanique : onMeasure/onLayout réels, le z-order
+   par l'ordre des enfants (contenu, feuille, menu), l'interception
+   du toucher par le menu ouvert, le tiroir de poignée de la feuille
+   seule, la poignée-hamburger de la barre, la feuille part
+   demi-pliée. Les stubs du harnais gagnent la surface du cadre
+   (onMeasure, measureChild, dispatchDraw, dispatchTouchEvent,
+   onInterceptTouchEvent, MeasureSpec, translationY) — 39/39 verts
+   encore, l'APK rebâti et livré.
 
 1. **La consigne du propriétaire** : « une refonte totale du module
    sample, plus modern (tablayout, drawer, bottomsheet behavior pour
