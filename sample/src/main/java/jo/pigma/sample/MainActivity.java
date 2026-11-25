@@ -20,16 +20,13 @@ import java.util.Locale;
 
 import jo.pigma.editor.EditorThemes;
 import jo.pigma.editor.EditorView;
-import jo.pigma.editor.popups.DiagnosticCard;
+import jo.pigma.editor.lsp.LspEditor;
 import jo.pigma.editor.popups.PopupStyle;
 import jo.pigma.editor.popups.QuickActionCard;
 import jo.pigma.core.TextBuffer;
 import jo.pigma.core.TextListener;
 import jo.pigma.core.TextPosition;
 import jo.pigma.core.UndoStack;
-import jo.pigma.lsp.LspDiagnostic;
-import jo.pigma.lsp.LspPosition;
-import jo.pigma.lsp.LspSession;
 import jo.pigma.syntax.LanguageSyntax;
 import jo.pigma.syntax.Languages;
 import jo.pigma.syntax.StructureDocument;
@@ -89,43 +86,20 @@ public final class MainActivity extends Activity {
     /** Le bouton LSP Lua : branche le serveur EmmyLua réel par processus. */
     private Button lspLuaButton;
 
-    /** La liaison LSP branchée (null : aucune). */
-    private LspSession lspSession;
-
-    /** Le document courant côté serveur (l'URI du protocole, la démo ou le fichier Lua). */
-    private String lspUri;
+    /**
+     * La façade du serveur de langage : l'ÉCRAN ne câble plus rien —
+     * la bibliothèque porte la synchronisation du document, les
+     * fournisseurs (survol, complétion, signature, diagnostics) et
+     * leurs caches (l'étude de Sora editor y a mené, sa façade
+     * LspEditor). L'écran ne garde que ses boutons et son panneau.
+     */
+    private LspEditor lsp;
 
     /** L'étiquette du serveur branché (le panneau la lit). */
     private String lspLabel;
 
     /** Le document de la démo Java (l'URI stable du protocole). */
     private static final String DOC_URI = "file:///demo.java";
-
-    /** Les diagnostics du dernier avis du serveur (le panneau les lit). */
-    private volatile int lspDiagnosticCount = -1;
-
-    /** Les diagnostics du dernier avis du serveur, pour la carte de diagnostic. */
-    private volatile java.util.List<LspDiagnostic> lspDiagnostics = java.util.List.of();
-
-    /** Le préfixe du dernier envoi de complétion (la clef du cache). */
-    private volatile String completionPrefix;
-
-    /** Les libellés reçus du serveur pour ce préfixe (le fil du lecteur y écrit). */
-    private final java.util.List<String> completionCache =
-            java.util.Collections.synchronizedList(new java.util.ArrayList<>());
-
-    /** La génération de la demande de signature vivante (le texte change : la réponse en vol se périme). */
-    private final java.util.concurrent.atomic.AtomicLong signatureGeneration =
-            new java.util.concurrent.atomic.AtomicLong();
-
-    /** Le curseur de la dernière demande de signature (la clef du cache). */
-    private volatile int signatureCaret = -1;
-
-    /** La dernière signature reçue du serveur (null : pas de réponse). */
-    private volatile EditorView.SignatureHelp signatureAnswer;
-
-    /** Le report du changement de document vers le serveur (la synchronisation intégrale se amortit). */
-    private final Runnable lspSync = this::pushDocumentToServer;
 
     /** Le bouton « Aller à » (la popup aller-à-la-ligne de la vue). */
     private Button gotoButton;
@@ -145,10 +119,10 @@ public final class MainActivity extends Activity {
             // fenêtre visible : le rafraîchissement se reprogramme,
             // la file ne le porte qu'une fois après l'orage ; la
             // frappe ordinaire ne voit pas la différence (il suit la
-            // trame)
+            // trame). Le document vers le serveur vit dans la façade
+            // (elle se programme toute seule).
             editorView.removeCallbacks(statusSync);
             editorView.post(statusSync);
-            scheduleLspSync();
         }
     };
 
@@ -242,10 +216,18 @@ public final class MainActivity extends Activity {
                 .minCardWidthDp(400)
                 .maxCardWidthDp(500)
                 .build());
-        // les diagnostics du serveur de langage montent à la carte de
-        // diagnostic (le marqueur de la gouttière en vit, le doigt y
-        // l'ouvre)
-        editorView.setDiagnosticProvider(this::diagnosticsOfServer);
+        // LE CÂBLAGE DU SERVEUR DE LANGAGE VIT DANS LA FAÇADE : deux
+        // lignes d'écran — l'attache (l'écouteur du panneau) et le
+        // branchement (au clic du bouton). Tout ce qui suit n'est plus
+        // de l'écran : la synchronisation du document, le survol, la
+        // complétion, la signature, les diagnostics à la carte — la
+        // bibliothèque le porte (la leçon de Sora editor, sa façade
+        // LspEditor)
+        lsp = LspEditor.attach(editorView);
+        lsp.setDiagnosticsListener(fresh -> runOnUiThread(() -> {
+            updateDiagnostics();
+            editorView.invalidate();
+        }));
         // les intentions de l'hôte : l'ampoule jaune de la gouttière
         // les porte avec celles de l'éditeur
         editorView.setQuickActionProvider(this::hostQuickActions);
@@ -255,28 +237,6 @@ public final class MainActivity extends Activity {
         // la première coloration est paresseuse (au premier dessin) et
         // le remplissage avance par tranches : le panneau suit
         editorView.post(this::watchDiagnostics);
-    }
-
-    /**
-     * Les diagnostics du serveur à une ligne (la carte de diagnostic
-     * les lit au toucher du marqueur) — la sévérité du protocole y
-     * garde son rang (erreur, avertissement, information).
-     *
-     * @param line l'indice de la ligne
-     * @return les diagnostics du serveur sur la ligne, jamais null
-     */
-    private java.util.List<DiagnosticCard.Entry> diagnosticsOfServer(int line) {
-        java.util.List<DiagnosticCard.Entry> found = new java.util.ArrayList<>();
-        for (LspDiagnostic diagnostic : lspDiagnostics) {
-            if (diagnostic.range().start().line() == line) {
-                found.add(new DiagnosticCard.Entry(
-                        diagnostic.severity() == 1 ? DiagnosticCard.SEVERITY_ERROR
-                                : diagnostic.severity() == 2 ? DiagnosticCard.SEVERITY_WARNING
-                                : DiagnosticCard.SEVERITY_INFO,
-                        diagnostic.message()));
-            }
-        }
-        return found;
     }
 
     /**
@@ -498,34 +458,25 @@ public final class MainActivity extends Activity {
     }
 
     /**
-     * Branche le serveur de démonstration : la liaison négocie
-     * l'initialisation, le document part au serveur, ses diagnostics
-     * arrivent au panneau, la popup d'info interroge le survol (la
-     * réponse du serveur prime sur l'index local — le fournisseur
-     * rend null quand le serveur ne sait pas). Débrancher coupe tout
-     * (le même détachement que le serveur Lua).
+     * Branche le serveur de démonstration : UNE ligne d'écran (la
+     * façade négocie l'initialisation, envoie le document, pose les
+     * fournisseurs, reçoit les diagnostics — tout ce que l'écran
+     * câblait avant elle). Débrancher coupe tout (le même
+     * détachement que le serveur Lua).
      */
     private void onLspToggleClicked(View button) {
-        if (lspSession != null) {
+        if (lsp.isConnected()) {
             detachLsp();
             return;
         }
-        // la liaison monte le serveur au même processus : lsp4j porte
-        // le protocole (JSON-RPC et gson dessous), les tubes ne
-        // quittent pas la machine
         try {
-            lspSession = LspSession.beside(new DemoLanguageServer(DOC_URI),
-                    sessionListener());
+            lsp.connectInProcess(new DemoLanguageServer(DOC_URI), DOC_URI, "java");
         } catch (java.io.IOException noPipe) {
             Toast.makeText(this, "la liaison LSP ne monte pas : " + noPipe.getMessage(),
                     Toast.LENGTH_SHORT).show();
             return;
         }
-        lspUri = DOC_URI;
         lspLabel = "serveur de démo";
-        lspSession.initialize("pigma-sample");
-        pushDocumentToServer();
-        attachProviders();
         lspButton.setText("LSP ✔");
         updateDiagnostics();
     }
@@ -543,7 +494,7 @@ public final class MainActivity extends Activity {
      * processus.
      */
     private void onLspLuaClicked(View button) {
-        if (lspSession != null) {
+        if (lsp.isConnected()) {
             detachLsp();
             return;
         }
@@ -597,190 +548,34 @@ public final class MainActivity extends Activity {
                     Toast.LENGTH_LONG).show();
             return;
         }
-        lspSession = LspSession.overProcess(server, sessionListener());
-        lspUri = document.toURI().toString();
+        lsp.connectProcess(server, document.toURI().toString(), "lua");
         lspLabel = "EmmyLua hors processus";
-        lspSession.initialize("pigma-sample");
-        lspSession.didOpen(lspUri, DemoTexts.LUA, "lua");
-        attachProviders();
         lspLuaButton.setText("LSP Lua ✔");
         updateDiagnostics();
     }
 
     /**
-     * L'écouteur commun des liaisons : les diagnostics du serveur
-     * montent au panneau (le compte se rafraîchit sur le fil de
-     * l'interface).
-     *
-     * @return l'écouteur branché à la liaison
-     */
-    private LspSession.Listener sessionListener() {
-        return new LspSession.Listener() {
-            @Override
-            public void onDiagnostics(String uri,
-                    java.util.List<LspDiagnostic> diagnostics) {
-                lspDiagnosticCount = diagnostics.size();
-                lspDiagnostics = java.util.List.copyOf(diagnostics);
-                runOnUiThread(() -> {
-                    updateDiagnostics();
-                    editorView.invalidate();
-                });
-            }
-        };
-    }
-
-    /**
      * Débranche la liaison vivante (le serveur de démo ou le processus
-     * EmmyLua) : les fournisseurs se retirent, la liaison s'arrête (le
-     * processus meurt), le panneau oublie.
+     * EmmyLua) : la façade coupe tout (les fournisseurs se retirent,
+     * la liaison s'arrête, le processus meurt, les caches se
+     * rangent) — l'écran ne range que ses boutons et son panneau.
      */
     private void detachLsp() {
-        editorView.setInfoProvider(null);
-        editorView.setSuggestionProvider(null);
-        editorView.setSignatureProvider(null);
-        lspDiagnostics = java.util.List.of();
-        signatureGeneration.incrementAndGet();
-        signatureCaret = -1;
-        signatureAnswer = null;
-        lspSession.shutdown();
-        lspSession = null;
-        lspUri = null;
+        lsp.disconnect();
         lspLabel = null;
-        lspDiagnosticCount = -1;
-        completionPrefix = null;
-        completionCache.clear();
         lspButton.setText("LSP");
         lspLuaButton.setText("LSP Lua");
         updateDiagnostics();
     }
 
     /**
-     * Les fournisseurs de la liaison branchée : la popup d'info
-     * interroge le survol (la réponse du serveur prime sur l'index
-     * local — le fournisseur rend null quand le serveur ne sait pas,
-     * il attend au plus 200 ms) ; la complétion du serveur monte à la
-     * carte (la vue tire à chaque trame — le fournisseur cache par
-     * préfixe, la réponse revient asynchrone sur le fil du lecteur :
-     * la neuve évince l'ancienne si le préfixe n'a pas bougé, la
-     * trame suivante la porte) ; l'aide aux paramètres du serveur
-     * prime sur l'index local — la réponse y arrive pareillement
-     * asynchrone, la trame suivante la porte.
+     * La façade LSP du harnais : le scénario y règle ses fonctions
+     * (les coupes une à une — l'éprouve de l'étude de Sora editor).
+     *
+     * @return la façade branchée à la vue, jamais null
      */
-    private void attachProviders() {
-        final String uri = lspUri;
-        // le survol du serveur prime : la réponse attend au plus
-        // 200 ms ; au-delà, la popup locale tient la place et la
-        // réponse lente la remplacera à son arrivée (le survol
-        // asynchrone — la voie du serveur réel)
-        editorView.setInfoProvider((line, column, word) -> {
-            if (lspSession == null) {
-                return null;
-            }
-            java.util.concurrent.CompletableFuture<String> hover =
-                    lspSession.hover(uri, new LspPosition(line, column));
-            try {
-                return hover.get(200, java.util.concurrent.TimeUnit.MILLISECONDS);
-            } catch (java.util.concurrent.TimeoutException late) {
-                // le survol asynchrone : la réponse lente gardera sa
-                // voie — elle remplacera la popup à son arrivée, si la
-                // question vit toujours à la même position (le serveur
-                // réel y met son temps, la démo n'y passe jamais)
-                hover.whenComplete((answer, failure) -> {
-                    if (answer != null && !answer.isEmpty()) {
-                        editorView.post(() -> editorView
-                                .replaceInfoPopup(answer, line, column));
-                    }
-                });
-            } catch (Exception noAnswer) {
-                return null;
-            }
-            return null;
-        });
-        // la complétion du serveur à la carte : la vue tire à chaque
-        // trame — le fournisseur cache par préfixe (le même préfixe y
-        // rend la même liste, O(1)), la réponse revient asynchrone sur
-        // le fil du lecteur : la neuve évince l'ancienne si le préfixe
-        // n'a pas bougé, et la vue s'invalide — la trame suivante la
-        // porte
-        editorView.setSuggestionProvider((prefix, line, column) -> {
-            if (lspSession == null || prefix.isEmpty()) {
-                return java.util.List.of();
-            }
-            if (!prefix.equals(completionPrefix)) {
-                completionPrefix = prefix;
-                completionCache.clear();
-                final String asked = prefix;
-                lspSession.completion(uri, new LspPosition(line, column))
-                        .whenComplete((words, failure) -> {
-                            if (asked.equals(completionPrefix) && words != null) {
-                                completionCache.clear();
-                                completionCache.addAll(words);
-                                editorView.post(editorView::invalidate);
-                            }
-                        });
-            }
-            return java.util.List.copyOf(completionCache);
-        });
-        // l'aide aux paramètres du serveur prime : la vue tire à
-        // chaque trame — le fournisseur cache par curseur, la réponse
-        // revient asynchrone sur le fil du lecteur (la génération
-        // déclasse une réponse du texte d'avant : un changement de
-        // document ou de curseur), la trame suivante la porte
-        editorView.setSignatureProvider(caret -> {
-            if (lspSession == null) {
-                return null;
-            }
-            if (caret != signatureCaret) {
-                signatureCaret = caret;
-                signatureAnswer = null;
-                final long generation = signatureGeneration.incrementAndGet();
-                TextBuffer buffer = editorView.getBuffer();
-                int line = buffer.lineOfOffset(caret);
-                lspSession.signatureHelp(uri,
-                                new LspPosition(line, caret - buffer.getLineStart(line)))
-                        .whenComplete((help, failure) -> {
-                            if (help != null
-                                    && generation == signatureGeneration.get()) {
-                                signatureAnswer = new EditorView.SignatureHelp(
-                                        help.label(), help.activeParameter());
-                                editorView.post(editorView::invalidate);
-                            }
-                        });
-            }
-            return signatureAnswer;
-        });
-    }
-
-    /**
-     * Le document part au serveur — la liaison n'envoie que la plage
-     * qui a bougé (l'ombre de la dernière synchronisation tient le
-     * reste) ; chaque édition le reprogramme de 300 ms : les frappes
-     * rapides n'envoient qu'un delta, le dernier.
-     */
-    private void pushDocumentToServer() {
-        if (lspSession != null && lspUri != null) {
-            lspSession.didChange(lspUri, editorView.getBuffer().toString());
-            // le document a changé côté serveur : les complétions reçues
-            // décrivent l'ancien texte — le cache se range et la trame
-            // suivante redemande (l'ordre du canal porte le didChange
-            // avant la demande neuve) ; la signature en vol se périme
-            // pareillement (la génération avance, le cache se vide)
-            completionPrefix = null;
-            completionCache.clear();
-            signatureGeneration.incrementAndGet();
-            signatureCaret = -1;
-            signatureAnswer = null;
-            editorView.invalidate();
-        }
-    }
-
-    /** Une édition arrive : le report du document se reprogramme. */
-    private void scheduleLspSync() {
-        if (lspSession == null) {
-            return;
-        }
-        editorView.removeCallbacks(lspSync);
-        editorView.postDelayed(lspSync, 300L);
+    LspEditor harnessLsp() {
+        return lsp;
     }
 
     /**
@@ -897,8 +692,8 @@ public final class MainActivity extends Activity {
             text += String.format(" · replié : %d pli(s), %d ligne(s) cachée(s)",
                     editorView.foldedCount(), editorView.hiddenLineCount());
         }
-        if (lspDiagnosticCount >= 0) {
-            text += " · LSP : " + lspDiagnosticCount + " diagnostic(s) — " + lspLabel;
+        if (lsp.isConnected()) {
+            text += " · LSP : " + lsp.diagnosticCount() + " diagnostic(s) — " + lspLabel;
         }
         text += String.format(" · L3 : %d annotation(s) (fenêtre)"
                         + " · symboles : %d (%d mots) · diagnostics : %d",

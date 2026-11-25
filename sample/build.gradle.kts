@@ -38,11 +38,9 @@ android {
 }
 
 dependencies {
-    // l'hôte ne déclare que la bibliothèque d'édition : elle expose en
-    // api le cœur, le moteur et l'annotateur (le cas courant de
-    // l'architecture — une seule dépendance)
+    // l'hôte ne déclare QUE la bibliothèque d'édition : elle expose en
+    // api le cœur, le moteur, l'annotateur ET le client LSP (la façade
+    // LspEditor câble le serveur à la vue à la place de l'hôte — le
+    // cas courant de l'architecture : une seule dépendance, tout vit)
     implementation(project(":editor"))
-    // le client de serveur de langage est OPTIONNEL : l'hôte qui le
-    // veut l'ajoute, celui qui n'en veut pas ne le voit jamais
-    implementation(project(":lsp"))
 }

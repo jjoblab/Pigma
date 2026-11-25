@@ -14,6 +14,7 @@ import android.widget.Toast;
 
 import jo.pigma.core.TextBuffer;
 import jo.pigma.editor.EditorView;
+import jo.pigma.editor.lsp.LspEditor;
 import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.editor.popups.DiagnosticCard;
 import jo.pigma.editor.popups.GotoBar;
@@ -121,6 +122,8 @@ public final class OpenHarness {
         popupsSecondGeneration();
         diagnosticsAndAmpoule();
         languageServer();
+        lspEditorFacade();
+        pinchZoom();
         copyMeasures();
 
         System.out.println();
@@ -1895,6 +1898,170 @@ public final class OpenHarness {
                         && textOf("LSP :") == null);
     }
 
+    /**
+     * La façade du serveur de langage : l'hôte ne câble plus rien —
+     * les RÉGLAGES de la façade y passent (les fonctions coupées une
+     * à une, la leçon de Sora editor). Le scénario du serveur
+     * précédent a déjà éprouvé le câblage complet par l'écran réel :
+     * diagnostics, survol, complétion, signature, débranchement —
+     * tout y vit dans la façade maintenant.
+     */
+    private static void lspEditorFacade() throws Exception {
+        begin("façade LspEditor : l'hôte ne câble plus rien");
+        LspEditor facade = activity.harnessLsp();
+        check("la façade vit attachée, débranchée",
+                facade != null && !facade.isConnected());
+        click("LSP");
+        check("les diagnostics du serveur arrivent", awaitText("LSP :", 8000L));
+        editor.caretTo(editor.getBuffer().length());
+        frame();
+        connection.commitText("(", 1);
+        View.harnessDrain(2000L);
+        check("l'avis du serveur monte à la carte (la façade a câblé)",
+                awaitText("LSP : 1", 8000L));
+        check("l'avis porte la ligne zéro (le compte du serveur)",
+                editor.lineHasDiagnostics(0));
+        // la fonction diagnostics coupée : la carte se tait (la ligne
+        // zéro ne porte que l'avis du serveur — le mal local vit
+        // ailleurs)
+        facade.setDiagnosticsEnabled(false);
+        check("la fonction coupée tait l'avis", !editor.lineHasDiagnostics(0));
+        facade.setDiagnosticsEnabled(true);
+        check("la fonction revenue parle l'avis", editor.lineHasDiagnostics(0));
+        // la complétion coupée : la carte se vide ; revenue : le cache
+        // y répond
+        editor.caretTo(0);
+        frame();
+        connection.commitText("gr", 1);
+        frame();
+        for (int wait = 0; wait < 100
+                && !editor.suggestions().contains("graine"); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            frame();
+        }
+        check("la complétion du serveur vit à la carte",
+                editor.suggestions().contains("graine"));
+        facade.setCompletionEnabled(false);
+        frame();
+        check("la fonction coupée vide la carte", editor.suggestions().isEmpty());
+        facade.setCompletionEnabled(true);
+        frame();
+        check("la fonction revenue remonte le cache",
+                editor.suggestions().contains("graine"));
+        // la carte de complétion se range (le curseur hors mot) : le
+        // survol s'y éprouve propre
+        editor.caretTo(editor.getBuffer().getLineEnd(0));
+        frame();
+        // le survol coupé : la réponse locale tient la place (le
+        // serveur n'est plus questionné — sa formulation y disparaît)
+        doubleTapOfWord("static");
+        frame();
+        tap(editor.selectionBar().docsCenterX(), editor.selectionBar().centerY());
+        View.harnessDrain(2000L);
+        check("le survol du serveur prime",
+                editor.infoPopupText() != null
+                        && editor.infoPopupText().contains("classe"));
+        facade.setHoverEnabled(false);
+        doubleTapOfWord("static");
+        frame();
+        tap(editor.selectionBar().docsCenterX(), editor.selectionBar().centerY());
+        View.harnessDrain(2000L);
+        check("la fonction coupée retombe sur l'index local",
+                editor.infoPopupText() != null
+                        && !editor.infoPopupText().contains("classe"));
+        facade.setHoverEnabled(true);
+        // la signature coupée : la carte se range ; revenue : le cache
+        // la remonte
+        editor.caretTo(editor.getBuffer().length());
+        frame();
+        connection.commitText("total(", 1);
+        frame();
+        for (int wait = 0; wait < 100 && !(editor.signatureCard().isShown()
+                && editor.signatureCard().label().contains(" : double")); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            frame();
+        }
+        check("la signature du serveur vit à la carte",
+                editor.signatureCard().isShown()
+                        && editor.signatureCard().label().contains(" : double"));
+        facade.setSignatureHelpEnabled(false);
+        frame();
+        check("la fonction coupée range la carte",
+                !editor.signatureCard().isShown());
+        facade.setSignatureHelpEnabled(true);
+        frame();
+        check("la fonction revenue remonte la carte",
+                editor.signatureCard().isShown());
+        // la coupure du tout : le débranchement coupe proprement (l'écran
+        // n'avait qu'un clic à faire)
+        click("LSP ✔");
+        check("le débranchement rend le bouton",
+                findButton(activity.harnessRootView(), "LSP") != null
+                        && textOf("LSP :") == null && !facade.isConnected());
+        // le document revient (l'éprouve suivante part propre)
+        openLanguage("Java", 10_000L);
+    }
+
+    /**
+     * Le pincement : le zoom au deux doigts — l'écart porte le
+     * facteur, la chasse suit le corps, les bornes serrent, l'appui
+     * final ne vaut pas un tap (le curseur ne saute pas au dernier
+     * doigt levé), le tap suivant vit sa vie.
+     */
+    private static void pinchZoom() {
+        begin("pincement : le zoom au deux doigts");
+        float initial = editor.getTextSizeSp();
+        float initialChar = editor.charWidth();
+        check("le corps initial se lit en sp", Math.abs(initial - 14.0f) < 0.05f);
+        int caret = editor.getCaretOffset();
+        // l'écart double : le corps double (la chasse suit)
+        pinch(VIEW_WIDTH / 2.0f, VIEW_HEIGHT / 2.0f, 120.0f, 240.0f);
+        frame();
+        check("l'écart agrandit le corps",
+                editor.getTextSizeSp() > initial + 6.0f);
+        check("la chasse suit le corps", editor.charWidth() > initialChar * 1.8f);
+        check("le curseur n'a pas sauté au doigt levé",
+                editor.getCaretOffset() == caret);
+        // le rapprochement : le corps revient
+        pinch(VIEW_WIDTH / 2.0f, VIEW_HEIGHT / 2.0f, 240.0f, 120.0f);
+        frame();
+        check("le rapprochement rend le corps",
+                Math.abs(editor.getTextSizeSp() - initial) < 1.0f);
+        // les bornes de l'hôte : le corps s'y cale
+        editor.setZoomBoundsSp(10.0f, 20.0f);
+        check("les bornes se posent",
+                Math.abs(editor.minZoomSp() - 10.0f) < 0.05f
+                        && Math.abs(editor.maxZoomSp() - 20.0f) < 0.05f);
+        editor.setTextSizeSp(50.0f);
+        check("le corps hors borne haute se cale",
+                Math.abs(editor.getTextSizeSp() - 20.0f) < 0.05f);
+        editor.setTextSizeSp(2.0f);
+        check("le corps hors borne basse se cale",
+                Math.abs(editor.getTextSizeSp() - 10.0f) < 0.05f);
+        editor.setTextSizeSp(16.0f);
+        check("l'hôte pose son corps",
+                Math.abs(editor.getTextSizeSp() - 16.0f) < 0.05f);
+        // le pincement au-delà de la borne : il serre à la borne
+        pinch(VIEW_WIDTH / 2.0f, VIEW_HEIGHT / 2.0f, 120.0f, 30.0f);
+        frame();
+        check("le pincement serre à la borne basse",
+                Math.abs(editor.getTextSizeSp() - 10.0f) < 0.05f);
+        // le tap suivant vit sa vie : le curseur se place au doigt
+        float[] spot = spotOfWord("total");
+        tap(spot[0], spot[1]);
+        frame();
+        check("le tap suivant replace le curseur",
+                editor.getCaretOffset() != caret);
+        // le corps initial revient (l'éprouve suivante part propre)
+        editor.setZoomBoundsSp(8.0f, 40.0f);
+        editor.setTextSizeSp(initial);
+        frame();
+        check("le corps initial revient",
+                Math.abs(editor.getTextSizeSp() - initial) < 0.05f);
+    }
+
     /** La copie des mesures : le presse-papiers porte le tableau. */
     private static void copyMeasures() {
         begin("copie des mesures : le tableau complet au presse-papiers");
@@ -1990,6 +2157,44 @@ public final class OpenHarness {
     private static void doubleTap(float x, float y) {
         tap(x, y);
         tap(x, y);
+    }
+
+    /**
+     * Un pincement à deux doigts : l'écart passe de spanFrom à
+     * spanTo autour d'un foyer (les doigts s'écartent ou se
+     * rapprochent, le second se pose après le premier, l'un se lève
+     * avant l'autre — l'indice du doigt qui s'en va vit dans les
+     * bits hauts de l'action, comme sur l'appareil).
+     *
+     * @param cx        l'abscisse du foyer
+     * @param cy        l'ordonnée du foyer
+     * @param spanFrom  l'écart initial des doigts en pixels
+     * @param spanTo    l'écart final en pixels
+     */
+    private static void pinch(float cx, float cy, float spanFrom, float spanTo) {
+        float halfFrom = spanFrom / 2.0f;
+        float halfTo = spanTo / 2.0f;
+        // le premier doigt se pose, le second le suit
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_DOWN, cx, cy - halfFrom));
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_POINTER_DOWN,
+                new float[] {cx, cx}, new float[] {cy - halfFrom, cy + halfFrom}));
+        // l'écart s'étire par pas (le facteur se lit à chaque trame)
+        int steps = 8;
+        for (int at = 1; at <= steps; at++) {
+            float half = halfFrom + (halfTo - halfFrom) * at / steps;
+            editor.onTouchEvent(MotionEvent.obtain(
+                    MotionEvent.ACTION_MOVE,
+                    new float[] {cx, cx}, new float[] {cy - half, cy + half}));
+        }
+        // un doigt se lève, l'autre suit : le geste se referme
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_POINTER_UP,
+                new float[] {cx, cx}, new float[] {cy - halfTo, cy + halfTo}));
+        editor.onTouchEvent(MotionEvent.obtain(
+                MotionEvent.ACTION_UP, cx, cy + halfTo));
+        View.harnessDrain(2000L);
     }
 
     /**
@@ -2108,7 +2313,9 @@ public final class OpenHarness {
 
     /**
      * Attend qu'un extrait apparaisse dans une vue de texte (les
-     * diagnostics du serveur arrivent d'un autre fil).
+     * diagnostics du serveur arrivent d'un autre fil — la façade les
+     * y marshalle par post, la pompe des différés doit courir comme
+     * un fil d'interface vivant).
      *
      * @param excerpt l'extrait attendu
      * @param timeoutMillis la borne d'attente
@@ -2122,6 +2329,10 @@ public final class OpenHarness {
             if (textOf(excerpt) != null) {
                 return true;
             }
+            // la pompe des différés : l'horloge virtuelle avance à
+            // l'attente, les suites dues s'y exécutent (le panneau y
+            // rafraîchit, la notification du serveur y arrive)
+            View.harnessDrain(20L);
             Thread.sleep(20L);
         }
         return textOf(excerpt) != null;

@@ -118,10 +118,34 @@ public final class EditorView extends View {
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint caretPaint = new Paint();
     private final Paint composePaint = new Paint();
-    private final Paint.FontMetrics fontMetrics;
-    private final float charWidth;
-    private final float lineHeight;
-    private final float caretWidth;
+    private Paint.FontMetrics fontMetrics;
+    private float charWidth;
+    private float lineHeight;
+    private float caretWidth;
+
+    /** Le corps du texte en pixels (le pincement y accède). */
+    private float textPx;
+
+    /** La borne basse du pincement en sp. */
+    private float minTextSp = 8.0f;
+
+    /** La borne haute du pincement en sp. */
+    private float maxTextSp = 40.0f;
+
+    /** Le pincement vit (deux doigts posés). */
+    private boolean pinching;
+
+    /** Un pincement a eu lieu dans ce geste (l'appui final ne vaut pas un tap). */
+    private boolean pinchedThisGesture;
+
+    /** L'écart des deux doigts au départ du pincement. */
+    private float pinchStartSpan;
+
+    /** Le corps du texte au départ du pincement. */
+    private float pinchStartPx;
+
+    /** L'ordonnée du foyer du pincement (le milieu des deux doigts au départ). */
+    private float pinchFocusY;
 
     private SyntaxDocument syntax;
     private LanguageSyntax language;
@@ -467,11 +491,7 @@ public final class EditorView extends View {
                 new JavaDeclarations());
         backgroundFill = BackgroundFill.start(syntax);
         textPaint.setTypeface(Typeface.MONOSPACE);
-        textPaint.setTextSize(14.0f * getResources().getDisplayMetrics().scaledDensity);
-        fontMetrics = textPaint.getFontMetrics();
-        charWidth = textPaint.measureText("M");
-        lineHeight = (float) Math.ceil(fontMetrics.bottom - fontMetrics.top) + dp(2);
-        caretWidth = dp(2);
+        applyTextSize(14.0f * getResources().getDisplayMetrics().scaledDensity);
         caretPaint.setColor(CARET_COLOR);
         composePaint.setColor(COMPOSE_COLOR);
         bracketPaint.setStyle(Paint.Style.STROKE);
@@ -528,6 +548,171 @@ public final class EditorView extends View {
      */
     public TextBuffer getBuffer() {
         return buffer;
+    }
+
+    /**
+     * Le corps du texte en unités sp (le pincement le fait vivre —
+     * l'hôte le lit pour sa ligne d'état).
+     *
+     * @return le corps courant en sp
+     */
+    public float getTextSizeSp() {
+        return textPx / getResources().getDisplayMetrics().scaledDensity;
+    }
+
+    /**
+     * Pose le corps du texte en unités sp : la métrique se recalcule
+     * (la hauteur de ligne, la chasse), les plans de rendu se rangent
+     * (les abscisses y sont cuites), le défilement se borne — la ligne
+     * au milieu de l'écran y demeure (le zoom ne saute pas la lecture).
+     *
+     * @param sizeSp le corps voulu en sp (les bornes le serront)
+     */
+    public void setTextSizeSp(float sizeSp) {
+        float scaledDensity = getResources().getDisplayMetrics().scaledDensity;
+        float centerLine = (getHeight() / 2.0f - getPaddingTop() + scrollY) / lineHeight;
+        applyTextSize(sizeSp * scaledDensity);
+        scrollY = clampToRange(centerLine * lineHeight - (getHeight() / 2.0f - getPaddingTop()),
+                0.0f, maxScroll());
+        invalidate();
+    }
+
+    /**
+     * Les bornes du pincement en sp (l'hôte resserre ou les lâche —
+     * le corps courant s'y recale s'il en sort).
+     *
+     * @param minSp la borne basse en sp
+     * @param maxSp la borne haute en sp
+     */
+    public void setZoomBoundsSp(float minSp, float maxSp) {
+        float lo = Math.min(minSp, maxSp);
+        float hi = Math.max(minSp, maxSp);
+        minTextSp = Math.max(4.0f, lo);
+        maxTextSp = Math.max(minTextSp, hi);
+        applyTextSize(textPx);
+    }
+
+    /**
+     * La borne basse du pincement en sp.
+     *
+     * @return la borne basse
+     */
+    public float minZoomSp() {
+        return minTextSp;
+    }
+
+    /**
+     * La borne haute du pincement en sp.
+     *
+     * @return la borne haute
+     */
+    public float maxZoomSp() {
+        return maxTextSp;
+    }
+
+    /**
+     * Le corps se recalcule : la peinture le porte, les métriques se
+     * relisent (la chasse du monospace, la hauteur de ligne, le filet
+     * du curseur), les plans de rendu se rangent (les abscisses y sont
+     * cuites à la chasse d'avant), le défilement se borne. Le corps
+     * vit borné — le pincement n'en sort jamais, l'hôte non plus.
+     *
+     * @param freshPx le corps voulu en pixels
+     */
+    private void applyTextSize(float freshPx) {
+        float scaledDensity = getResources().getDisplayMetrics().scaledDensity;
+        float clamped = clampToRange(freshPx, minTextSp * scaledDensity, maxTextSp * scaledDensity);
+        if (clamped == textPx) {
+            return;
+        }
+        textPx = clamped;
+        textPaint.setTextSize(clamped);
+        fontMetrics = textPaint.getFontMetrics();
+        charWidth = textPaint.measureText("M");
+        lineHeight = (float) Math.ceil(fontMetrics.bottom - fontMetrics.top) + dp(2);
+        caretWidth = dp(2);
+        renderCache.invalidate();
+        scrollY = clampToRange(scrollY, 0.0f, maxScroll());
+        invalidate();
+    }
+
+    /**
+     * Le pincement s'engage : tout geste en cours se range (la
+     * poignée se lâche, la sélection reste posée, le traîné se
+     * range), les doigts deviennent le zoom — l'écart des deux doigts
+     * portera le facteur, leur milieu le foyer.
+     *
+     * @param event l'événement du doigt qui s'ajoute
+     */
+    private void engagePinch(MotionEvent event) {
+        requestFocus();
+        pinching = true;
+        pinchedThisGesture = true;
+        dragging = false;
+        selectionDragBound = 0;
+        dragFixedBound = -1;
+        textDragging = false;
+        textDragArmed = false;
+        dropOffset = -1;
+        dismissInfoPopup();
+        pinchStartSpan = pinchSpan(event);
+        pinchStartPx = textPx;
+        pinchFocusY = (event.getY(0) + event.getY(1)) / 2.0f;
+    }
+
+    /**
+     * Le pincement vit : l'écart des doigts porte le facteur (le
+     * corps du départ l'attend), la ligne sous le foyer du départ
+     * demeure sous le foyer courant — le texte ne fuit pas sous les
+     * doigts, il y reste.
+     *
+     * @param event l'événement des doigts qui bougent
+     */
+    private void pinchMove(MotionEvent event) {
+        float span = pinchSpan(event);
+        if (span <= 0.0f || pinchStartSpan <= 0.0f) {
+            return;
+        }
+        float focusY = (event.getY(0) + event.getY(1)) / 2.0f;
+        float lineAtFocus = (pinchFocusY - getPaddingTop() + scrollY) / lineHeight;
+        applyTextSize(pinchStartPx * (span / pinchStartSpan));
+        scrollY = clampToRange(lineAtFocus * lineHeight - (focusY - getPaddingTop()),
+                0.0f, maxScroll());
+        invalidate();
+    }
+
+    /**
+     * Le pincement se dénoue : un doigt s'en va, l'autre peut
+     * glisser — son appui repart de sa position vivante (le
+     * défilement n'y saute pas).
+     *
+     * @param event l'événement du doigt qui s'en va
+     */
+    private void endPinch(MotionEvent event) {
+        pinching = false;
+        int staying = 1 - event.getActionIndex();
+        if (staying >= 0 && staying < event.getPointerCount()) {
+            touchStartX = event.getX(staying);
+            touchStartY = event.getY(staying);
+        }
+        dragging = false;
+        lastTapNanos = 0L;
+        invalidate();
+    }
+
+    /**
+     * L'écart des deux premiers doigts de l'événement.
+     *
+     * @param event l'événement à deux doigts
+     * @return la distance en pixels (0 : un seul doigt)
+     */
+    private static float pinchSpan(MotionEvent event) {
+        if (event.getPointerCount() < 2) {
+            return 0.0f;
+        }
+        float dx = event.getX(0) - event.getX(1);
+        float dy = event.getY(0) - event.getY(1);
+        return (float) Math.sqrt(dx * dx + dy * dy);
     }
 
     /**
@@ -1953,6 +2138,8 @@ public final class EditorView extends View {
                 touchStartX = event.getX();
                 touchStartY = event.getY();
                 touchDownNanos = System.nanoTime();
+                pinching = false;
+                pinchedThisGesture = false;
                 // un nouvel appui masque la popup d'info (l'appui long
                 // pourra en rouvrir une sur le mot touché) et range les
                 // cartes de diagnostic et d'ampoule
@@ -1977,7 +2164,28 @@ public final class EditorView extends View {
                 textDragging = false;
                 dropOffset = -1;
                 break;
+            case MotionEvent.ACTION_POINTER_DOWN:
+                // le second doigt se pose : le pincement s'engage (les
+                // gestes en cours se rangent — la poignée se lâche, la
+                // sélection reste posée)
+                if (event.getPointerCount() >= 2) {
+                    engagePinch(event);
+                }
+                break;
+            case MotionEvent.ACTION_POINTER_UP:
+                // un doigt du pincement s'en va : le zoom se dénoue, le
+                // doigt qui demeure peut glisser sans sauter
+                if (pinching) {
+                    endPinch(event);
+                }
+                break;
             case MotionEvent.ACTION_MOVE:
+                if (pinching) {
+                    if (event.getPointerCount() >= 2) {
+                        pinchMove(event);
+                    }
+                    break;
+                }
                 if (selectionDragBound != 0) {
                     dragSelectionBound(event.getX(), event.getY());
                     break;
@@ -2036,6 +2244,16 @@ public final class EditorView extends View {
                 }
                 break;
             case MotionEvent.ACTION_UP:
+                if (pinching || pinchedThisGesture) {
+                    // le pincement se referme : l'appui final ne vaut
+                    // pas un tap (le curseur ne saute pas au doigt qui
+                    // reste le dernier levé)
+                    pinching = false;
+                    pinchedThisGesture = false;
+                    lastTapNanos = 0L;
+                    invalidate();
+                    break;
+                }
                 if (selectionDragBound != 0) {
                     // la poignée se lâche : la sélection reste posée,
                     // l'appui ne compte pas pour un tap (le suivant ne
@@ -2110,7 +2328,10 @@ public final class EditorView extends View {
                 // une vue parente) : les traînements se rangent comme
                 // au lâcher — sinon la loupe resterait posée à jamais
                 // et la barre de sélection ne naîtrait jamais (l'état
-                // de poignée tenue tuerait les deux)
+                // de poignée tenue tuerait les deux) ; le pincement
+                // s'y range pareillement
+                pinching = false;
+                pinchedThisGesture = false;
                 if (selectionDragBound != 0 || textDragging || dragging) {
                     removeCallbacks(edgeScroll);
                     edgeScrollScheduled = false;

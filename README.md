@@ -6,6 +6,22 @@ La documentation de conception vit dans `docs/` : architecture cible,
 étude du moteur de coloration, registre de portage, décisions et
 démonstrations par étape de travail (`docs/chantiers/`).
 
+## Les modules
+
+Chaque module porte son `README.md` :
+
+| Module | Rôle | README |
+| --- | --- | --- |
+| `:core` | le modèle de texte (tampon, transactions, annulation) | `core/README.md` |
+| `:syntax` | le moteur de coloration (L1 jetons, L2 appariement) | `syntax/README.md` |
+| `:analysis` | l'annotateur sémantique (L3 déclarations, diagnostics) | `analysis/README.md` |
+| `:editor` | la vue d'édition, les popups, la façade LspEditor, le pincement | `editor/README.md` |
+| `:lsp` | le client de serveur de langage (lsp4j) | `lsp/README.md` |
+| `:sample` | l'application de démonstration (la preuve d'intégration) | `sample/README.md` |
+
+L'hôte n'a que `:editor` à déclarer — il expose le reste en `api`
+(l'intégration minimale se lit dans `editor/README.md`).
+
 ## Compiler
 
 Prérequis : JDK 17 ou plus récent, SDK Android (fichier `local.properties`
