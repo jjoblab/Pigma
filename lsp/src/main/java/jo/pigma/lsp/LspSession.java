@@ -870,6 +870,22 @@ public final class LspSession {
     }
 
     /**
+     * Les canaux de la liaison meurent sans la poignée de main
+     * d'arrêt (le harnais y reproduit le serveur mort de
+     * l'appareil : toute requête suivante échoue « flux fermé » —
+     * la liaison reste posée, l'écran doit survivre).
+     */
+    public void harnessCloseStreams() {
+        for (AutoCloseable closeable : toClose) {
+            try {
+                closeable.close();
+            } catch (Exception closeFailed) {
+                // chaque canal se ferme pour soi
+            }
+        }
+    }
+
+    /**
      * Le texte d'un survol lsp4j : le contenu riche s'il est là
      * (MarkupContent ou chaîne), sinon la première entrée de la liste
      * historique, null si le serveur ne dit rien.

@@ -286,9 +286,11 @@ public final class MainActivity extends Activity {
     /**
      * Les plantages non consommés s'affichent : une boîte de
      * dialogue par plantage du journal (la pile complète, la
-     * section où il est arrivé). L'utilisateur copie le texte (le
-     * diagnostic en a besoin) ou l'efface ; les plantages affichés
-     * sont consommés — la prochaine ouverture ne les remontre pas.
+     * section où il est arrivé). L'utilisateur copie le texte au
+     * bouton « Copier les logs » (le presse-papiers le porte, le
+     * diagnostic part avec lui) ou l'efface ; les plantages
+     * affichés sont consommés — la prochaine ouverture ne les
+     * remontre pas.
      */
     private void showPendingCrashes() {
         java.util.List<String> crashes =
@@ -312,12 +314,38 @@ public final class MainActivity extends Activity {
             crashView.setText(body);
             crashView.setPadding(dp(12), dp(8), dp(12), dp(8));
             dialog.setView(crashView);
-            dialog.setPositiveButton("Effacer", (which, whichButton) ->
-                    CrashJournal.clear(getFilesDir()));
+            // COPIER LES LOGS : le plantage au complet part au
+            // presse-papiers d'un bouton — l'utilisateur colle la
+            // pile à l'analyse sans sélectionner à la main
+            dialog.setPositiveButton("Copier les logs", (which, whichButton) -> {
+                copyText(body);
+                CrashJournal.clear(getFilesDir());
+            });
             dialog.setNeutralButton("Garder", (which, whichButton) -> {
             });
             dialog.show();
         }
+    }
+
+    /**
+     * La copie au presse-papiers : le texte y part (le bouton
+     * « Copier les logs » des plantages s'en sert), un toast le
+     * confirme à l'écran.
+     *
+     * @param text le texte à copier, jamais null
+     */
+    private void copyText(String text) {
+        android.content.ClipData clip =
+                android.content.ClipData.newPlainText("pigma-crash", text);
+        android.content.ClipboardManager clipboard =
+                (android.content.ClipboardManager)
+                        getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(clip);
+        }
+        Toast.makeText(this, "logs du plantage copiés (" + text.length()
+                + " caractères) — collez-les à l'analyse",
+                Toast.LENGTH_LONG).show();
     }
 
     /**
@@ -610,12 +638,12 @@ public final class MainActivity extends Activity {
             crashView.setText(body.toString().trim());
             crashView.setPadding(dp(12), dp(8), dp(12), dp(8));
             dialog.setView(crashView);
-            dialog.setPositiveButton("Effacer", (which, whichButton) -> {
+            dialog.setPositiveButton("Copier les logs", (which, whichButton) ->
+                    copyText(body.toString().trim()));
+            dialog.setNeutralButton("Effacer", (which, whichButton) -> {
                 CrashJournal.clear(getFilesDir());
                 Toast.makeText(this, "journal effacé", Toast.LENGTH_SHORT)
                         .show();
-            });
-            dialog.setNeutralButton("Garder", (which, whichButton) -> {
             });
             dialog.show();
         });
@@ -853,6 +881,16 @@ public final class MainActivity extends Activity {
      */
     LspEditor harnessLsp() {
         return lsp;
+    }
+
+    /**
+     * Le serveur de la façade meurt : la liaison se coupe sous lui
+     * sans débrancher la façade (le harnais y reproduit le crash de
+     * l'appareil — la future de correctifs échoue « flux fermé »,
+     * la réponse arrive null).
+     */
+    void harnessKillServer() {
+        lsp.harnessKillSession();
     }
 
     /**

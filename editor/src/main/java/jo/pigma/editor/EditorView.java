@@ -1765,9 +1765,14 @@ public final class EditorView extends View {
         try (TextTransaction transaction = undoStack.newTransaction()) {
             for (int edit = edits.size() - 1; edit >= 0; edit--) {
                 jo.pigma.lsp.LspTextEdit change = edits.get(edit);
-                int start = buffer.offsetOfPosition(
+                // les positions du serveur datent du texte qu'il a
+                // vu — l'édition depuis peut raccourcir la ligne :
+                // la conversion se borne au texte vivant, un edit
+                // hors texte s'ignore (jamais une exception de
+                // correctif)
+                int start = offsetOfPositionClamped(
                         change.range().start().line(), change.range().start().character());
-                int end = buffer.offsetOfPosition(
+                int end = offsetOfPositionClamped(
                         change.range().end().line(), change.range().end().character());
                 if (start >= 0 && end >= start && end <= buffer.length()) {
                     transaction.replace(start, end, change.newText());
@@ -2932,6 +2937,29 @@ public final class EditorView extends View {
      * la découpe ligne par ligne (une plage peut franchir une borne
      * de ligne).
      */
+    /**
+     * La position (ligne, colonne) d'un protocole, bornée au texte
+     * vivant : la ligne hors tampon rend -1 (la plage s'ignore), la
+     * colonne hors ligne se borne à la fin de la ligne — les
+     * coordonnées du serveur datent du texte qu'il a vu, jamais une
+     * exception de dessin ne doit partir de là.
+     *
+     * @param line   la ligne
+     * @param column la colonne (unités UTF-16)
+     * @return l'offset borné, -1 si la ligne n'existe pas
+     */
+    private int offsetOfPositionClamped(int line, int column) {
+        if (line < 0 || line >= buffer.getLineCount()) {
+            return -1;
+        }
+        int lineEnd = buffer.getLineEnd(line);
+        int lineStart = buffer.getLineStart(line);
+        if (column < 0) {
+            return lineStart;
+        }
+        return Math.min(lineStart + column, lineEnd);
+    }
+
     private void drawServerHighlights(Canvas canvas, int first, int last, int count) {
         if (serverHighlights.isEmpty()) {
             return;
@@ -2940,11 +2968,17 @@ public final class EditorView extends View {
         int windowEnd = last + 1 < count
                 ? buffer.getLineStart(last + 1) : buffer.length();
         for (LspRange range : serverHighlights) {
-            int start = buffer.offsetOfPosition(
+            // les bornes du serveur datent du texte qu'il a vu — les
+            // éditions depuis peuvent raccourcir la ligne : la colonne
+            // y dépasse alors la ligne (l'appareil l'a vu en plantage
+            // du dessin). La position se BORNE au texte vivant,
+            // jamais ne lève : une plage hors texte s'ignore
+            int start = offsetOfPositionClamped(
                     range.start().line(), range.start().character());
-            int end = buffer.offsetOfPosition(
+            int end = offsetOfPositionClamped(
                     range.end().line(), range.end().character());
-            if (start >= end || start >= windowEnd || end <= windowStart) {
+            if (start < 0 || end < 0 || start >= end
+                    || start >= windowEnd || end <= windowStart) {
                 continue;
             }
             // chaque tranche de ligne de la plage se teinte : la

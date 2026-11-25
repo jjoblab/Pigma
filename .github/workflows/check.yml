@@ -34,8 +34,12 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: SDK Android (licence acceptée)
-        uses: android-actions/setup-android@v3
+      - name: SDK Android (plateforme 35 par sdkmanager du runner)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+              "platforms;android-35" > /dev/null || \
+          yes | "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager" \
+              "platforms;android-35" > /dev/null
 
       - name: JFlex du contrôle des lexeurs
         run: |
@@ -51,4 +55,6 @@ jobs:
           PIGMA_FORBIDDEN_REFS_REQUIRED: "1"
           PIGMA_LEXERS_FRESH_REQUIRED: "1"
           TOOLS: ${{ env.HOME }}/tools
-        run: ./gradlew check --no-daemon
+        run: |
+          ./gradlew :lsp:compileJava --no-daemon
+          ./gradlew check --no-daemon

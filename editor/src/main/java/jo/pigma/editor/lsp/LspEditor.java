@@ -388,6 +388,20 @@ public final class LspEditor {
     }
 
     /**
+     * La liaison meurt sans débrancher la façade (le harnais y
+     * reproduit le crash de l'appareil : la future d'une requête
+     * échoue « flux fermé », la réponse arrive null — la façade
+     * doit survivre).
+     */
+    public void harnessKillSession() {
+        LspSession alive = session;
+        if (alive == null) {
+            return;
+        }
+        alive.harnessCloseStreams();
+    }
+
+    /**
      * Le survol demande-t-il au serveur ?
      *
      * @param enabled vrai pour demander (vaut par défaut)
@@ -721,6 +735,14 @@ public final class LspEditor {
                 .whenComplete((answer, failure) -> view.post(() -> {
                     if (asked != codeActionsLine) {
                         return; // la ligne a bougé : la réponse ne vaut plus
+                    }
+                    // le serveur mort répond null (la future échoue :
+                    // « Stream closed », l'appareil l'a vu en plantage
+                    // de l'écran) : aucun correctif n'arrive — la
+                    // réponse nulle ne doit pas lever au fil principal
+                    if (failure != null || answer == null) {
+                        codeActionsCache.clear();
+                        return;
                     }
                     codeActionsCache.clear();
                     for (LspCodeAction action : answer) {

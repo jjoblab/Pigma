@@ -135,6 +135,7 @@ public final class OpenHarness {
         lspDocumentCoverage();
         pinchZoom();
         screenRestyle();
+        serverPositionsHostile();
         crashJournalCapture();
         stateSaveRestore();
         copyMeasures();
@@ -2671,6 +2672,81 @@ public final class OpenHarness {
      * l'appareil (le défaut du fil, posé à l'ouverture de l'écran) :
      * le plantage lancé ici déclenche l'écriture réelle.
      */
+    /**
+     * Les positions hostiles du serveur : le correctif du crash de
+     * l'appareil (le journal de l'utilisateur porte les deux —
+     * NullPointerException d'askCodeActions au serveur mort,
+     * IndexOutOfBoundsException de drawServerHighlights à la
+     * colonne hors ligne). Le serveur qui meurt avant de répondre
+     (la future échoue, la réponse arrive null) ne doit plus tuer
+     * l'écran ; les surlignages du serveur aux coordonnées périmées
+     * (colonne au-delà de la ligne, ligne au-delà du texte) se
+     * bornent au dessin sans exception.
+     */
+    private static void serverPositionsHostile() throws InterruptedException {
+        begin("positions hostiles : serveur mort, surlignage hors texte");
+        LspEditor facade = activity.harnessLsp();
+        // la liaison au serveur de démo : le scénario des correctifs
+        // y passe (la carte d'actions y demande askCodeActions)
+        click("LSP");
+        check("les diagnostics du serveur arrivent", awaitText("LSP :", 8000L));
+        // LE SERVEUR MEURT : la liaison se coupe sous la façade (la
+        // future de correctifs échouera « flux fermé », la réponse
+        // arrivera null — le plantage de l'appareil reproduit)
+        activity.harnessKillServer();
+        // la carte d'actions s'ouvre : askCodeActions part, sa
+        // future échoue — la réponse nulle ne doit PLUS lever au fil
+        // principal (le correctif du crash de l'appareil)
+        int maxLine = editor.getSyntaxDocument().lineCount() - 1;
+        editor.openQuickActionsAtLine(maxLine);
+        View.harnessDrain(2_000L);
+        frame();
+        check("la carte s'ouvre au serveur mort sans tuer l'écran",
+                editor.getSyntaxDocument().lineCount() > 0
+                        && editor.getBuffer().length() > 0);
+        // les surlignages hostiles : une colonne au-delà de la ligne
+        // (la ligne raccourcie après l'avis du serveur), une ligne
+        // au-delà du texte, une colonne négative — le dessin les
+        // borne, jamais une exception de trame
+        editor.setServerHighlights(java.util.List.of(
+                new jo.pigma.lsp.LspRange(
+                        new jo.pigma.lsp.LspPosition(1, 999_999),
+                        new jo.pigma.lsp.LspPosition(1, Integer.MAX_VALUE)),
+                new jo.pigma.lsp.LspRange(
+                        new jo.pigma.lsp.LspPosition(999_999, 0),
+                        new jo.pigma.lsp.LspPosition(999_999, 4)),
+                new jo.pigma.lsp.LspRange(
+                        new jo.pigma.lsp.LspPosition(2, -5),
+                        new jo.pigma.lsp.LspPosition(2, 3)),
+                new jo.pigma.lsp.LspRange(
+                        new jo.pigma.lsp.LspPosition(2, 0),
+                        new jo.pigma.lsp.LspPosition(4, 999_999))));
+        check("les surlignages hostiles se posent sans lever",
+                !editor.serverHighlights().isEmpty());
+        frame();
+        check("le dessin aux positions hostiles ne lève pas",
+                editor.getSyntaxDocument().lineCount() > 0);
+        // un correctif aux positions périmées s'applique borné : la
+        // colonne 999 999 de la ligne 2 se borne à sa fin (l'edit
+        // devient un remplacement de fin de ligne)
+        java.util.List<jo.pigma.lsp.LspTextEdit> stale = java.util.List.of(
+                new jo.pigma.lsp.LspTextEdit(
+                        new jo.pigma.lsp.LspRange(
+                                new jo.pigma.lsp.LspPosition(2, 999_999),
+                                new jo.pigma.lsp.LspPosition(2, 999_999)),
+                        "remplacé"));
+        boolean applied = editor.applyTextEdits(stale);
+        View.harnessDrain(500L);
+        frame();
+        check("l'edit aux bornes hostiles s'applique borné (ou s'ignore) sans lever",
+                !applied || editor.getBuffer().toString().contains("remplacé"));
+        // le nettoyage : la liaison se débranche (le scénario
+        // suivant repart d'un écran propre)
+        click("LSP ✔");
+        editor.setServerHighlights(java.util.List.of());
+        frame();
+    }
+
     private static void crashJournalCapture() {
         begin("journal des crashs : capture, relecture, effacement");
         java.io.File storage = activity.harnessFilesDir();

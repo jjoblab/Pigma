@@ -16,6 +16,55 @@ aller-à, signature, sélection, copie du texte). Le harnais
 39/39 verts, l'APK reconstruit (6,99 Mo, signé debug) et livré dans
 download/.**
 
+## Session 38 — la CI rouge, la copie des logs, les deux crashs du journal de l'appareil (2026-11-25)
+
+0. **La CI réparée** : le premier run GitHub Actions échouait à
+   l'action SDK Android (son sdkmanager --install "tools" casse :
+   le paquet n'existe plus au dépôt). Le workflow s'appuie
+   maintenant sur le SDK préinstallé du runner (la plateforme 35
+   s'y installe par sdkmanager), le cache Gradle se peuple avant
+   le harnais (:lsp:compileJava d'abord — les jars lsp4j doivent
+   exister au premier run d'une machine neuve).
+
+0. **La copie des logs** (demande du propriétaire) : le dialogue
+   des plantages porte un bouton « Copier les logs » — la pile au
+   complet part au presse-papiers d'un clic (toast de
+   confirmation, la taille y dit combien part) et le journal
+   s'efface (le plantage copié est consommé). Le bouton du menu
+   « Journal des crashs » y gagne la même copie (l'effacement
+   reste au bouton sien).
+
+0. **Les deux crashs du journal de l'utilisateur** (log.txt, la
+   demande dit sa valeur — deux piles réelles de l'appareil) :
+
+   - NullPointerException à askCodeActions (LspEditor) : le
+     serveur mort rend la future échouée, la réponse null, la
+     boucle des correctifs levait sur le fil principal. La garde
+     failure/answer-null y court ; le scénario 39 du harnais
+     reproduit le serveur mort (canaux fermés sous la façade,
+     sans débranchement) et prouve que l'écran survit.
+
+   - IndexOutOfBoundsException à drawServerHighlights
+     (EditorView/TextBuffer) : les positions du serveur datent
+     du texte qu'il a vu — raccourcies depuis, la colonne
+     dépassait la ligne. La conversion se borne au texte vivant
+     (offsetOfPositionClamped : ligne hors tampon ignorée,
+     colonne bornée à la fin de ligne) ; applyTextEdits suit le
+     même bornage (un correctif aux bornes périmées s'applique
+     borné ou s'ignore). Le scénario y pose les positions
+     hostiles (colonnes 999 999, lignes 999 999, colonne
+     négative) : le dessin ne lève plus.
+
+0. **P0-1 du rapport, vérifié déjà au dépôt** : le verrou
+   editLock du tampon (replace + snapshot d'un seul tenant) et
+   la révision volatile sont en place, le test de stress
+   ConcurrentBufferTest aussi — la course de données du rapport
+   est déjà couverte ; rien à reprendre.
+
+Harnais 42/42 scénarios verts (le scénario 39 « positions
+hostiles » neuf), tests des cinq modules verts, politique de
+langue OK (149 fichiers), APK rebâti (8,2 Mo).
+
 ## Session 37 — le journal des crashs, les chantiers 5 à 8 du rapport (2026-11-25)
 
 0. **Le journal des crashs** (demande du propriétaire) : un
