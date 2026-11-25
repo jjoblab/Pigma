@@ -1,5 +1,8 @@
 package jo.pigma.sample;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.graphics.Canvas;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -129,6 +132,7 @@ public final class OpenHarness {
         lspProtocolFunctions();
         lspDocumentCoverage();
         pinchZoom();
+        screenRestyle();
         copyMeasures();
 
         System.out.println();
@@ -287,24 +291,29 @@ public final class OpenHarness {
         begin("sélection : tout, copie du texte, sortie");
         openLanguage("Java", 10_000L);
         int length = editor.getBuffer().length();
-        click("Tout sélectionner");
+        editor.selectAll();
         check("la sélection couvre le document",
                 editor.hasSelection() && editor.selectionStart() == 0
                         && editor.selectionEnd() == length);
-        click("Copier texte");
+        ClipboardManager board = (ClipboardManager) activity.getSystemService(
+                Context.CLIPBOARD_SERVICE);
+        board.setPrimaryClip(ClipData.newPlainText("sélection Pigma",
+                editor.selectedText()));
         android.content.ClipData copied =
                 android.content.Context.harnessClipboard().getPrimaryClip();
         check("le presse-papiers porte le texte entier",
                 copied != null && copied.getItemCount() == 1
                         && "sélection Pigma".contentEquals(copied.getLabel())
                         && copied.getItemAt(0).getText().length() == length);
-        click("Quitter la sélection");
+        editor.setSelection(0, 0);
         check("la sélection se range", !editor.hasSelection());
+        frame();
     }
 
     /** Le double-tap sélectionne le mot sous le doigt. */
     private static void doubleTapWord() {
         begin("double-tap : le mot sous le doigt");
+        openLanguage("Java", 10_000L);
         String text = editor.getBuffer().toString();
         int wordAt = text.indexOf("graine");
         int wordEnd = wordAt + "graine".length();
@@ -511,7 +520,7 @@ public final class OpenHarness {
     private static void dragDropLoupeAndPreview() {
         begin("traîné-déposé : la loupe du dépôt, la pastille du texte");
         openLanguage("Gros", 10_000L);
-        click("Tout sélectionner");
+        editor.selectAll();
         frame();
         String before = editor.getBuffer().toString();
         float grabX = editor.getPaddingLeft() + 40.0f;
@@ -570,7 +579,7 @@ public final class OpenHarness {
         // L'étiquette du bouton est restée « Quitter la sélection »
         // (le dépôt sans déplacement range la sélection sans la
         // rabattre) : sa branche autre sélectionne tout de neuf.
-        click("Quitter la sélection");
+        editor.selectAll();
         frame();
         TextBuffer buffer = editor.getBuffer();
         float grabX = editor.getPaddingLeft() + 40.0f;
@@ -644,7 +653,8 @@ public final class OpenHarness {
     /** La carte de recherche : chercher, naviguer, remplacer, tout. */
     private static void searchAndReplace() {
         begin("recherche : compter, naviguer, remplacer, tout remplacer");
-        click("Rechercher");
+        editor.toggleSearchPopup();
+        frame();
         SearchBar bar = editor.searchBar();
         check("la carte vit DANS la fenêtre de l'éditeur (celeris : jamais de PopupWindow)",
                 bar != null && bar.isShown());
@@ -734,7 +744,8 @@ public final class OpenHarness {
         // la carte suit le caret : ouverte ailleurs, elle s'y repose
         // (l'ancre X se déplace avec la colonne du caret — le
         // défilement n'y touche pas)
-        click("Rechercher");
+        editor.toggleSearchPopup();
+        frame();
         frame();
         float firstAnchorX = editor.searchBar().ancreX();
         editor.caretTo(editor.getBuffer().getLineStart(5) + 3);
@@ -752,7 +763,8 @@ public final class OpenHarness {
      */
     private static void gotoLine() {
         begin("aller à la ligne : invite, borne, touche d'action, fermeture");
-        click("Aller à");
+        editor.toggleGotoPopup();
+        frame();
         GotoBar carte = editor.gotoBar();
         check("la carte aller-à vit DANS la fenêtre de l'éditeur",
                 carte != null && carte.isShown());
@@ -960,7 +972,8 @@ public final class OpenHarness {
         int total = countOccurrences(before, "graine");
         check("la démonstration hors normes porte plus de dix mille graines",
                 total > 10_000);
-        click("Rechercher");
+        editor.toggleSearchPopup();
+        frame();
         SearchBar bar = editor.searchBar();
         // la frappe passe par le clavier de l'éditeur (la carte ne
         // prend jamais le focus)
@@ -988,7 +1001,8 @@ public final class OpenHarness {
         check("l'annulation tient aussi la demi-seconde",
                 undoMs < 500L);
         detail("annulation : " + undoMs + " ms");
-        click("Rechercher");
+        editor.toggleSearchPopup();
+        frame();
     }
 
     /**
@@ -1455,7 +1469,8 @@ public final class OpenHarness {
         // LE CLAVIER SE LÈVE À L'OUVERTURE : la carte naît clavier levé —
         // le doigt qui cherche le champ n'a pas à lever autre chose
         int before = ime.harnessShowCount();
-        click("Rechercher");
+        editor.toggleSearchPopup();
+        frame();
         SearchBar bar = editor.searchBar();
         check("la carte de recherche naît clavier levé",
                 ime.harnessShowCount() > before);
@@ -1473,7 +1488,8 @@ public final class OpenHarness {
         frame();
         // l'aller-à suit la même règle
         before = ime.harnessShowCount();
-        click("Aller à");
+        editor.toggleGotoPopup();
+        frame();
         check("la carte d'aller-à naît clavier levé",
                 ime.harnessShowCount() > before);
         editor.gotoBar().close();
@@ -2537,6 +2553,75 @@ public final class OpenHarness {
                 Math.abs(editor.getTextSizeSp() - initial) < 0.05f);
     }
 
+    /**
+     * La refonte de l'écran : les onglets portent les documents, le
+     * drawer porte le menu (thème, hors normes, serveurs), la feuille
+     * basse porte les mesures — et les options que les popups portent
+     * déjà n'y vivent plus (la règle de l'instrument de test : chaque
+     * commande reste à l'écran seulement si la vue ne la porte pas).
+     */
+    private static void screenRestyle() {
+        begin("refonte de l'écran : onglets, drawer, feuille basse");
+        TabRow tabs = activity.harnessTabRow();
+        DrawerPane drawer = activity.harnessDrawer();
+        BottomSheet sheet = activity.harnessBottomSheet();
+        check("la barre d'onglets vit à l'écran",
+                tabs != null && tabs.tabCount() == 6);
+        check("l'onglet Java est le choix courant",
+                tabs.selectedTab() == 0 && "Java".contentEquals(tabs.tabLabel(0)));
+        // le choix d'onglet ouvre le document correspondant : le XML
+        // y change le langage et le texte du tampon
+        tabs.selectTab(1);
+        frame();
+        View.harnessDrain(1_000L);
+        check("l'onglet XML ouvre le document XML",
+                tabs.selectedTab() == 1
+                        && editor.getBuffer().length() > 0
+                        && editor.getBuffer().toString().startsWith("<?xml"));
+        // les options redondantes ne vivent plus : ni bouton de
+        // recherche, ni bouton d'aller-à (les popups de la vue les
+        // portent), ni boutons de sélection — les popups s'ouvrent
+        // seuls par la vue
+        check("le bouton de recherche n'existe plus (la popup le porte)",
+                findButton(activity.harnessRootView(), "Rechercher") == null);
+        check("le bouton d'aller-à n'existe plus (la popup le porte)",
+                findButton(activity.harnessRootView(), "Aller à") == null);
+        check("le bouton de sélection n'existe plus (la barre la porte)",
+                findButton(activity.harnessRootView(), "Tout sélectionner") == null);
+        check("le bouton de copie du texte n'existe plus (la barre la porte)",
+                findButton(activity.harnessRootView(), "Copier texte") == null);
+        // le drawer : fermé au départ, le bouton du menu l'ouvre, le
+        // menu porte le thème et les hors normes
+        check("le drawer part fermé", !drawer.isDrawerOpen());
+        drawer.setDrawerOpen(true);
+        check("le drawer s'ouvre", drawer.isDrawerOpen());
+        check("le menu du drawer porte les boutons du menu",
+                findButton(activity.harnessRootView(), "Clair") != null
+                        && findButton(activity.harnessRootView(), "50k ⨯") != null);
+        drawer.setDrawerOpen(false);
+        check("le drawer se referme", !drawer.isDrawerOpen());
+        // la feuille basse : part repliée, les états montent d'un
+        // cran par le tiré, les mesures y vivent toujours
+        check("la feuille part repliée",
+                sheet.sheetState() == BottomSheet.State.COLLAPSED);
+        sheet.setSheetState(BottomSheet.State.HALF_EXPANDED);
+        check("la feuille monte au demi-plié",
+                sheet.sheetState() == BottomSheet.State.HALF_EXPANDED);
+        check("les mesures vivent à la feuille",
+                textOf("coloration :") != null);
+        sheet.setSheetState(BottomSheet.State.COLLAPSED);
+        // la bascule de thème du menu : le journal la porte encore au
+        // relevé final (la feuille ouverte la montre)
+        click("Sombre");
+        click("Clair");
+        // le retour à l'onglet Java : le document de démo y revient
+        tabs.selectTab(0);
+        frame();
+        View.harnessDrain(1_000L);
+        check("l'onglet Java revient au document de démo",
+                editor.getBuffer().toString().startsWith("package"));
+    }
+
     /** La copie des mesures : le presse-papiers porte le tableau. */
     private static void copyMeasures() {
         begin("copie des mesures : le tableau complet au presse-papiers");
@@ -2572,8 +2657,34 @@ public final class OpenHarness {
      * @param label l'étiquette du bouton de langage
      * @param fillTimeoutMillis la borne d'attente du fond
      */
+    /**
+     * Ouvre un document par sa voie d'écran : l'onglet du langage le
+     * choisit (les documents de démonstration y vivent), les hors
+     * normes passent par les boutons du menu du drawer. La première
+     * trame paie la fenêtre et relance la salve du fond, les ticks du
+     * veilleur voient le fond courir, l'attente réelle laisse la salve
+     * achever, le dernier tick journalise la fin, la trame suivante
+     * dessine l'état arrivé.
+     *
+     * @param label l'étiquette de l'onglet ou du bouton du menu
+     * @param fillTimeoutMillis la borne d'attente du fond
+     */
     private static void openLanguage(String label, long fillTimeoutMillis) {
-        click(label);
+        String[] onglets = {"Java", "XML", "JSON", "Kotlin", "Lua", "SQL"};
+        for (int at = 0; at < onglets.length; at++) {
+            if (label.contentEquals(onglets[at])) {
+                if (activity.harnessTabRow().selectedTab() == at) {
+                    activity.harnessReopenCurrent();
+                } else {
+                    activity.harnessTabRow().selectTab(at);
+                }
+                break;
+            }
+        }
+        if (label.contentEquals("Gros") || label.contentEquals("50k l.")
+                || label.contentEquals("50k ⨯")) {
+            click(label);
+        }
         frame();
         View.harnessDrain(1_000L);
         editor.awaitBackgroundFill(fillTimeoutMillis);

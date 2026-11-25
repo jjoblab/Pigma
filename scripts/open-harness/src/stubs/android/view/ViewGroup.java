@@ -115,6 +115,27 @@ public class ViewGroup extends View {
         child.harnessSetParent(this);
     }
 
+    /**
+     * Retire tous les enfants (le parent des enfants part aussi).
+     */
+    public void removeAllViews() {
+        for (View child : children) {
+            child.harnessSetParent(null);
+        }
+        children.clear();
+    }
+
+    /**
+     * Retire l'enfant d'indice donné.
+     *
+     * @param index l'indice de l'enfant
+     */
+    public void removeViewAt(int index) {
+        if (index >= 0 && index < children.size()) {
+            children.remove(index).harnessSetParent(null);
+        }
+    }
+
     /** Le nombre d'enfants. */
     public int getChildCount() {
         return children.size();
@@ -139,5 +160,19 @@ public class ViewGroup extends View {
         for (View child : children) {
             child.harnessAttach();
         }
+    }
+
+    /**
+     * La disposition des enfants (aucune disposition réelle ici : le
+     * harnais dimensionne la vue qu'il éprouve — les conteneurs de
+     * l'écran la surchargent pour satisfaire le contrat du cadre).
+     *
+     * @param changed la géométrie a-t-elle changé
+     * @param left    bord gauche
+     * @param top     bord haut
+     * @param right   bord droit
+     * @param bottom  bord bas
+     */
+    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
     }
 }

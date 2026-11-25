@@ -353,8 +353,8 @@ public class View {
         return parent;
     }
 
-    /** Pose le parent direct (à l'ajout dans un groupe). */
-    void harnessSetParent(View parent) {
+    /** Pose le parent direct (à l'ajout ou au retrait d'un groupe). */
+    public void harnessSetParent(View parent) {
         this.parent = parent;
     }
 

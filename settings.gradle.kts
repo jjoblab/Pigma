@@ -1,8 +1,12 @@
 // Dépôts de plugins et de dépendances : déclarés ici, une seule fois pour tout le dépôt.
+// Le miroir Google de Maven Central précède mavenCentral() : repo.maven.apache.org
+// peut refuser (429) alors que le miroir sert les mêmes artefacts ; Gradle y
+// trouve la même somme de contrôle, l'ordre ne change pas les versions résolues.
 
 pluginManagement {
     repositories {
         google()
+        maven(url = "https://maven-central.storage-download.googleapis.com/maven2")
         mavenCentral()
         gradlePluginPortal()
     }
@@ -12,6 +16,7 @@ dependencyResolutionManagement {
     repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
     repositories {
         google()
+        maven(url = "https://maven-central.storage-download.googleapis.com/maven2")
         mavenCentral()
     }
 }

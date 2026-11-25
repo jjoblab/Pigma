@@ -34,27 +34,24 @@ import jo.pigma.syntax.SyntaxDocument;
 import jo.pigma.syntax.SyntaxTheme;
 
 /**
- * Écran principal : l'éditeur coloré au-dessus du modèle de texte du
- * cœur et du moteur de coloration.
+ * Écran principal refondu : l'éditeur plein écran, une barre d'onglets
+ * au-dessus (un onglet par document de démonstration), un menu coulissant
+ * à gauche (le drawer : thème, serveurs de langage, hors normes) et une
+ * feuille basse (le journal des mesures, à tirer par sa poignée).
  *
- * <p>Deux rangées de sélecteurs : le langage (Java, XML, JSON, Kotlin
- * et Lua générés, SQL par la famille générique — le texte de
- * démonstration change avec) puis le gros fichier Java de la fenêtre
- * paresseuse et le thème (clair, sombre — changer ne retokenise rien,
- * la mesure de première coloration ne bouge pas). Le panneau de
- * diagnostic suit les mesures
- * du moteur : première coloration (la fenêtre visible, pas le document
- * entier), coût de la dernière demande (un saut lointain s'y lit),
- * coût de la dernière frappe, lignes relues, lignes lexées sur le
- * total — il se rafraîchit pendant que la pompe de remplissage
- * avance. La ligne d'état garde la révision, la position et la
- * longueur.</p>
+ * <p>La refonte suit la règle de l'instrument de test : chaque commande
+ * reste à l'écran SEULEMENT si la vue de bibliothèque ne la porte pas
+ * déjà. La recherche et l'aller-à-la-ligne vivent en popups flottantes
+ * de l'éditeur (la barre de sélection ouvre la recherche par sa pastille,
+ * le menu de débordement porte les deux) ; la carte de signature vit au
+ * caret ; copier et sélectionner vivent à la barre de sélection. L'écran
+ * ne garde que ce qu'aucune popup ne peut porter : les onglets, le menu,
+ * la feuille des mesures, l'annulation.</p>
  *
- * <p>Le bouton « Copier les mesures » collecte le journal du scénario
- * (première coloration, remplissage fini, bascules de thème, relevés à
- * la copie) dans le presse-papiers en tableau prêt à coller : c'est le
- * relevé appareil de {@code docs/perf.md}, la machine de build n'a pas
- * d'appareil.</p>
+ * <p>La feuille basse garde le panneau de mesures du moteur (première
+ * coloration, coût de demande, coût de frappe, lignes lexées, trame) et
+ * le journal du scénario — le bouton de copie y vit, le relevé appareil
+ * de {@code docs/perf.md} se colle depuis la feuille ouverte.</p>
  */
 public final class MainActivity extends Activity {
 
@@ -64,21 +61,19 @@ public final class MainActivity extends Activity {
     /** Lignes du journal au-delà desquelles les plus anciennes tombent. */
     private static final int LOG_LIMIT = 24;
 
+    /** Les étiquettes des onglets de documents. */
+    private static final String[] TAB_LABELS =
+            {"Java", "XML", "JSON", "Kotlin", "Lua", "SQL"};
+
     private EditorView editorView;
     private TextView statusView;
     private TextView diagnosticsView;
+    private TabRow tabRow;
+    private DrawerPane drawerPane;
+    private BottomSheet bottomSheet;
     private Button undoButton;
     private Button redoButton;
     private Button copyButton;
-
-    private Button selectButton;
-
-    private Button copyTextButton;
-
-    private Button searchButton;
-
-    /** Le bouton « Signature » : le curseur aux paramètres de la démo. */
-    private Button signatureButton;
 
     /** Le bouton LSP : branche (et débranche) le serveur de démonstration. */
     private Button lspButton;
@@ -90,19 +85,15 @@ public final class MainActivity extends Activity {
      * La façade du serveur de langage : l'ÉCRAN ne câble plus rien —
      * la bibliothèque porte la synchronisation du document, les
      * fournisseurs (survol, complétion, signature, diagnostics) et
-     * leurs caches (l'étude de l'éditeur de référence y a mené, sa façade
-     * LspEditor). L'écran ne garde que ses boutons et son panneau.
+     * leurs caches.
      */
     private LspEditor lsp;
 
-    /** L'étiquette du serveur branché (le panneau la lit). */
+    /** L'étiquette du serveur branché (la feuille la lit). */
     private String lspLabel;
 
     /** Le document de la démo Java (l'URI stable du protocole). */
     private static final String DOC_URI = "file:///demo.java";
-
-    /** Le bouton « Aller à » (la popup aller-à-la-ligne de la vue). */
-    private Button gotoButton;
 
     private final List<String> scenarioLog = new ArrayList<>();
     private String currentScenario = "Java (démo)";
@@ -115,28 +106,27 @@ public final class MainActivity extends Activity {
                                 int insertedLength, int revision) {
             // un orage d'éditions (« tout remplacer » : dix mille
             // remplacements d'un coup) ne doit pas payer dix mille
-            // rafraîchissements de panneau — chacun y lexait la
-            // fenêtre visible : le rafraîchissement se reprogramme,
-            // la file ne le porte qu'une fois après l'orage ; la
-            // frappe ordinaire ne voit pas la différence (il suit la
-            // trame). Le document vers le serveur vit dans la façade
-            // (elle se programme toute seule).
+            // rafraîchissements de feuille — le rafraîchissement se
+            // reprogramme, la file ne le porte qu'une fois après
+            // l'orage ; la frappe ordinaire ne voit pas la différence
+            // (il suit la trame). Le document vers le serveur vit
+            // dans la façade (elle se programme toute seule).
             editorView.removeCallbacks(statusSync);
             editorView.post(statusSync);
         }
     };
 
-    /** Le rafraîchissement coalescé du panneau (un par salve d'éditions). */
+    /** Le rafraîchissement coalescé de la feuille (un par salve d'éditions). */
     private final Runnable statusSync = this::runStatusSync;
 
-    /** Le panneau se rafraîchit : statut, diagnostics, veilleur. */
+    /** La feuille se rafraîchit : statut, mesures, veilleur. */
     private void runStatusSync() {
         updateStatus();
         watchDiagnostics();
     }
 
     /**
-     * Le veilleur du panneau : tant que le fil de fond avance, il
+     * Le veilleur de la feuille : tant que le fil de fond avance, il
      * rafraîchit les mesures (lignes lexées qui montent) ; la fin du
      * remplissage s'inscrit au journal avec sa montre.
      */
@@ -166,6 +156,9 @@ public final class MainActivity extends Activity {
         diagnosticsView = new TextView(this);
         diagnosticsView.setTypeface(Typeface.MONOSPACE);
         diagnosticsView.setTextSize(11.0f);
+        tabRow = new TabRow(this);
+        drawerPane = new DrawerPane(this);
+        bottomSheet = new BottomSheet(this);
         undoButton = new Button(this);
         redoButton = new Button(this);
         undoButton.setText("Annuler");
@@ -175,30 +168,15 @@ public final class MainActivity extends Activity {
         copyButton = new Button(this);
         copyButton.setText("Copier les mesures");
         copyButton.setOnClickListener(this::onCopyClicked);
-        selectButton = new Button(this);
-        selectButton.setText("Tout sélectionner");
-        selectButton.setOnClickListener(this::onSelectAllClicked);
-        copyTextButton = new Button(this);
-        copyTextButton.setText("Copier texte");
-        copyTextButton.setOnClickListener(this::onCopyTextClicked);
-        searchButton = new Button(this);
-        searchButton.setText("Rechercher");
-        // la recherche vit en popup flottante — la vue de bibliothèque
-        // la porte (l'ancienne feuille bricolée ici a rejoint le paquet
-        // popups)
-        searchButton.setOnClickListener(view -> editorView.toggleSearchPopup());
-        gotoButton = new Button(this);
-        gotoButton.setText("Aller à");
-        gotoButton.setOnClickListener(view -> editorView.toggleGotoPopup());
-        signatureButton = new Button(this);
-        signatureButton.setText("Signature");
-        signatureButton.setOnClickListener(this::onSignatureClicked);
         lspButton = new Button(this);
         lspButton.setText("LSP");
         lspButton.setOnClickListener(this::onLspToggleClicked);
         lspLuaButton = new Button(this);
         lspLuaButton.setText("LSP Lua");
         lspLuaButton.setOnClickListener(this::onLspLuaClicked);
+
+        tabRow.setTabs(List.of(TAB_LABELS));
+        tabRow.setTabListener(this::onTabSelected);
 
         setContentView(buildLayout());
         editorView.getBuffer().addListener(statusListener);
@@ -217,12 +195,11 @@ public final class MainActivity extends Activity {
                 .maxCardWidthDp(500)
                 .build());
         // LE CÂBLAGE DU SERVEUR DE LANGAGE VIT DANS LA FAÇADE : deux
-        // lignes d'écran — l'attache (l'écouteur du panneau) et le
-        // branchement (au clic du bouton). Tout ce qui suit n'est plus
+        // lignes d'écran — l'attache (l'écouteur de la feuille) et le
+        // branchement (au clic du menu). Tout ce qui suit n'est plus
         // de l'écran : la synchronisation du document, le survol, la
         // complétion, la signature, les diagnostics à la carte — la
-        // bibliothèque le porte (la leçon de l'éditeur de référence, sa façade
-        // LspEditor)
+        // bibliothèque le porte.
         lsp = LspEditor.attach(editorView);
         lsp.setDiagnosticsListener(fresh -> runOnUiThread(() -> {
             updateDiagnostics();
@@ -235,20 +212,71 @@ public final class MainActivity extends Activity {
         updateStatus();
         updateDiagnostics();
         // la première coloration est paresseuse (au premier dessin) et
-        // le remplissage avance par tranches : le panneau suit
+        // le remplissage avance par tranches : la feuille suit
         editorView.post(this::watchDiagnostics);
     }
 
     /**
+     * Le choix d'onglet : le document de démonstration correspondant
+     * s'ouvre (le scénario courant et le journal suivent).
+     *
+     * @param index l'indice de l'onglet choisi
+     */
+    private void onTabSelected(int index) {
+        openDocument(TAB_LABELS[index]);
+    }
+
+    /** Ouvre le document de l'onglet courant (le harnais y repasse). */
+    void harnessReopenCurrent() {
+        openDocument(TAB_LABELS[java.lang.Math.max(0, tabRow.selectedTab())]);
+    }
+
+    /**
+     * Ouvre le document de démonstration d'un langage.
+     *
+     * @param name le nom du langage (Java, XML, JSON, Kotlin, Lua, SQL)
+     */
+    private void openDocument(String name) {
+        editorView.setLanguage(languageOf(name), textOf(name));
+        currentScenario = name + " (démo)";
+        loggedFirstColoration = false;
+        updateStatus();
+        watchDiagnostics();
+    }
+
+    /**
+     * Le texte de démonstration d'un langage.
+     *
+     * @param name le nom du langage
+     * @return le texte de démonstration
+     */
+    private String textOf(String name) {
+        switch (name) {
+            case "XML":
+                return DemoTexts.XML;
+            case "JSON":
+                return DemoTexts.JSON;
+            case "Kotlin":
+                return DemoTexts.KOTLIN;
+            case "Lua":
+                return DemoTexts.LUA;
+            case "SQL":
+                return DemoTexts.SQL;
+            default:
+                return DemoTexts.JAVA;
+        }
+    }
+
+    /**
      * Les intentions de l'hôte à une ligne (l'ampoule les porte) : la
-     * date du jour au curseur, les statistiques du document.
+     * date du jour au curseur, l'ouverture de la recherche.
      *
      * @param line   l'indice de la ligne
      * @param column la colonne du curseur
      * @return les actions de l'hôte, jamais null
      */
-    private java.util.List<QuickActionCard.Entry> hostQuickActions(int line, int column) {
-        return java.util.List.of(
+    private List<QuickActionCard.Entry> hostQuickActions(int line, int column) {
+        return List.of(
                 new QuickActionCard.Entry("Insérer la date du jour", this::insertToday),
                 new QuickActionCard.Entry("Ouvrir la recherche", editorView::toggleSearchPopup));
     }
@@ -261,46 +289,61 @@ public final class MainActivity extends Activity {
         editorView.insertAtCaret(java.time.LocalDate.now().toString());
     }
 
+    /**
+     * La mise en page refondue : le panneau à drawer porte le contenu
+     * (la barre d'onglets, l'éditeur plein écran) ; la feuille basse
+     * porte les mesures et le journal ; le menu coulissant vit dans le
+     * drawer.
+     *
+     * @return la racine du contenu
+     */
     private View buildLayout() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        int margin = dp(8);
-
+        // le contenu : les onglets au-dessus, l'éditeur dessous
+        LinearLayout contentColumn = new LinearLayout(this);
+        contentColumn.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams tabParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, tabRow.preferredHeightPx());
+        contentColumn.addView(tabRow, tabParams);
         LinearLayout.LayoutParams editorParams =
                 new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f);
-        editorParams.setMargins(margin, margin, margin, margin);
-        root.addView(editorView, editorParams);
+        contentColumn.addView(editorView, editorParams);
+        LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        int margin = dp(8);
+        statusParams.setMargins(dp(16), 0, margin, margin);
+        contentColumn.addView(statusView, statusParams);
 
-        root.addView(row(margin,
-                languageButton("Java", Languages.JAVA, DemoTexts.JAVA),
-                languageButton("XML", Languages.XML, DemoTexts.XML),
-                languageButton("JSON", Languages.JSON, DemoTexts.JSON),
-                languageButton("Kotlin", Languages.KOTLIN, DemoTexts.KOTLIN),
-                languageButton("Lua", Languages.LUA, DemoTexts.LUA),
-                languageButton("SQL", Languages.SQL, DemoTexts.SQL)));
-        root.addView(row(margin,
+        // la feuille basse : les mesures et le journal y vivent
+        LinearLayout sheetColumn = new LinearLayout(this);
+        sheetColumn.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams measuresParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        measuresParams.setMargins(dp(16), dp(12), margin, 0);
+        sheetColumn.addView(diagnosticsView, measuresParams);
+        sheetColumn.addView(row(margin, copyButton));
+        bottomSheet.setSheetContent(sheetColumn);
+
+        // le menu coulissant : thème, hors normes, serveurs de langage
+        LinearLayout menuColumn = new LinearLayout(this);
+        menuColumn.setOrientation(LinearLayout.VERTICAL);
+        menuColumn.addView(row(margin,
+                themeButton("Clair", EditorThemes.LIGHT, EditorThemes.LIGHT_BACKGROUND),
+                themeButton("Sombre", EditorThemes.DARK, EditorThemes.DARK_BACKGROUND)));
+        menuColumn.addView(row(margin,
                 languageButton("Gros", Languages.JAVA, DemoTexts.bigFile()),
                 languageButton("50k l.", Languages.JAVA, DemoTexts.hugeFile()),
-                hugeCycleButton(),
-                themeButton("Clair", EditorThemes.LIGHT, EditorThemes.LIGHT_BACKGROUND),
-                themeButton("Sombre", EditorThemes.DARK, EditorThemes.DARK_BACKGROUND),
-                undoButton, redoButton));
+                hugeCycleButton()));
+        menuColumn.addView(row(margin, undoButton, redoButton));
+        menuColumn.addView(row(margin, lspButton, lspLuaButton));
 
-        root.addView(row(margin, copyButton, selectButton, copyTextButton,
-                searchButton, gotoButton, signatureButton, lspButton, lspLuaButton));
-
-        LinearLayout.LayoutParams diagnosticsParams =
-                new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT);
-        diagnosticsParams.setMargins(dp(16), 0, margin, 0);
-        root.addView(diagnosticsView, diagnosticsParams);
-
-        LinearLayout.LayoutParams statusParams =
-                new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT);
-        statusParams.setMargins(dp(16), 0, margin, margin);
-        root.addView(statusView, statusParams);
-        return root;
+        drawerPane.setPanes(contentColumn, menuColumn);
+        // la feuille basse vit PAR-DESSUS le contenu (le troisième
+        // enfant du panneau : le harnais la trouve dans l'arbre, le
+        // cadre réel la dessine au-dessus de l'éditeur)
+        drawerPane.addOverlay(bottomSheet);
+        return drawerPane;
     }
 
     private LinearLayout row(int margin, Button... buttons) {
@@ -321,7 +364,7 @@ public final class MainActivity extends Activity {
             editorView.setLanguage(language, text);
             currentScenario = "Gros".equals(label) ? "gros fichier Java"
                     : "50k l.".equals(label) ? "fichier 52 000 lignes"
-                    : label + " (demo)";
+                    : label + " (démo)";
             loggedFirstColoration = false;
             updateStatus();
             watchDiagnostics();
@@ -358,19 +401,23 @@ public final class MainActivity extends Activity {
     }
 
     /**
-     * Le langage d'une clef du cycle du hors normes.
+     * Le langage d'un nom du dépôt (l'onglet ou la clef du cycle).
      *
-     * @param key la clef ("XML", "JSON", "KOTLIN", "SQL")
+     * @param name le nom ("Java", "XML", "JSON", "Kotlin", "Lua", "SQL",
+     *             ou la clef du cycle en capitales)
      * @return le langage correspondant, Java par défaut
      */
-    private LanguageSyntax languageOf(String key) {
-        switch (key) {
+    private LanguageSyntax languageOf(String name) {
+        switch (name) {
             case "XML":
+            case "xml":
                 return Languages.XML;
             case "JSON":
                 return Languages.JSON;
+            case "Kotlin":
             case "KOTLIN":
                 return Languages.KOTLIN;
+            case "Lua":
             case "LUA":
                 return Languages.LUA;
             case "SQL":
@@ -411,49 +458,6 @@ public final class MainActivity extends Activity {
                 (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
         clipboard.setPrimaryClip(ClipData.newPlainText("mesures Pigma", measures));
         Toast.makeText(this, "Mesures copiées (" + scenarioLog.size() + " lignes)",
-                Toast.LENGTH_SHORT).show();
-    }
-
-    /**
-     * Tout sélectionner, ou quitter la sélection si elle est déjà
-     * entière : le bouton démontre la sélection (la frappe suivante
-     * remplacera, Suppr l'effacera, « Copier texte » la lira).
-     */
-    private void onSelectAllClicked(View button) {
-        if (editorView.hasSelection()
-                && editorView.selectionStart() == 0
-                && editorView.selectionEnd() == editorView.getBuffer().length()) {
-            editorView.caretTo(0);
-            selectButton.setText("Tout sélectionner");
-        } else {
-            editorView.selectAll();
-            selectButton.setText("Quitter la sélection");
-        }
-    }
-
-    /**
-     * Le curseur aux paramètres de la méthode de démonstration : la
-     * carte de signature s'y montre — les virgules y déplacent le
-     * paramètre actif, la fermeture de l'appel la range.
-     */
-    private void onSignatureClicked(View button) {
-        String text = editorView.getBuffer().toString();
-        int args = text.indexOf("int graine");
-        if (args >= 0) {
-            editorView.caretTo(args + 3);
-        }
-    }
-
-    /**
-     * Copie le texte sélectionné (le presse-papiers système) : la
-     * taille dit si la sélection tient.
-     */
-    private void onCopyTextClicked(View button) {
-        CharSequence selected = editorView.selectedText();
-        ClipboardManager clipboard =
-                (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        clipboard.setPrimaryClip(ClipData.newPlainText("sélection Pigma", selected));
-        Toast.makeText(this, selected.length() + " caractère(s) copié(s)",
                 Toast.LENGTH_SHORT).show();
     }
 
@@ -558,7 +562,7 @@ public final class MainActivity extends Activity {
      * Débranche la liaison vivante (le serveur de démo ou le processus
      * EmmyLua) : la façade coupe tout (les fournisseurs se retirent,
      * la liaison s'arrête, le processus meurt, les caches se
-     * rangent) — l'écran ne range que ses boutons et son panneau.
+     * rangent) — l'écran ne range que ses boutons et sa feuille.
      */
     private void detachLsp() {
         lsp.disconnect();
@@ -570,12 +574,43 @@ public final class MainActivity extends Activity {
 
     /**
      * La façade LSP du harnais : le scénario y règle ses fonctions
-     * (les coupes une à une — l'éprouve de l'étude de l'éditeur de référence).
+     * (les coupes une à une — l'éprouve de l'étude de l'éditeur de
+     * référence).
      *
      * @return la façade branchée à la vue, jamais null
      */
     LspEditor harnessLsp() {
         return lsp;
+    }
+
+    /**
+     * La barre d'onglets du harnais : le scénario de la refonte y
+     * choisit ses onglets par programme.
+     *
+     * @return la barre d'onglets, jamais null
+     */
+    TabRow harnessTabRow() {
+        return tabRow;
+    }
+
+    /**
+     * Le drawer du harnais : le scénario de la refonte y ouvre et y
+     * referme le menu.
+     *
+     * @return le panneau à drawer, jamais null
+     */
+    DrawerPane harnessDrawer() {
+        return drawerPane;
+    }
+
+    /**
+     * La feuille basse du harnais : le scénario de la refonte y lit
+     * l'état et le tire.
+     *
+     * @return la feuille basse, jamais null
+     */
+    BottomSheet harnessBottomSheet() {
+        return bottomSheet;
     }
 
     /**
@@ -638,7 +673,7 @@ public final class MainActivity extends Activity {
     }
 
     /**
-     * Lance le veilleur du panneau : une passe immédiate, puis une par
+     * Lance le veilleur de la feuille : une passe immédiate, puis une par
      * intervalle tant que le remplissage avance.
      */
     private void watchDiagnostics() {
