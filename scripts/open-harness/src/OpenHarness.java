@@ -102,6 +102,7 @@ public final class OpenHarness {
         opening();
         panel();
         themeToggle();
+        keywordCompletionNoServer();
         kotlinDemo();
         imeTyping();
         keyEvents();
@@ -191,6 +192,99 @@ public final class OpenHarness {
         frame();
         check("les jetons ne changent pas au retour",
                 editor.getSyntaxDocument().tokenCount() == tokens);
+        // les quatre palettes de plus y passent : aucune ne
+        // retokenise (le rendu seul se recouvre)
+        click("Solaire");
+        frame();
+        check("le thème solaire ne retokenise pas",
+                editor.getSyntaxDocument().tokenCount() == tokens);
+        click("Forêt");
+        frame();
+        check("le thème forêt ne retokenise pas",
+                editor.getSyntaxDocument().tokenCount() == tokens);
+        click("Océan");
+        frame();
+        check("le thème océan ne retokenise pas",
+                editor.getSyntaxDocument().tokenCount() == tokens);
+        click("Café");
+        frame();
+        check("le thème café ne retokenise pas",
+                editor.getSyntaxDocument().tokenCount() == tokens);
+        // le retour au clair range le tiroir de test
+        click("Clair");
+        frame();
+    }
+
+    /**
+     * La complétion de base SANS serveur (la leçon de la référence :
+     * sa liste statique de mots-clés y porte le bandeau) : les
+     * mots-clés du langage vivant au bandeau, la frappe d'un préfixe
+     * y filtre, le retour au clavier n'y propose rien de cassé.
+     */
+    private static void keywordCompletionNoServer() {
+        begin("complétion sans serveur : les mots-clés au bandeau");
+        // AUCUN serveur ne vit (le scénario repart de l'écran nu) :
+        // le bandeau ne vit que du langage et de l'index local
+        check("aucun serveur branché",
+                !activity.harnessLsp().isConnected());
+        editor.caretTo(editor.getBuffer().length());
+        frame();
+        // Java : le préfixe « thr » y porte « throw » et « throws »
+        // (des mots-clés — pas des symboles du texte démo)
+        connection.commitText(" thr", 1);
+        View.harnessDrain(1000L);
+        frame();
+        java.util.List<String> suggestions = editor.suggestions();
+        detail("candidats : " + suggestions);
+        check("le mot-clé throw y vit sans serveur",
+                suggestions.contains("throw"));
+        check("le mot-clé throws y vit aussi",
+                suggestions.contains("throws"));
+        // la frappe achève le mot : l'annulation range le texte démo
+        for (int i = 0; i < 4; i++) {
+            click("Annuler");
+        }
+        frame();
+        check("les frappes du scénario s'annulent",
+                !editor.getBuffer().toString().endsWith("thr"));
+        // le Lua y vit pareil : « loc » y porte « local » (la
+        // complétion de base suit le langage ouvert — l'onglet y
+        // porte le document Lua)
+        activity.harnessSelectTab(4);
+        frame();
+        View.harnessDrain(1_000L);
+        editor.awaitBackgroundFill(10_000L);
+        View.harnessDrain(1_000L);
+        frame();
+        check("l'onglet Lua ouvre le document Lua",
+                editor.getBuffer().length() > 0
+                        && editor.getBuffer().toString().contains("--"));
+        editor.caretTo(editor.getBuffer().length());
+        frame();
+        connection.commitText("loc", 1);
+        View.harnessDrain(1000L);
+        frame();
+        check("le mot-clé local du Lua y vit sans serveur",
+                editor.suggestions().contains("local"));
+        click("Annuler");
+        click("Annuler");
+        click("Annuler");
+        frame();
+        // le retour à l'onglet Java range le scénario suivant
+        activity.harnessSelectTab(0);
+        frame();
+        View.harnessDrain(1_000L);
+        editor.awaitBackgroundFill(10_000L);
+        View.harnessDrain(1_000L);
+        // le caret au début du document : le mot sous lui ne vit
+        // plus, le bandeau se vide à la trame (la carte ouverte y
+        // bloquerait le toucher du scénario suivant)
+        editor.caretTo(0);
+        frame();
+        View.harnessDrain(1_000L);
+        check("le bandeau se vide au retour (aucun candidat)",
+                editor.suggestions().isEmpty());
+        frame();
     }
 
     /** La démo Kotlin : 28 lignes, le remplissage complet du fond. */

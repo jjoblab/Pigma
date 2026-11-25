@@ -559,6 +559,14 @@ public final class MainActivity extends Activity {
         menuColumn.addView(row(margin,
                 themeButton("Clair", EditorThemes.LIGHT, EditorThemes.LIGHT_BACKGROUND),
                 themeButton("Sombre", EditorThemes.DARK, EditorThemes.DARK_BACKGROUND)));
+        // les quatre palettes de plus (papier chaud, vert profond, bleu
+        // nuit, brun chaud) : le tiroir les porte à la rangée suivante
+        menuColumn.addView(row(margin,
+                themeButton("Solaire", EditorThemes.SOLAR, EditorThemes.SOLAR_BACKGROUND),
+                themeButton("Forêt", EditorThemes.FOREST, EditorThemes.FOREST_BACKGROUND)));
+        menuColumn.addView(row(margin,
+                themeButton("Océan", EditorThemes.OCEAN, EditorThemes.OCEAN_BACKGROUND),
+                themeButton("Café", EditorThemes.COFFEE, EditorThemes.COFFEE_BACKGROUND)));
         menuColumn.addView(row(margin,
                 languageButton("Gros", Languages.JAVA, DemoTexts.bigFile()),
                 languageButton("50k l.", Languages.JAVA, DemoTexts.hugeFile()),

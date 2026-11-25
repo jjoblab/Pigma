@@ -60,6 +60,7 @@ import jo.pigma.core.TextListener;
 import jo.pigma.core.TextTransaction;
 import jo.pigma.core.UndoStack;
 import jo.pigma.syntax.BackgroundFill;
+import jo.pigma.syntax.LanguageKeywords;
 import jo.pigma.syntax.LanguageSyntax;
 import jo.pigma.syntax.Languages;
 import jo.pigma.syntax.StructureDocument;
@@ -3730,9 +3731,18 @@ public final class EditorView extends View {
      * Les candidats du mot courant : le préfixe se lit au curseur (au
      * moins deux caractères, sinon le bandeau se vide), la requête
      * interroge le dernier index — un index périmé reste une bonne
-     * indication (les noms, pas les positions).
+     * indication (les noms, pas les positions). Le bandeau ne vit PAS
+     * pendant un geste (le doigt traîne une borne, le texte glisse :
+     * le tap qui suit doit atteindre le texte, pas la carte — la
+     * leçon du double-tap) ni sur une sélection vivante (le mot n'y
+     * se tape pas).
      */
     private void updateSuggestions() {
+        if (selectionDragBound != 0 || textDragging || hasSelection()) {
+            completionCard.set(List.of(), "");
+            suggestionWordStart = -1;
+            return;
+        }
         int caret = Math.min(selection.caret(), buffer.length());
         int wordStart = wordStartAt(caret);
         if (wordStart < 0) {
@@ -3756,18 +3766,38 @@ public final class EditorView extends View {
     }
 
     /**
-     * Les candidats détaillés de l'index local : la nature y porte
-     * l'icône, la nature et la ligne de déclaration portent la
-     * colonne de droite (la facture de l'atelier).
+     * Les candidats détails de la complétion locale : les mots-clés du
+     * langage d'abord (la complétion de base SANS serveur — la leçon
+     * de la référence), puis l'index local des symboles (la nature y
+     * porte l'icône, la nature et la ligne de déclaration portent la
+     * colonne de droite — la facture de l'atelier). Le serveur
+     * branché évince le tout (son fournisseur y prime).
      *
      * @param prefix le préfixe tapé
      * @return les candidats détaillés, jamais null
      */
     private List<CompletionCard.Entry> localCompletionEntries(String prefix) {
-        if (symbolIndex == null) {
-            return List.of();
-        }
+        // les mots-clés du langage d'abord (la leçon de la référence :
+        // sa liste statique y porte le bandeau SANS serveur — la
+        // complétion de base naît du langage lui-même), puis les
+        // symboles et les mots de l'index local (le serveur branché
+        // y évince tout : son SuggestionProvider prime sur le local)
         List<CompletionCard.Entry> entries = new ArrayList<>();
+        if (language != null) {
+            for (String keyword : LanguageKeywords.of(language)) {
+                if (prefix.isEmpty() || keyword.regionMatches(true, 0,
+                        prefix, 0, prefix.length())) {
+                    entries.add(new CompletionCard.Entry(keyword,
+                            "mot-clé", CompletionCard.KIND_KEYWORD));
+                }
+                if (entries.size() >= 12) {
+                    break;
+                }
+            }
+        }
+        if (symbolIndex == null) {
+            return entries;
+        }
         for (SymbolIndex.Candidate candidate : symbolIndex.queryDetailed(prefix, 8)) {
             String nature = candidate.nature();
             int kind = CompletionCard.KIND_WORD;
@@ -3782,6 +3812,9 @@ public final class EditorView extends View {
                     : nature + (candidate.line() >= 0 ? " · ligne " + (candidate.line() + 1)
                             : "");
             entries.add(new CompletionCard.Entry(candidate.name(), detail, kind));
+            if (entries.size() >= 20) {
+                break;
+            }
         }
         return entries;
     }

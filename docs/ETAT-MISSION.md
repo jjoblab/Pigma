@@ -1,6 +1,6 @@
 # État de la mission Pigma
 
-Mise à jour : session 35 (correctif appareil), le 2026-11-25. Rester factuel et
+Mise à jour : session 41 (thèmes, complétion de base), le 2026-11-25. Rester factuel et
 vérifiable face à `git log` : chaque affirmation ci-dessous se
 retrouve dans le dépôt ou dans un journal de build.
 
@@ -15,6 +15,77 @@ popups de la vue portaient déjà quittent l'écran (recherche,
 aller-à, signature, sélection, copie du texte). Le harnais
 39/39 verts, l'APK reconstruit (6,99 Mo, signé debug) et livré dans
 download/.**
+
+## Session 41 — les thèmes de plus, la complétion de base sans serveur (2026-11-25)
+
+0. **La réponse à la question d'architecture** (le propriétaire a
+   demandé si notre approche peut faire « comme Sora Editor, avec
+   le registre d'espace partagé ») : OUI ELLE POURRAIT — mais ce
+   n'est pas ce qui manque. Le LspProject de la référence est un
+   REGISTRE : définitions de serveurs par extension, processus
+   PARTAGÉS entre N éditeurs, diagnostics communs. Notre
+   bibliothèque mono-éditeur embarquable (un LspEditor par vue)
+   n'en a pas l'usage aujourd'hui. Le jour où Pigma porte PLUSIEURS
+   éditeurs sur le MÊME espace de travail, la façade se scinde en
+   deux : un registre (l'espace, les serveurs, la durée de vie des
+   processus) et la façade par document — l'API de la session 40
+   (ConnectionStatus, écouteur, hasConnection) se transporte telle
+   quelle : le registre porterait les connexions, la façade
+   déléguerait. Rien à refaire, tout à brancher.
+
+0. **Les thèmes** : quatre palettes de plus (Solaire papier chaud,
+   Forêt vert profond, Océan bleu nuit, Café brun chaud — chacun
+   son fond, ses portées et ses natures sémantiques propres, le
+   registre SEMANTIC par thème remplace les deux cartes en dur).
+   L'app porte six boutons de thème au tiroir. Aucune
+   retokenisation (le scénario du harnais le prouve par les six).
+
+0. **La complétion de base SANS serveur** (la demande explicite du
+   propriétaire, à la leçon de la référence : sa liste statique
+   sKeywords + les identifiants du document) :
+   `LanguageKeywords` (module syntax) porte les mots-clés des six
+   langages livrés (Java, XML, JSON, Kotlin, Lua avec sa
+   bibliothèque standard, SQL) ; la fusion au bandeau se fait dans
+   `localCompletionEntries` — les mots-clés (KIND_KEYWORD, 12
+   max) d'abord, l'index des symboles ensuite. Le Lua sans
+   serveur propose « local » au préfixe « loc » — le harnais le
+   vérifie.
+
+0. **Le garde des gestes** (la panne du harnais après la fusion) :
+   le bandeau ne vit NI pendant un geste de sélection (le tap
+   suivant devait atteindre le texte — la carte interceptait le
+   DOWN : le double-tap mourait, la loupe n'escamotait plus rien)
+   NI sur une sélection vivante (le mot n'y se tape pas).
+
+0. **Le harnais passe à 46 scénarios** (le scénario neuf :
+   complétion sans serveur Java et Lua, bandeau vidé au retour),
+   tests des cinq modules verts, politique OK (150 fichiers), le
+   push du commit c7545c7 (le token du propriétaire, credential
+   store posé — le prochain recyclage du bac n'y perdra plus
+   l'accès).
+
+## Les étapes restantes du rapport (la liste à jour)
+
+1. **Le serveur Lua réel sur l'appareil** — la panne du log du
+   propriétaire (le processus EmmyLua meurt juste après
+   l'initialisation : Stream closed) reste à reproduire sur
+   l'appareil ; le toast de la session 40 (débranché + la
+   dernière ligne de stderr) dira la cause exacte ; les correctifs
+   candidats (rootUri propre, capacités client réelles) sont déjà
+   poussés — la vérification demandera un nouveau log appareil.
+2. **La CI manuelle** (workflow_dispatch posé en session 39) — le
+   secret GitHub du registre de paquets reste à poser par le
+   propriétaire, le pipeline passera alors au run 7.
+3. **Les mesures de performances** — le rendu des 52 004 lignes
+   tient (2,6 ms d'ouverture au harnais JVM) ; reste la mesure
+   appareil réelle (le panneau de mesures vit, la capture
+   systématique sur l'écran physique manque).
+4. **Les thèmes de l'API publique** — les six palettes vivent ;
+   un hôte tiers doit pouvoir apporter la sienne (l'API
+   applyTheme l'accepte, la doc du README reste à écrire).
+5. **Le registre multi-serveurs** — le chantier conditionné du
+   point 0 ci-dessus : le jour où l'app hôte ouvre plusieurs
+   éditeurs sur le même espace de travail.
 
 ## Session 40 — la connexion LSP gérée proprement, l'état observable, le toast (2026-11-25)
 
