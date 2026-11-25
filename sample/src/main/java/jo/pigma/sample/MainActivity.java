@@ -264,6 +264,11 @@ public final class MainActivity extends Activity {
         // complétion, la signature, les diagnostics à la carte — la
         // bibliothèque le porte.
         lsp = LspEditor.attach(editorView);
+        // le cycle de la connexion au doigt : le toast y dit la
+        // liaison en cours, vivante, morte (avec sa raison) — la
+        // machine à états de la bibliothèque y parle à l'écran
+        lsp.setConnectionListener((status, reason) -> runOnUiThread(() ->
+                onLspConnectionChanged(status, reason)));
         lsp.setDiagnosticsListener(fresh -> runOnUiThread(() -> {
             updateDiagnostics();
             editorView.invalidate();
@@ -765,7 +770,9 @@ public final class MainActivity extends Activity {
      * détachement que le serveur Lua).
      */
     private void onLspToggleClicked(View button) {
-        if (lsp.isConnected()) {
+        // une liaison posée (vivante OU morte : la nettoyer) se
+        // débranche ; le bouton ne rebranche jamais par-dessus
+        if (lsp.hasConnection()) {
             detachLsp();
             return;
         }
@@ -794,8 +801,83 @@ public final class MainActivity extends Activity {
      * extrait, le document y est un vrai fichier. Débrancher coupe le
      * processus.
      */
+    /**
+     * Le changement d'état de la connexion du serveur de langage :
+     * l'écran le dit au doigt (le toast) — la liaison en cours, le
+     * serveur vivant, le serveur mort avec sa raison (la stderr du
+     * serveur EmmyLua y complète : sa dernière ligne dit la cause
+     * exacte de la mort).
+     *
+     * @param status le nouvel état de la connexion
+     * @param reason la cause du changement (null : pas de cause)
+     */
+    private void onLspConnectionChanged(LspEditor.ConnectionStatus status, String reason) {
+        switch (status) {
+            case CONNECTING:
+                Toast.makeText(this, "connexion au serveur…",
+                        Toast.LENGTH_SHORT).show();
+                break;
+            case CONNECTED:
+                Toast.makeText(this, "serveur connecté ✔",
+                        Toast.LENGTH_SHORT).show();
+                // les deux boutons de serveur suivent l'état réel de
+                // la liaison (le branchement ne vaut pas connexion :
+                // la machine à états y décide, le harnais y clique
+                // sur le texte)
+                lspButton.setText("LSP ✔");
+                lspLuaButton.setText("LSP Lua ✔");
+                updateStatus();
+                break;
+            case DISCONNECTED:
+            default:
+                lspButton.setText("LSP");
+                lspLuaButton.setText("LSP Lua");
+                lspLabel = null;
+                String stderr = tailOfEmmyluaStderr();
+                String message = reason != null || stderr != null
+                        ? "serveur déconnecté"
+                                + (reason != null ? " — " + reason : "")
+                                + (stderr != null ? " — " + stderr : "")
+                        : "serveur déconnecté";
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+                updateStatus();
+                break;
+        }
+    }
+
+    /**
+     * La dernière ligne parlante de la stderr du serveur EmmyLua
+     * (l'arrière du processus y dit sa mort : l'erreur de démarrage,
+     * le port occupé, la ressource manquante).
+     *
+     * @return la ligne, ou null quand elle ne parle pas
+     */
+    private String tailOfEmmyluaStderr() {
+        File log = new File(new File(getCacheDir(), "emmylua"),
+                "resources/stderr.log");
+        if (!log.isFile()) {
+            return null;
+        }
+        try (java.io.BufferedReader lines = new java.io.BufferedReader(
+                new java.io.FileReader(log))) {
+            String last = null;
+            String line;
+            while ((line = lines.readLine()) != null) {
+                if (!line.isBlank()) {
+                    last = line;
+                }
+            }
+            return last != null && last.length() > 120
+                    ? last.substring(0, 120) : last;
+        } catch (java.io.IOException noRead) {
+            return null;
+        }
+    }
+
     private void onLspLuaClicked(View button) {
-        if (lsp.isConnected()) {
+        // une liaison posée (vivante OU morte : la nettoyer) se
+        // débranche d'abord — le serveur neuf part propre
+        if (lsp.hasConnection()) {
             detachLsp();
             return;
         }
@@ -851,9 +933,11 @@ public final class MainActivity extends Activity {
             return;
         }
         lsp.connectProcess(server, document.toURI().toString(), "lua");
-        lspLabel = "EmmyLua hors processus";
-        CrashJournal.setSection("LSP Lua (branché)");
-        lspLuaButton.setText("LSP Lua ✔");
+        // l'état de la connexion y décide désormais : le toast
+        // « serveur connecté » naît de la machine à états (le
+        // branchement seul ne vaut pas connexion — le handshake y
+        // peut échouer)
+        CrashJournal.setSection("LSP Lua (branchement)");
         updateDiagnostics();
     }
 

@@ -103,6 +103,20 @@ public final class LspSession {
     public interface Listener {
 
         /**
+         * Le canal de la liaison s'est fermé (le lecteur lsp4j en
+         * témoigne : le serveur est mort ou le tube a cassé — le
+         * scénario du serveur réel qui tombe juste après sa
+         * réponse d'initialisation). L'hôte y range son état et
+         * l'écran y dit la liaison morte (le toast de l'app).
+         *
+         * @param byServer vrai quand la fermeture vient du serveur
+         *                  (mort du processus), faux quand la
+         *                  liaison se débranche elle-même
+         */
+        default void onStopped(boolean byServer) {
+        }
+
+        /**
          * Le serveur publie les diagnostics d'un document : la liste
          * ENTIÈRE remplace la précédente (le protocole est à
          * remplacement).
@@ -196,7 +210,7 @@ public final class LspSession {
         PipedOutputStream clientOut = new PipedOutputStream(serverIn);
         Launcher<LanguageServer> clientSide = LSPLauncher.createClientLauncher(
                 new ClientEndpoint(listener), clientIn, clientOut);
-        clientSide.startListening();
+        java.util.concurrent.Future<Void> listening = clientSide.startListening();
         Launcher<LanguageClient> serverSide = LSPLauncher.createServerLauncher(
                 server, serverIn, serverOut);
         serverSide.startListening();
@@ -204,6 +218,11 @@ public final class LspSession {
             aware.connect(serverSide.getRemoteProxy());
         }
         LspSession session = new LspSession(clientSide, new ArrayList<>());
+        // la mort du canal se voit AUSSI en processus partagé (le
+        // harnais y ferme les canaux sous la façade : l'état y
+        // apprend la liaison morte — le même droit que le hors
+        // processus)
+        session.watchReader(listening, listener);
         // l'arrêt ferme d'abord les écritures : chaque lecteur voit la
         // fin de flux (pas de tube cassé), puis les lectures se
         // ferment — les tubes meurent avec la liaison
@@ -236,10 +255,11 @@ public final class LspSession {
     /**
      * La racine de l'espace de travail des négociations qui
      * suivent (l'initialize la porte aux serveurs réels — la
-     * référence y pose l'URI du projet ; l'app y pose l'espace
-     * de travail du document démo).
+     * référence y pose l'URI du projet ; l'app y pose le DOSSIER
+     * de travail du serveur : une URI de dossier PROPRE, sans
+     * fragment « .. » — les serveurs réels la normalisent mal).
      *
-     * @param uri l'URI racine, jamais null
+     * @param uri l'URI racine (un dossier), jamais null
      */
     public void setRootUri(String uri) {
         rootUri = Objects.requireNonNull(uri);
@@ -259,8 +279,14 @@ public final class LspSession {
         Objects.requireNonNull(output);
         Launcher<LanguageServer> launcher = LSPLauncher.createClientLauncher(
                 new ClientEndpoint(listener), input, output);
-        launcher.startListening();
+        java.util.concurrent.Future<Void> listening = launcher.startListening();
         LspSession session = new LspSession(launcher, new ArrayList<>());
+        // la mort du canal se voit : le lecteur lsp4j finit quand le
+        // flux d'entrée se ferme (le processus meurt, le tube casse)
+        // — l'écouteur y apprend la liaison morte, la façade y
+        // arrête ses envois (la référence fait pareil : la lecture
+        // finie y propage l'état)
+        session.watchReader(listening, listener);
         // l'écriture se ferme la première (le serveur voit la fin de
         // flux), la lecture ensuite — notre lecteur ne subit pas de
         // tube cassé
@@ -286,7 +312,7 @@ public final class LspSession {
     public CompletableFuture<InitializeResult> initialize(String clientName) {
         InitializeParams params = new InitializeParams();
         params.setClientInfo(new ClientInfo(clientName));
-        params.setCapabilities(new ClientCapabilities());
+        params.setCapabilities(realClientCapabilities());
         // la racine de l'espace de travail et son dossier (la
         // leçon de la référence : EmmyLua s'y oriente — le serveur
         // sans racine ne sait où lire ses ressources). L'URI du
@@ -305,6 +331,52 @@ public final class LspSession {
             launcher.getRemoteProxy().initialized(new InitializedParams());
             return result;
         });
+    }
+
+    /**
+     * Les capacités RÉELLES du client (la leçon de la référence :
+     * elle y déclare tout ce que son client sait faire — un
+     * {@code ClientCapabilities} vide offense les serveurs réels
+     * prudents, qui y refusent de travailler). La nôtre sait : la
+     * synchronisation de document (incrémentale et intégrale), le
+     * survol, la complétion, l'aide aux paramètres, les
+     * diagnostics publiés, le surlignage des occurrences, le
+     * renommage, l'aller-à la définition, les références, le
+     * formatage, les inlays et les actions de code.
+     *
+     * @return les capacités déclarées, jamais {@code null}
+     */
+    private static ClientCapabilities realClientCapabilities() {
+        java.util.List<String> markups = java.util.List.of("markdown", "plaintext");
+        org.eclipse.lsp4j.TextDocumentClientCapabilities text =
+                new org.eclipse.lsp4j.TextDocumentClientCapabilities();
+        text.setSynchronization(
+                new org.eclipse.lsp4j.SynchronizationCapabilities(true, true, true));
+        text.setHover(new org.eclipse.lsp4j.HoverCapabilities(markups, true));
+        text.setCompletion(new org.eclipse.lsp4j.CompletionCapabilities(
+                new org.eclipse.lsp4j.CompletionItemCapabilities(true)));
+        text.setSignatureHelp(new org.eclipse.lsp4j.SignatureHelpCapabilities(
+                new org.eclipse.lsp4j.SignatureInformationCapabilities(markups),
+                true));
+        text.setPublishDiagnostics(
+                new org.eclipse.lsp4j.PublishDiagnosticsCapabilities(true));
+        text.setDocumentHighlight(
+                new org.eclipse.lsp4j.DocumentHighlightCapabilities());
+        text.setRename(new org.eclipse.lsp4j.RenameCapabilities(true, true));
+        text.setDefinition(new org.eclipse.lsp4j.DefinitionCapabilities());
+        text.setReferences(new org.eclipse.lsp4j.ReferencesCapabilities());
+        text.setFormatting(new org.eclipse.lsp4j.FormattingCapabilities());
+        text.setRangeFormatting(new org.eclipse.lsp4j.RangeFormattingCapabilities());
+        text.setCodeAction(new org.eclipse.lsp4j.CodeActionCapabilities());
+        text.setInlayHint(new org.eclipse.lsp4j.InlayHintCapabilities());
+        org.eclipse.lsp4j.WorkspaceClientCapabilities workspace =
+                new org.eclipse.lsp4j.WorkspaceClientCapabilities();
+        workspace.setWorkspaceFolders(true);
+        workspace.setApplyEdit(true);
+        org.eclipse.lsp4j.WindowClientCapabilities window =
+                new org.eclipse.lsp4j.WindowClientCapabilities();
+        window.setWorkDoneProgress(true);
+        return new ClientCapabilities(workspace, text, window, null);
     }
 
     /**
@@ -895,6 +967,34 @@ public final class LspSession {
     /** La liaison vit-elle encore ? (le diagnostic de la liaison) */
     public boolean isRunning() {
         return running;
+    }
+
+    /**
+     * Surveille la fin du lecteur : la liaison qui meurt du côté du
+     * serveur (le processus s'en va, le tube se ferme) y signale
+     * l'écouteur — le débranchement volontaire n'y compte pas
+     * ({@code running} descend d'abord, la lecture finit ensuite).
+     *
+     * @param listening le future du lecteur lsp4j
+     * @param listener  l'écouteur de la liaison
+     */
+    private void watchReader(java.util.concurrent.Future<Void> listening,
+            Listener listener) {
+        Thread watcher = new Thread(() -> {
+            try {
+                listening.get();
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } catch (Exception readerFailed) {
+                // le lecteur meurt en erreur : la liaison est morte
+            }
+            if (running) {
+                running = false;
+                listener.onStopped(true);
+            }
+        }, "lsp-reader-watch");
+        watcher.setDaemon(true);
+        watcher.start();
     }
 
     /**

@@ -57,6 +57,11 @@ final class CrashJournal {
      * @param storage le répertoire du stockage interne, jamais null
      */
     static void install(File storage) {
+        // le répertoire du journal se crée à l'installation (un
+        // stockage interne absent au premier lancement, un répertoire
+        // temporaire recyclé : l'écriture du plantage n'échoue pas
+        // en silence — le journal doit exister pour écrire)
+        storage.mkdirs();
         final Thread.UncaughtExceptionHandler previous =
                 Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {

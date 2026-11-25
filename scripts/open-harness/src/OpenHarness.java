@@ -20,6 +20,7 @@ import com.google.android.material.tabs.TabLayout;
 import jo.pigma.core.TextBuffer;
 import jo.pigma.editor.EditorView;
 import jo.pigma.editor.lsp.LspEditor;
+import jo.pigma.editor.lsp.LspEditor.ConnectionStatus;
 import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.editor.popups.DiagnosticCard;
 import jo.pigma.editor.popups.GotoBar;
@@ -138,6 +139,7 @@ public final class OpenHarness {
         screenRestyle();
         gutterBreakpoints();
         serverPositionsHostile();
+        connectionCycle();
         crashJournalCapture();
         stateSaveRestore();
         copyMeasures();
@@ -2787,6 +2789,72 @@ public final class OpenHarness {
      * le plantage lancé ici déclenche l'écriture réelle.
      */
     /**
+     * Le cycle de la connexion : la machine à états de la façade
+     * (la leçon de la référence) — CONNECTING à la prise, CONNECTED
+     * à la poignée de main, DISCONNECTED à la mort du serveur (le
+     * canal fermé s'y voit, l'écouteur y naît — le toast de l'app
+     * s'y branche). Les envois s'y arrêtent : la liaison morte ne
+     * reçoit plus rien.
+     */
+    private static void connectionCycle() throws InterruptedException {
+        begin("cycle de connexion : naît, vit, meurt — l'état y dit tout");
+        LspEditor facade = activity.harnessLsp();
+        java.util.List<String> events = java.util.Collections.synchronizedList(
+                new java.util.ArrayList<String>());
+        facade.setConnectionListener((status, reason) ->
+                events.add(status + (reason != null ? ":" + reason : "")));
+        check("la façade débranchée est DISCONNECTED",
+                facade.connectionStatus() == ConnectionStatus.DISCONNECTED);
+        // la prise : la connexion naît CONNECTING (la poignée de
+        // main court), vit CONNECTED (le document ouvert)
+        click("LSP");
+        for (int wait = 0; wait < 100
+                && facade.connectionStatus() != ConnectionStatus.CONNECTED
+                && events.size() < 2; wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+        }
+        check("la connexion vit CONNECTED",
+                facade.connectionStatus() == ConnectionStatus.CONNECTED);
+        check("la naissance y est dite (CONNECTING puis CONNECTED)",
+                events.size() >= 2
+                        && events.get(0).startsWith("CONNECTING")
+                        && events.get(1).startsWith("CONNECTED"));
+        check("la façade branchée est connectée", facade.isConnected());
+        // LE SERVEUR MEURT : le canal se ferme sous la façade —
+        // l'état meurt DISCONNECTED, l'écouteur le dit (le toast de
+        // l'app en naît : « serveur déconnecté »)
+        activity.harnessKillServer();
+        for (int wait = 0; wait < 100
+                && facade.connectionStatus() != ConnectionStatus.DISCONNECTED
+                && events.size() < 3; wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+        }
+        check("la mort du serveur se dit (DISCONNECTED)",
+                facade.connectionStatus() == ConnectionStatus.DISCONNECTED);
+        check("la mort y est portée à l'écouteur",
+                events.size() >= 3
+                        && events.get(2).startsWith("DISCONNECTED"));
+        // les envois s'arrêtent : la frappe après la mort ne part
+        // plus au serveur mort (la pompe se tait — les didChange ne
+        // fuient plus dans le canal fermé)
+        connection.commitText("x", 1);
+        View.harnessDrain(1000L);
+        frame();
+        check("la façade morte n'est plus connectée",
+                !facade.isConnected());
+        facade.setConnectionListener(null);
+        // le re-débranchement volontaire reste muet : un état déjà
+        // DISCONNECTED ne re-notifie pas
+        java.util.List<String> before = java.util.List.copyOf(events);
+        facade.disconnect();
+        View.harnessDrain(1000L);
+        check("le débranchement d'une liaison morte reste muet",
+                events.equals(before));
+    }
+
+    /**
      * Les positions hostiles du serveur : le correctif du crash de
      * l'appareil (le journal de l'utilisateur porte les deux —
      * NullPointerException d'askCodeActions au serveur mort,
@@ -2855,8 +2923,10 @@ public final class OpenHarness {
         check("l'edit aux bornes hostiles s'applique borné (ou s'ignore) sans lever",
                 !applied || editor.getBuffer().toString().contains("remplacé"));
         // le nettoyage : la liaison se débranche (le scénario
-        // suivant repart d'un écran propre)
-        click("LSP ✔");
+        // suivant repart d'un écran propre) — le serveur y est MORT
+        // (la machine à états a rendu le bouton à « LSP »), le clic
+        // sur l'état courant débranche la façade encore posée
+        click("LSP");
         editor.setServerHighlights(java.util.List.of());
         frame();
     }

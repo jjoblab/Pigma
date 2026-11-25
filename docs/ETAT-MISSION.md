@@ -16,6 +16,66 @@ aller-à, signature, sélection, copie du texte). Le harnais
 39/39 verts, l'APK reconstruit (6,99 Mo, signé debug) et livré dans
 download/.**
 
+## Session 40 — la connexion LSP gérée proprement, l'état observable, le toast (2026-11-25)
+
+0. **Le verdict sur LspProject** (question du propriétaire : notre
+   approche sans classe LspProject est-elle en faute ?) : NON — la
+   référence s'en sert de REGISTRE D'ESPACE DE TRAVAIL
+   (définitions de serveurs par extension, wrappers de processus
+   PARTAGÉS entre N éditeurs, conteneur de diagnostics commun,
+   fermer un éditeur sans tuer le serveur). Notre bibliothèque
+   mono-éditeur embarquable n'en a pas l'usage. Ce qui NOUS
+   manquait est ailleurs : la machine à états de leur LspEditor
+   (CONNECTING/CONNECTED/DISCONNECTED + onStatusChanged) et la
+   détection de la mort du canal de leur wrapper. Les deux y sont
+   portées.
+
+0. **Le nouveau log du propriétaire dit la panne exacte** : le
+   handshake RÉUSSIT (initialize répond !) puis le processus
+   EmmyLua MEURT juste après (« Stream closed » sur le
+   initialized), et les didChange fuient dans le canal mort
+   pendant 30 secondes — aucune détection, aucun état observable.
+   Trois causes corrigées :
+
+   - la racine envoyée hier portait « /.. » (l'URI document
+     amputée naïvement) : la racine est maintenant le DOSSIER
+     du document, une URI propre (la référence pose l'URI du
+     projet tout droit) ;
+   - le ClientCapabilities VIDE : les capacités RÉELLES du
+     client se déclarent maintenant (synchronisation, survol,
+     complétion, signature, diagnostics, surlignage, renommage,
+     aller-à, références, formatage, inlays, actions — le
+     miroir de ce que la façade sait) ;
+   - la mort du canal restait invisible : le lecteur lsp4j se
+     surveille (sa future finit), l'écouteur onStopped y naît.
+
+0. **La machine à états de la façade** : ConnectionStatus
+   (CONNECTING/CONNECTED/DISCONNECTED) + setConnectionListener
+   + connectionStatus() + hasConnection() (une liaison posée,
+   vivante OU morte — le bouton détache une morte avant de
+   rebrancher). isConnected() lit l'état, plus la présence.
+   Les envois s'arrêtent sur la liaison morte (la pompe
+   didChange se tait — plus de fuite de 30 secondes).
+
+0. **Le toast demandé** : « connexion au serveur… », « serveur
+   connecté ✔ », « serveur déconnecté — {raison} » (la stderr
+   d'EmmyLua y complète : sa dernière ligne dit la cause exacte
+   de la mort — l'écran du propriétaire dira ENFIN pourquoi le
+   serveur Lua meurt). Les boutons suivent l'état réel.
+
+0. **Le scénario harnais du cycle** : naissance dite, vie,
+   mort portée à l'écouteur, envois arrêtés, débranchement d'une
+   liaison morte muet. Le CrashJournal crée son répertoire à
+   l'installation (un stockage recyclé ne perd plus les plantages
+   en silence).
+
+Harnais 45/45 scénario(s) vert(s) (le cycle de connexion neuf),
+tests des cinq modules verts, politique OK (149 fichiers), APK
+rebâti (8,2 Mo). Le dépôt a été restauré par re-clone (le bac a
+été recyclé) ; le credential de push a disparu avec lui — le
+commit reste local tant que le propriétaire n'a pas reposé
+l'accès en écriture.
+
 ## Session 39 — la CI en pause, le défilement à deux axes, les points d'arrêt, le branchement Lua corrigé (2026-11-25)
 
 0. **La CI en pause** (demande du propriétaire : le dépôt n'est pas

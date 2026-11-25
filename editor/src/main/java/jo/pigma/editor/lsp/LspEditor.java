@@ -82,6 +82,46 @@ public final class LspEditor {
      * rafraîchit (le compte, la liste). L'appel arrive sur le fil de
      * l'interface (la façade y marshalle l'avis du lecteur).
      */
+    /**
+     * L'état de la connexion du serveur (la machine à états de la
+     * référence, portée à notre façade) : la connexion naît
+     * {@code CONNECTING} (la poignée de main y court), vit
+     * {@code CONNECTED} (le document ouvert, les fonctions posées),
+     * meurt {@code DISCONNECTED} (débranchement volontaire ou mort
+     * du serveur — le canal s'est fermé). L'hôte y observe le
+     * cycle et son écran y dit l'état (le toast de l'app y naît).
+     */
+    public enum ConnectionStatus {
+        /** La poignée de main court (initialize, didOpen). */
+        CONNECTING,
+        /** Le serveur vit, le document est ouvert. */
+        CONNECTED,
+        /** Aucun serveur : jamais branché, débranché, ou mort. */
+        DISCONNECTED
+    }
+
+    /**
+     * L'écouteur du cycle de la connexion (l'hôte y pose son toast,
+     * son état d'écran, ses compteurs).
+     */
+    public interface ConnectionListener {
+
+        /**
+         * L'état de la connexion vient de changer (le changement
+         * y est LU, pas poussé : l'écouteur interroge
+         * {@link #connectionStatus} à son rythme).
+         *
+         * @param status le nouvel état, jamais {@code null}
+         * @param reason la cause du changement ({@code null} quand
+         *               la connexion naît simplement)
+         */
+        void onStatusChanged(ConnectionStatus status, String reason);
+    }
+
+    /**
+     * L'écouteur des diagnostics publiés par le serveur (le panneau
+     * de l'hôte y suit les erreurs du document).
+     */
     public interface DiagnosticsListener {
 
         /**
@@ -200,6 +240,15 @@ public final class LspEditor {
     private volatile boolean documentOpened;
 
     /**
+     * L'état observable de la connexion (l'écouteur y naît à son
+     * changement — la machine à états de la référence).
+     */
+    private volatile ConnectionStatus connectionStatus = ConnectionStatus.DISCONNECTED;
+
+    /** L'écouteur du cycle de la connexion (l'hôte). */
+    private volatile ConnectionListener connectionListener;
+
+    /**
      * L'exécuteur de l'arrêt : la poignée de main de la fermeture
      * (l'attente de la réponse du serveur, la fermeture ordonnée
      * des canaux) vit HORS du fil d'interface — l'écran ne gèle
@@ -315,17 +364,21 @@ public final class LspEditor {
         this.session = liaison;
         this.uri = uri;
         resetProviders();
-        // la racine de l'espace de travail se pose AVANT la
-        // négociation (l'initialize la porte aux serveurs réels —
-        // EmmyLua s'y oriente : la référence y pose l'URI du
-        // projet ; l'app y pose le dossier du document)
-        String root = uri.endsWith("/") ? uri : uri + "/..";
-        liaison.setRootUri(root);
+        // la connexion naît : la poignée de main y court (l'état
+        // observable — la machine à états de la référence ; l'hôte
+        // y dit « connexion en cours » au doigt)
+        moveTo(ConnectionStatus.CONNECTING, null);
+        liaison.setRootUri(rootUriOf(uri));
         liaison.initialize("pigma").whenComplete((result, failure) -> {
             // la négociation a échoué (le serveur mort au départ, le
             // canal cassé) : le document n'y ouvre pas — la liaison
             // sans poignée de main ne connaît rien
             if (failure != null || result == null) {
+                // la négociation a échoué : la liaison est morte au
+                // départ — l'état le dit (le toast de l'app y
+                // naîtra : « le serveur ne répond pas »)
+                moveTo(ConnectionStatus.DISCONNECTED,
+                        failure != null ? failure.getMessage() : "aucune réponse d'initialisation");
                 return;
             }
             // les capacités négociées y tombent (le fil du lecteur) :
@@ -340,6 +393,10 @@ public final class LspEditor {
             // paraît morte : « non connecté »)
             liaison.didOpen(uri, view.getBuffer().toString(), languageId);
             documentOpened = true;
+            // la connexion vit : le document ouvert, les capacités
+            // connues — l'état observable le dit (le toast de
+            // l'app : « serveur connecté »)
+            moveTo(ConnectionStatus.CONNECTED, null);
             view.post(() -> {
                 view.setServerHighlights(List.of());
                 scheduleHighlightSync();
@@ -365,7 +422,7 @@ public final class LspEditor {
      * @return vrai si un serveur y vit
      */
     public boolean isConnected() {
-        return session != null;
+        return connectionStatus == ConnectionStatus.CONNECTED;
     }
 
     /**
@@ -395,6 +452,7 @@ public final class LspEditor {
         resetProviders();
         documentOpened = false;
         capabilities = LspCapabilities.NONE;
+        moveTo(ConnectionStatus.DISCONNECTED, null);
         // la poignée de main de l'arrêt part au fil de fond : le fil
         // d'interface ne l'attend plus (l'attente d'une seconde y
         // gelait l'écran) — la liaison change de main ici, la
@@ -484,6 +542,38 @@ public final class LspEditor {
      *
      * @param listener l'écouteur (null : personne n'écoute)
      */
+    /**
+     * Pose l'écouteur du cycle de la connexion (l'app y dit la
+     * liaison vivante ou morte au doigt — le toast).
+     *
+     * @param listener l'écouteur, {@code null} pour le retirer
+     */
+    public void setConnectionListener(ConnectionListener listener) {
+        connectionListener = listener;
+    }
+
+    /**
+     * L'état courant de la connexion (l'écouteur y naît, l'écran
+     * y lit).
+     *
+     * @return l'état, jamais {@code null}
+     */
+    public ConnectionStatus connectionStatus() {
+        return connectionStatus;
+    }
+
+    /**
+     * Une liaison vit-elle SOUS la façade (branchée ET vivante, ou
+     * morte mais pas encore débranchée) ? Le bouton de l'écran y
+     * décide : détacher une liaison morte (la nettoyer) plutôt que
+     * d'en relancer une par-dessus.
+     *
+     * @return vrai tant qu'une liaison y est posée
+     */
+    public boolean hasConnection() {
+        return session != null;
+    }
+
     public void setDiagnosticsListener(DiagnosticsListener listener) {
         diagnosticsListener = listener;
     }
@@ -948,6 +1038,16 @@ public final class LspEditor {
     private LspSession.Listener sessionListener() {
         return new LspSession.Listener() {
             @Override
+            public void onStopped(boolean byServer) {
+                // le canal s'est fermé : le serveur est mort (la
+                // lecture finit) — l'état le dit au doigt (le toast
+                // de l'app), les envois s'y arrêtent
+                documentOpened = false;
+                view.post(() -> moveTo(ConnectionStatus.DISCONNECTED,
+                        byServer ? "le serveur s'est arrêté" : null));
+            }
+
+            @Override
             public void onDiagnostics(String published, List<LspDiagnostic> fresh) {
                 diagnostics = List.copyOf(fresh);
                 view.post(() -> {
@@ -1084,8 +1184,40 @@ public final class LspEditor {
      * cache se range, la trame suivante redemande ; la signature en
      * vol se périme pareillement (la génération avance).
      */
+    /**
+     * Change l'état de la connexion : l'écouteur y est appelé sur
+     * le fil qui change l'état (la notification ne re-rentre pas
+     * dans la façade — l'écouteur d'hôte y fait ce qu'il veut).
+     *
+     * @param fresh  le nouvel état, jamais {@code null}
+     * @param reason la cause lue par l'hôte, {@code null} permise
+     */
+    /**
+     * L'URI de l'espace de travail d'un document : le DOSSIER qui
+     * le porte (l'URI du document amputée de son dernier segment —
+     * une URI de dossier propre, sans fragment « .. » que les
+     * serveurs réels normalisent mal ; la référence y pose
+     * l'URI du projet tout droit).
+     *
+     * @param documentUri l'URI du document
+     * @return l'URI du dossier, jamais {@code null}
+     */
+    private static String rootUriOf(String documentUri) {
+        int cut = documentUri.lastIndexOf('/');
+        return cut > 0 ? documentUri.substring(0, cut) : documentUri;
+    }
+
+    private void moveTo(ConnectionStatus fresh, String reason) {
+        ConnectionStatus former = connectionStatus;
+        connectionStatus = fresh;
+        if (former != fresh && connectionListener != null) {
+            connectionListener.onStatusChanged(fresh, reason);
+        }
+    }
+
     private void pushDocumentToServer() {
-        if (session != null && uri != null && documentOpened) {
+        if (session != null && uri != null && documentOpened
+                && connectionStatus == ConnectionStatus.CONNECTED) {
             session.didChange(uri, view.getBuffer().toString());
             resetProviders();
             // les plages surlignées vivaient dans le document d'avant :
