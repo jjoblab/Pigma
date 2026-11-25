@@ -25,6 +25,7 @@ import java.util.Locale;
 import jo.pigma.editor.EditorThemes;
 import jo.pigma.editor.EditorView;
 import jo.pigma.editor.lsp.LspEditor;
+import jo.pigma.lsp.LspWorkspace;
 import jo.pigma.editor.popups.PopupStyle;
 import jo.pigma.editor.popups.QuickActionCard;
 import jo.pigma.core.TextBuffer;
@@ -130,6 +131,8 @@ public final class MainActivity extends Activity {
     private com.google.android.material.appbar.MaterialToolbar toolbar;
     private androidx.drawerlayout.widget.DrawerLayout drawerLayout;
     private LinearLayout drawerMenu;
+    /** La colonne du contenu (le second éditeur du Duo s'y pose). */
+    private LinearLayout contentColumn;
     private BottomSheetBehavior<LinearLayout> sheetBehavior;
     private Button undoButton;
     private Button redoButton;
@@ -148,6 +151,12 @@ public final class MainActivity extends Activity {
      * leurs caches.
      */
     private LspEditor lsp;
+    /** Le registre partagé (le bouton Duo y attache deux éditeurs). */
+    private LspWorkspace workspace;
+    /** La façade du second éditeur (null : le mode duo vit éteint). */
+    private LspEditor duo;
+    /** Le second éditeur (l'espace de travail partagé s'y éprouve). */
+    private EditorView duoEditor;
 
     /** L'étiquette du serveur branché (la feuille la lit). */
     private String lspLabel;
@@ -506,7 +515,7 @@ public final class MainActivity extends Activity {
 
         // le contenu : l'app-bar au sommet, l'éditeur plein écran
         // dessous, le statut au bas
-        LinearLayout contentColumn = new LinearLayout(this);
+        contentColumn = new LinearLayout(this);
         contentColumn.setOrientation(LinearLayout.VERTICAL);
         contentColumn.addView(appBar, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -573,6 +582,7 @@ public final class MainActivity extends Activity {
                 hugeCycleButton()));
         menuColumn.addView(row(margin, undoButton, redoButton));
         menuColumn.addView(row(margin, lspButton, lspLuaButton));
+        menuColumn.addView(row(margin, duoButton()));
         menuColumn.addView(row(margin, journalButton()));
 
         // le drawer : le contenu et la feuille dessous, le menu par-
@@ -733,6 +743,113 @@ public final class MainActivity extends Activity {
                 return Languages.SQL;
             default:
                 return Languages.JAVA;
+        }
+    }
+
+    /**
+     * Le bouton Duo : deux éditeurs, UN serveur (le registre partagé
+     * de l'espace de travail — la leçon de Sora). Le premier éditeur
+     * monte le serveur, le second s'y RACCROCHE : la poignée de main
+     * ne court qu'une fois, l'avis du document A n'atteint que
+     * l'éditeur A (le dispatch par URI). Le re-tap détache tout.
+     */
+    private Button duoButton() {
+        Button button = new Button(this);
+        button.setText("Duo");
+        button.setOnClickListener(view -> {
+            if (duo != null) {
+                detachDuo();
+                return;
+            }
+            attachDuo();
+        });
+        return button;
+    }
+
+    /**
+     * Le branchement Duo : le registre naît (s'il ne vit pas), les
+     * deux éditeurs s'y attachent — le document Java de l'onglet
+     * courant au premier, un fragment XML au second. Un seul serveur
+     * de démo les porte (le multi-documents).
+     */
+    private void attachDuo() {
+        workspace = new LspWorkspace();
+        // le second éditeur : un fragment XML de démonstration (le
+        // document du registre — l'avis y reviendra par SON URI)
+        String xml = "<?xml version=\"1.0\"?>\n<configuration>\n  <seuil valeur=\"12\"/>\n</configuration>\n";
+        duoEditor = new EditorView(this);
+        duoEditor.setLanguage(languageOf("XML"), xml);
+        // la façade du second au registre (l'URI du document XML)
+        try {
+            duo = LspEditor.attach(duoEditor);
+            duo.attachToWorkspace(workspace,
+                    LspWorkspace.inProcess("serveur de démo",
+                            () -> new DemoLanguageServer(null)),
+                    "file:///duo.xml", "xml");
+            // la façade du premier au registre AUSSI (le document de
+            // l'onglet courant — le MÊME serveur les porte, le
+            // raccrochage n'y remonte pas la liaison)
+            lsp.attachToWorkspace(workspace,
+                    LspWorkspace.inProcess("serveur de démo",
+                            () -> new DemoLanguageServer(null)),
+                    DOC_URI, "java");
+        } catch (java.io.IOException noPipe) {
+            Toast.makeText(this, "la liaison ne monte pas : " + noPipe.getMessage(),
+                    Toast.LENGTH_SHORT).show();
+            workspace = null;
+            return;
+        }
+        // le second éditeur se pose dans la colonne du contenu (la
+        // feuille basse de l'appareil y vit réelle ; la colonne du
+        // harnais porte le duo — 120 dp de hauteur)
+        duoEditor.layout(0, 0, 240, dp(120));
+        LinearLayout.LayoutParams pairParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(120));
+        contentColumn.addView(duoEditor, pairParams);
+        duoButtonLabel("Duo ✔");
+        CrashJournal.setSection("Duo (registre partagé)");
+        Toast.makeText(this, "deux éditeurs, un serveur", Toast.LENGTH_SHORT).show();
+    }
+
+    /**
+     * Le détachement Duo : les deux façades quittent le registre (le
+     * dernier parti ferme le serveur — la durée de vie du processus
+     * y suit les documents), le second éditeur se retire.
+     */
+    private void detachDuo() {
+        if (duo != null) {
+            duo.disconnect();
+            duo = null;
+        }
+        lsp.disconnect();
+        if (duoEditor != null) {
+            for (int at = contentColumn.getChildCount() - 1; at >= 0; at--) {
+                if (contentColumn.getChildAt(at) == duoEditor) {
+                    contentColumn.removeViewAt(at);
+                }
+            }
+            duoEditor = null;
+        }
+        workspace = null;
+        duoButtonLabel("Duo");
+        CrashJournal.setSection("Duo (détaché)");
+    }
+
+    /** L'étiquette du bouton Duo (le harnais y clique). */
+    private void duoButtonLabel(String label) {
+        for (int at = 0; at < drawerMenu.getChildCount(); at++) {
+            android.view.View child = drawerMenu.getChildAt(at);
+            if (child instanceof android.view.ViewGroup group) {
+                for (int inner = 0; inner < group.getChildCount(); inner++) {
+                    android.view.View leaf = group.getChildAt(inner);
+                    if (leaf instanceof Button && "Duo".contentEquals(
+                            ((Button) leaf).getText())
+                            || leaf instanceof Button && "Duo ✔".contentEquals(
+                            ((Button) leaf).getText())) {
+                        ((Button) leaf).setText(label);
+                    }
+                }
+            }
         }
     }
 
@@ -973,6 +1090,21 @@ public final class MainActivity extends Activity {
      */
     LspEditor harnessLsp() {
         return lsp;
+    }
+
+    /** La façade du second éditeur (le scénario Duo y lit l'état). */
+    LspEditor harnessDuo() {
+        return duo;
+    }
+
+    /** Le registre partagé (le scénario y compte les serveurs). */
+    LspWorkspace harnessWorkspace() {
+        return workspace;
+    }
+
+    /** Le second éditeur (le scénario y frappe le document XML). */
+    EditorView harnessDuoEditor() {
+        return duoEditor;
     }
 
     /**

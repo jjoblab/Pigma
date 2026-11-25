@@ -1,6 +1,6 @@
 # État de la mission Pigma
 
-Mise à jour : session 41 (thèmes, complétion de base), le 2026-11-25. Rester factuel et
+Mise à jour : session 42 (le registre partagé, multi-éditeur), le 2026-11-25. Rester factuel et
 vérifiable face à `git log` : chaque affirmation ci-dessous se
 retrouve dans le dépôt ou dans un journal de build.
 
@@ -15,6 +15,73 @@ popups de la vue portaient déjà quittent l'écran (recherche,
 aller-à, signature, sélection, copie du texte). Le harnais
 39/39 verts, l'APK reconstruit (6,99 Mo, signé debug) et livré dans
 download/.**
+
+## Session 42 — le registre partagé, le multi-éditeur (2026-11-25)
+
+0. **Le multi-éditeur vit** (la demande du propriétaire : « je ne
+   veux plus être mono-éditeur, comme Sora et même mieux ») :
+   `LspWorkspace` (module :lsp) porte le REGISTRE des serveurs d'un
+   espace de travail — un serveur PAR LANGAGE, monté par le PREMIER
+   éditeur attaché (la poignée de main n'y court qu'une fois), les
+   suivants s'y RACCROCHENT ; les documents partent par didOpen au
+   serveur vivant, les avis reviennent DISPATCHÉS PAR URI (l'avis
+   du document XML n'atteint QUE l'éditeur du document — jamais le
+   voisin), le DERNIER détaché ferme le serveur (la durée de vie du
+   processus suit les documents ouverts, pas les écrans).
+
+0. **La façade préservée** : `LspEditor.attachToWorkspace(registry,
+   definition, uri, languageId)` raccroche la façade de la session
+   40 au registre — la machine à états (ConnectionStatus, l'écouteur,
+   les toasts) se transporte TELLE QUELLE, `disconnect` détache du
+   registre. La voie directe (connectInProcess/connectProcess) vit
+   toujours : un éditeur seul n'y change rien.
+
+0. **Le protocole s'achève** : `LspSession.didClose(uri)` ferme le
+   document au serveur (le registre le demande au dernier lecteur
+   parti) — l'ombre de synchronisation s'y range, une réouverture
+   repart du texte entier.
+
+0. **L'app éprouve au doigt** : le bouton « Duo » du tiroir branche
+   DEUX éditeurs (le Java de l'onglet + un document XML) au MÊME
+   registre — un seul serveur de démo (multi-documents maintenant :
+   table URI→texte, chaque fonction du protocole lit le document
+   DEMANDÉ). Le re-tap détache tout.
+
+0. **Les preuves** : le harnais passe à 47 scénarios (le neuf :
+   registre partagé — deux éditeurs, UN serveur vivant, deux
+   documents ouverts, l'avis du XML au second éditeur SEUL, le
+   détachement ferme) ; le test `LspWorkspaceTest` (module :lsp)
+   éprouve la même mécanique sans l'écran (2 attach, 1 poignée de
+   main, dispatch par URI, dernier-parti ferme). Tests des cinq
+   modules verts, politique OK (152 fichiers), APK rebâti (8,2 Mo).
+
+0. **Deux enseignements de conception** (à retenir pour la suite) :
+   un abonné tardif au cycle des serveurs doit lire l'état COURANT
+   (l'événement de naissance est parti sans lui — le raccrochage
+   d'un serveur déjà vivant paraissait « jamais connecté ») ; les
+   fabriques du registre portent le PONT des publications (la liaison
+   montée sans écouteur perdait les diagnostics — personne ne
+   route au dispatch).
+
+## Les étapes restantes du rapport (la liste à jour)
+
+1. **Le serveur Lua réel sur l'appareil** — la panne du log du
+   propriétaire (EmmyLua meurt à l'initialisation : Stream closed)
+   reste à reproduire sur l'appareil ; le toast de la session 40
+   (débranché + dernière ligne de stderr) dira la cause exacte ; le
+   branchement Lua par PROCESSUS au REGISTRE (ofProcess) reste à
+   brancher au bouton LSP Lua (la voie directe y vit aujourd'hui).
+2. **La CI manuelle** (workflow_dispatch posé en session 39) — le
+   secret GitHub du registre de paquets reste à poser par le
+   propriétaire, le pipeline passera alors au run 7.
+3. **Les mesures de performances appareil** — le panneau vit, la
+   capture systématique sur l'écran physique manque.
+4. **Les thèmes de l'API publique** — les six palettes vivent ; la
+   doc README d'un hôte apportant SA palette reste à écrire.
+5. **La persistance du registre** — aujourd'hui le registre vit en
+   mémoire (un état d'app) ; le jour où l'app hôte survit à la
+   rotation, le registre s'y restaurera (les serveurs relancés,
+   les didOpen rejoués du texte courant).
 
 ## Session 41 — les thèmes de plus, la complétion de base sans serveur (2026-11-25)
 

@@ -19,6 +19,7 @@ import jo.pigma.editor.popups.DiagnosticCard;
 import jo.pigma.editor.popups.QuickActionCard;
 import jo.pigma.editor.selection.SelectionState;
 import jo.pigma.lsp.LspCapabilities;
+import jo.pigma.lsp.LspWorkspace;
 import jo.pigma.lsp.LspCodeAction;
 import jo.pigma.lsp.LspDiagnostic;
 import jo.pigma.lsp.LspDocumentSymbol;
@@ -245,6 +246,15 @@ public final class LspEditor {
      */
     private volatile ConnectionStatus connectionStatus = ConnectionStatus.DISCONNECTED;
 
+    /** L'identifiant du langage au registre (le didChange y route). */
+    private String languageId;
+
+    /** Le registre partagé (null : la voie directe d'un éditeur seul). */
+    private LspWorkspace workspace;
+
+    /** L'écouteur du document au registre (le détachement le retire). */
+    private LspWorkspace.DocumentListener workspaceListener;
+
     /** L'écouteur du cycle de la connexion (l'hôte). */
     private volatile ConnectionListener connectionListener;
 
@@ -303,6 +313,81 @@ public final class LspEditor {
      */
     public static LspEditor attach(EditorView view) {
         return new LspEditor(view);
+    }
+
+    /**
+     * Branche la façade au serveur PARTAGÉ d'un registre (la voie
+     * multi-éditeurs : le premier éditeur d'un langage y monte le
+     * serveur — la poignée de main y court UNE fois — les suivants
+     * s'y raccrochent : le document part par {@code didOpen} au
+     * serveur vivant, les avis y reviennent dispatchés par URI —
+     * l'avis du document voisin n'atteint QUE l'éditeur du
+     * document). Le dernier éditeur détaché ferme le serveur : la
+     * durée de vie du processus y suit les documents ouverts. Un
+     * registre partagé vit mieux qu'un mono-serveur par écran.
+     *
+     * @param registry    le registre de l'espace de travail, jamais
+     *                    {@code null}
+     * @param definition  la définition du serveur du langage, jamais
+     *                    {@code null}
+     * @param uri         l'URI du document au protocole
+     * @param languageId l'identifiant du langage au protocole
+     * @throws IOException si la fabrique du serveur échoue (les tubes)
+     */
+    public void attachToWorkspace(LspWorkspace registry,
+            LspWorkspace.ServerDefinition definition, String uri,
+            String languageId) throws java.io.IOException {
+        if (this.session != null || workspace != null) {
+            disconnect();
+        }
+        this.workspace = registry;
+        this.uri = uri;
+        this.languageId = languageId;
+        resetProviders();
+        // la connexion naît : la poignée de main court au registre
+        // (l'état observable le dit — le toast « connexion en cours »)
+        moveTo(ConnectionStatus.CONNECTING, null);
+        // l'écouteur du document : les avis du registre ne valent
+        // pour CE document (le fil du lecteur y appelle — le marshalling
+        // à la vue y suit)
+        workspaceListener = (published, fresh) -> {
+            if (uri.equals(published)) {
+                diagnostics = List.copyOf(fresh);
+                view.post(() -> {
+                    if (diagnosticsListener != null) {
+                        diagnosticsListener.onDiagnostics(diagnostics);
+                    }
+                    view.invalidate();
+                });
+            }
+        };
+        LspSession shared = registry.attach(languageId, definition, uri,
+                view.getBuffer().toString(), workspaceListener);
+        if (shared == null) {
+            // la fabrique a échoué : la façade reste débranchée (le
+            // toast de l'hôte y dira « la liaison ne monte pas »)
+            workspace = null;
+            workspaceListener = null;
+            this.uri = null;
+            moveTo(ConnectionStatus.DISCONNECTED, "la liaison ne monte pas");
+            throw new java.io.IOException("la fabrique du serveur a échoué");
+        }
+        this.session = shared;
+        // l'état du registre se transpose (le serveur déjà vivant y
+        // rend CONNECTED direct — l'attente du handshake sinon)
+        registry.addServerListener((serverName, connected, reason) -> {
+            if (connected) {
+                capabilities = shared.capabilities();
+                documentOpened = true;
+                moveTo(ConnectionStatus.CONNECTED, null);
+            } else {
+                documentOpened = false;
+                moveTo(ConnectionStatus.DISCONNECTED, reason);
+            }
+        });
+        attachProviders();
+        view.setServerQuickActionProvider(this::serverQuickActionsAt);
+        view.post(view::invalidate);
     }
 
     private LspEditor(EditorView view) {
@@ -432,6 +517,41 @@ public final class LspEditor {
      */
     public void disconnect() {
         if (session == null) {
+            return;
+        }
+        // la voie du registre : la façade s'y détache (le dernier
+        // parti ferme le serveur — les autres éditeurs du registre
+        // vivent), la voie directe garde la fermeture directe
+        if (workspace != null) {
+            LspWorkspace registry = workspace;
+            LspWorkspace.DocumentListener listener = workspaceListener;
+            String language = languageId;
+            String documentUri = uri;
+            view.removeCallbacks(documentSync);
+            view.removeCallbacks(highlightSync);
+            view.setInfoProvider(null);
+            view.setSuggestionProvider(null);
+            view.setSignatureProvider(null);
+            view.setDiagnosticProvider(null);
+            view.setServerQuickActionProvider(null);
+            view.setServerHighlights(List.of());
+            documentViewsGeneration.incrementAndGet();
+            view.setInlayHints(List.of());
+            view.setServerFoldRegions(List.of());
+            view.setServerSemantics(List.of());
+            resetProviders();
+            documentOpened = false;
+            capabilities = LspCapabilities.NONE;
+            workspace = null;
+            workspaceListener = null;
+            languageId = null;
+            session = null;
+            uri = null;
+            moveTo(ConnectionStatus.DISCONNECTED, null);
+            if (listener != null) {
+                registry.detach(language, documentUri, listener);
+            }
+            view.post(view::invalidate);
             return;
         }
         view.removeCallbacks(documentSync);
@@ -1218,7 +1338,15 @@ public final class LspEditor {
     private void pushDocumentToServer() {
         if (session != null && uri != null && documentOpened
                 && connectionStatus == ConnectionStatus.CONNECTED) {
-            session.didChange(uri, view.getBuffer().toString());
+            // la voie du registre : le document synchronisé au SHARED
+            // (le didChange du registre — le langage y route), la
+            // voie directe garde la sienne
+            if (workspace != null && languageId != null) {
+                workspace.didChange(languageId, uri,
+                        view.getBuffer().toString());
+            } else {
+                session.didChange(uri, view.getBuffer().toString());
+            }
             resetProviders();
             // les plages surlignées vivaient dans le document d'avant :
             // elles se rangent (les positions ne valent plus), la

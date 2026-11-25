@@ -26,6 +26,7 @@ import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
+import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.DefinitionParams;
 import org.eclipse.lsp4j.DocumentFormattingParams;
@@ -455,6 +456,27 @@ public final class LspSession {
         launcher.getRemoteProxy().getTextDocumentService().didOpen(
                 new DidOpenTextDocumentParams(
                         new TextDocumentItem(uri, languageId, 1, text)));
+    }
+
+    /**
+     * Annonce la fermeture d'un document (le protocole y range son
+     * texte : l'espace de travail partagé ferme le document au
+     * dernier lecteur parti — le serveur vit tant qu'un document
+     * s'y lit). L'ombre de synchronisation s'en va : une réouverture
+     * y repartira du texte entier.
+     *
+     * @param uri l'identifiant du document fermé
+     */
+    public void didClose(String uri) {
+        documentShadows.remove(uri);
+        try {
+            launcher.getRemoteProxy().getTextDocumentService().didClose(
+                    new DidCloseTextDocumentParams(
+                            new TextDocumentIdentifier(uri)));
+        } catch (Exception sendFailed) {
+            // le canal peut être déjà mort : la fermeture locale
+            // n'en dépend pas
+        }
     }
 
     /**

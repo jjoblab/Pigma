@@ -122,17 +122,33 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
     /** Les modificateurs de la légende (le bit de déclaration). */
     private static final List<String> TOKEN_MODIFIERS = List.of("declaration");
 
-    private final String uri;
-
     /** Le client du serveur (le canal de retour — les diagnostics y partent). */
     private volatile LanguageClient client;
 
-    /** Le texte courant du document (la synchronisation intégrale le tient). */
-    private volatile String text = "";
+    /** Le texte courant PAR URI (le serveur multi-documents : l'espace de travail partagé y attache N éditeurs). */
+    private final java.util.Map<String, String> texts = new java.util.concurrent.ConcurrentHashMap<>();
 
+    /** Le document demandé par une requête (les fonctions du protocole y reçoivent l'URI — le document s'y lit). */
+    private String document = "";
+
+    /**
+     * Le serveur générique : les documents s'y attachent par
+     * {@code didOpen} (le constructeur historique garde l'URI du
+     * document de démo — le document y naît ouvert).
+     *
+     * @param uri l'URI du document pré-ouvert (null : aucun)
+     */
     DemoLanguageServer(String uri) {
-        this.uri = uri;
+        if (uri != null) {
+            this.uri = uri;
+            document = uri;
+        } else {
+            this.uri = null;
+        }
     }
+
+    /** L'URI du document de démo (null : le serveur générique). */
+    private final String uri;
 
     @Override
     public void connect(LanguageClient client) {
@@ -201,7 +217,9 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
     public void didOpen(DidOpenTextDocumentParams params) {
         if (params.getTextDocument() != null
                 && params.getTextDocument().getText() != null) {
-            text = params.getTextDocument().getText();
+            String opened = params.getTextDocument().getUri();
+            texts.put(opened, params.getTextDocument().getText());
+            document = opened;
         }
         publishDiagnostics();
     }
@@ -211,10 +229,13 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
         if (params.getContentChanges() == null) {
             return;
         }
+        String changed = params.getTextDocument().getUri();
+        document = changed;
         // le protocole applique les changements dans l'ordre : une
         // plage remplacée (le delta du client), ou le texte entier
         // quand la plage manque (le repli)
-        StringBuilder applied = new StringBuilder(text);
+        StringBuilder applied = new StringBuilder(
+                texts.getOrDefault(changed, ""));
         for (TextDocumentContentChangeEvent change : params.getContentChanges()) {
             if (change.getRange() == null) {
                 applied = new StringBuilder(change.getText());
@@ -224,7 +245,7 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
             int end = offsetOf(applied, change.getRange().getEnd());
             applied.replace(start, end, change.getText());
         }
-        text = applied.toString();
+        texts.put(changed, applied.toString());
         publishDiagnostics();
     }
 
@@ -261,7 +282,9 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
 
     @Override
     public void didClose(DidCloseTextDocumentParams params) {
-        // le document se ferme : rien à retenir
+        // le document se ferme : le texte s'y range (l'espace
+        // partagé ferme le document au dernier lecteur parti)
+        texts.remove(params.getTextDocument().getUri());
     }
 
     @Override
@@ -269,6 +292,33 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
         // la sauvegarde ne change rien au diagnostic
     }
 
+    /**
+     * L'URI visé par une réponse (le document de démo au mode démo,
+     * le document demandé au mode générique — le registre partagé y
+     * attache N documents).
+     */
+    private String target() {
+        return uri != null ? uri : document;
+    }
+
+    /**
+     * Le texte d'un document demandé (la table des documents ouverts
+     * — le document de démo y naît, les documents du registre partagé
+     * s'y attachent par didOpen).
+     */
+    private String documentOf(String asked) {
+        document = asked;
+        return texts.getOrDefault(asked, "");
+    }
+
+    /**
+     * Le texte du document courant (les aides sans URI — la ligne,
+     * le mot, les occurrences : le document de la DERNIÈRE requête
+     * s'y lit).
+     */
+    private String currentText() {
+        return texts.getOrDefault(document, "");
+    }
     @Override
     public CompletableFuture<Hover> hover(HoverParams params) {
         int line = params.getPosition().getLine();
@@ -284,22 +334,24 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
     @Override
     public CompletableFuture<Either<List<CompletionItem>, CompletionList>> completion(
             CompletionParams params) {
+        String current = texts.getOrDefault(
+                params.getTextDocument().getUri(), "");
         String prefix = prefixAt(params.getPosition().getLine(),
                 params.getPosition().getCharacter());
         // le vocabulaire du document : les mots distincts qui
         // poursuivent le préfixe, huit au plus, dans l'ordre du texte
         TreeSet<String> matches = new TreeSet<>();
         int at = 0;
-        while (at < text.length() && matches.size() < 8) {
-            while (at < text.length() && wordBreak(text.charAt(at))) {
+        while (at < current.length() && matches.size() < 8) {
+            while (at < current.length() && wordBreak(current.charAt(at))) {
                 at++;
             }
             int start = at;
-            while (at < text.length() && !wordBreak(text.charAt(at))) {
+            while (at < current.length() && !wordBreak(current.charAt(at))) {
                 at++;
             }
             if (at > start) {
-                String word = text.substring(start, at);
+                String word = current.substring(start, at);
                 if (word.startsWith(prefix) && word.length() > prefix.length()) {
                     matches.add(word);
                 }
@@ -314,14 +366,15 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
 
     @Override
     public CompletableFuture<SignatureHelp> signatureHelp(SignatureHelpParams params) {
-        int caret = offsetOf(text, params.getPosition());
+        String current = documentOf(params.getTextDocument().getUri());
+        int caret = offsetOf(current, params.getPosition());
         // l'ouvrante non fermée de l'appel courant : en remontant du
         // curseur, les fermantes se consomment ; un finisseur
         // d'instruction avant elle coupe la recherche
         int depth = 0;
         int openParen = -1;
         for (int at = caret - 1; at >= 0; at--) {
-            char c = text.charAt(at);
+            char c = current.charAt(at);
             if (c == ')') {
                 depth++;
             } else if (c == '(') {
@@ -342,7 +395,7 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
         int active = 0;
         int nested = 0;
         for (int at = openParen + 1; at < caret; at++) {
-            char c = text.charAt(at);
+            char c = current.charAt(at);
             if (c == '(' || c == '[' || c == '{') {
                 nested++;
             } else if (c == ')' || c == ']' || c == '}') {
@@ -376,7 +429,7 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
         List<Location> places = new ArrayList<>();
         if (word != null) {
             for (int[] occurrence : occurrencesOf(word)) {
-                places.add(new Location(uri, rangeOf(occurrence)));
+                places.add(new Location(target(), rangeOf(occurrence)));
             }
         }
         return CompletableFuture.completedFuture(places);
@@ -419,19 +472,20 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
             replacements.add(new TextEdit(rangeOf(occurrence), params.getNewName()));
         }
         WorkspaceEdit edit = new WorkspaceEdit();
-        edit.setChanges(java.util.Map.of(uri, replacements));
+        edit.setChanges(java.util.Map.of(target(), replacements));
         return CompletableFuture.completedFuture(edit);
     }
 
     @Override
     public CompletableFuture<List<Either<org.eclipse.lsp4j.Command, CodeAction>>> codeAction(
             CodeActionParams params) {
+        String current = documentOf(params.getTextDocument().getUri());
         // le correctif de la démonstration : les espaces de fin de la
         // ligne interrogée s'y coupent (la correction du protocole
         // porte son remplacement — l'ampoule l'applique)
         int line = params.getRange().getStart().getLine();
         int[] bounds = lineBounds(line);
-        String lineText = text.substring(bounds[0], bounds[1]);
+        String lineText = current.substring(bounds[0], bounds[1]);
         int content = lineText.stripTrailing().length();
         if (content == lineText.length()) {
             // rien à corriger sur la ligne : aucune action
@@ -440,7 +494,7 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
         Range lineSpan = new Range(positionOf(bounds[0]), positionOf(bounds[1]));
         TextEdit trim = new TextEdit(lineSpan, lineText.stripTrailing());
         WorkspaceEdit edit = new WorkspaceEdit();
-        edit.setChanges(java.util.Map.of(uri, List.of(trim)));
+        edit.setChanges(java.util.Map.of(target(), List.of(trim)));
         CodeAction fix = new CodeAction("Supprimer les espaces de fin de ligne");
         fix.setEdit(edit);
         return CompletableFuture.completedFuture(List.of(Either.forRight(fix)));
@@ -449,14 +503,15 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
     @Override
     public CompletableFuture<List<? extends TextEdit>> formatting(
             DocumentFormattingParams params) {
+        String current = documentOf(params.getTextDocument().getUri());
         // le formatage du serveur de démonstration : les espaces de
         // fin de CHAQUE ligne s'y coupent (seules les lignes qui en
         // portent y paraissent — le remplacement vide ne sert à rien)
         List<TextEdit> edits = new ArrayList<>();
         int lineStart = 0;
-        for (int at = 0; at <= text.length(); at++) {
-            if (at == text.length() || text.charAt(at) == '\n') {
-                String line = text.substring(lineStart, at);
+        for (int at = 0; at <= current.length(); at++) {
+            if (at == current.length() || current.charAt(at) == '\n') {
+                String line = current.substring(lineStart, at);
                 int content = line.stripTrailing().length();
                 if (content < line.length()) {
                     edits.add(new TextEdit(
@@ -473,12 +528,13 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
     @Override
     public CompletableFuture<List<Either<SymbolInformation, DocumentSymbol>>> documentSymbol(
             DocumentSymbolParams params) {
+        String current = documentOf(params.getTextDocument().getUri());
         // la table des matières du document : chaque déclaration y
         // rend son symbole — le genre (méthode, champ), la ligne
         // entière pour l'étendue, le nom seul pour la sélection
         List<Either<SymbolInformation, DocumentSymbol>> symbols = new ArrayList<>();
         for (int[] declaration : declarations()) {
-            String name = text.substring(declaration[0], declaration[1]);
+            String name = current.substring(declaration[0], declaration[1]);
             boolean method = declaration[2] == 1;
             int line = positionOf(declaration[0]).getLine();
             int[] bounds = lineBounds(line);
@@ -493,14 +549,15 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
     @Override
     public CompletableFuture<List<FoldingRange>> foldingRange(
             FoldingRangeRequestParams params) {
+        String current = documentOf(params.getTextDocument().getUri());
         // les plis du serveur de démonstration : les blocs
         // d'accolades appariées — l'ouvrante porte l'en-tête, la
         // fermante appariée porte la fin ; le pli ne vit que d'une
         // ouvrante à une AUTRE ligne
         List<FoldingRange> folds = new ArrayList<>();
         Deque<Integer> opened = new ArrayDeque<>();
-        for (int at = 0; at < text.length(); at++) {
-            char c = text.charAt(at);
+        for (int at = 0; at < current.length(); at++) {
+            char c = current.charAt(at);
             if (c == '{') {
                 opened.push(at);
             } else if (c == '}' && !opened.isEmpty()) {
@@ -517,6 +574,7 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
 
     @Override
     public CompletableFuture<List<InlayHint>> inlayHint(InlayHintParams params) {
+        String current = documentOf(params.getTextDocument().getUri());
         // l'indice du serveur de démonstration : le compte des usages
         // au bout de chaque ligne de déclaration (la façon de
         // l'atelier) — le texte n'en bouge pas, l'encre secondaire le
@@ -528,7 +586,7 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
                     || line > params.getRange().getEnd().getLine()) {
                 continue; // hors de la plage interrogée
             }
-            String word = text.substring(declaration[0], declaration[1]);
+            String word = current.substring(declaration[0], declaration[1]);
             int usages = occurrencesOf(word).size() - 1;
             int[] bounds = lineBounds(line);
             hints.add(new InlayHint(
@@ -541,6 +599,7 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
     @Override
     public CompletableFuture<SemanticTokens> semanticTokensFull(
             SemanticTokensParams params) {
+        String current = documentOf(params.getTextDocument().getUri());
         return CompletableFuture.completedFuture(new SemanticTokens(semanticData()));
     }
 
@@ -554,27 +613,28 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
      * @return les cinq entiers par jeton, dans l'ordre du texte
      */
     private List<Integer> semanticData() {
+        String current = currentText();
         Map<Integer, Integer> kindAt = new HashMap<>();
         Map<String, Integer> kindOfWord = new HashMap<>();
         for (int[] declaration : declarations()) {
             kindAt.put(declaration[0], declaration[2]);
-            kindOfWord.put(text.substring(declaration[0], declaration[1]),
+            kindOfWord.put(current.substring(declaration[0], declaration[1]),
                     declaration[2]);
         }
         List<Integer> data = new ArrayList<>();
         int tokenLine = 0;
         int tokenChar = 0;
         int at = 0;
-        while (at < text.length()) {
-            if (wordBreak(text.charAt(at))) {
+        while (at < current.length()) {
+            if (wordBreak(current.charAt(at))) {
                 at++;
                 continue;
             }
             int start = at;
-            while (at < text.length() && !wordBreak(text.charAt(at))) {
+            while (at < current.length() && !wordBreak(current.charAt(at))) {
                 at++;
             }
-            String word = text.substring(start, at);
+            String word = current.substring(start, at);
             if (Character.isDigit(word.charAt(0))) {
                 continue; // le littéral demeure au lexer (la couleur locale)
             }
@@ -624,31 +684,32 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
      * @return les triplets [début, fin, genre] (1 : méthode, 0 : champ)
      */
     private List<int[]> declarations() {
+        String current = currentText();
         List<int[]> found = new ArrayList<>();
         int at = 0;
-        while (at < text.length()) {
-            if (wordBreak(text.charAt(at))) {
+        while (at < current.length()) {
+            if (wordBreak(current.charAt(at))) {
                 at++;
                 continue;
             }
             int start = at;
-            while (at < text.length() && !wordBreak(text.charAt(at))) {
+            while (at < current.length() && !wordBreak(current.charAt(at))) {
                 at++;
             }
             int after = at;
-            while (after < text.length() && Character.isWhitespace(text.charAt(after))) {
+            while (after < current.length() && Character.isWhitespace(current.charAt(after))) {
                 after++;
             }
-            if (after >= text.length()) {
+            if (after >= current.length()) {
                 continue;
             }
-            char follows = text.charAt(after);
-            int lineStart = text.lastIndexOf('\n', start) + 1;
-            int lineEnd = text.indexOf('\n', start);
+            char follows = current.charAt(after);
+            int lineStart = current.lastIndexOf('\n', start) + 1;
+            int lineEnd = current.indexOf('\n', start);
             if (lineEnd < 0) {
-                lineEnd = text.length();
+                lineEnd = current.length();
             }
-            String line = text.substring(lineStart, lineEnd).trim();
+            String line = current.substring(lineStart, lineEnd).trim();
             if (follows == '(' && line.endsWith("{") && line.indexOf('(') >= 0
                     && line.indexOf(')') >= 0) {
                 found.add(new int[]{start, at, 1});
@@ -670,34 +731,35 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
      * @return la place de la déclaration, null sans déclaration
      */
     private Location declarationOf(String word) {
-        for (int at = 0; at + word.length() <= text.length(); at++) {
-            if (!text.startsWith(word, at) || !boundaryBefore(at)) {
+        String current = currentText();
+        for (int at = 0; at + word.length() <= current.length(); at++) {
+            if (!current.startsWith(word, at) || !boundaryBefore(at)) {
                 continue;
             }
             int after = at + word.length();
-            while (after < text.length() && Character.isWhitespace(text.charAt(after))) {
+            while (after < current.length() && Character.isWhitespace(current.charAt(after))) {
                 after++;
             }
-            if (after >= text.length()) {
+            if (after >= current.length()) {
                 continue;
             }
-            char follows = text.charAt(after);
-            int lineStart = text.lastIndexOf('\n', at) + 1;
-            int lineEnd = text.indexOf('\n', at);
+            char follows = current.charAt(after);
+            int lineStart = current.lastIndexOf('\n', at) + 1;
+            int lineEnd = current.indexOf('\n', at);
             if (lineEnd < 0) {
-                lineEnd = text.length();
+                lineEnd = current.length();
             }
-            String line = text.substring(lineStart, lineEnd).trim();
+            String line = current.substring(lineStart, lineEnd).trim();
             if (follows == '(' && line.endsWith("{") && line.indexOf('(') >= 0
                     && line.indexOf(')') >= 0) {
                 // la déclaration de méthode : le nom précède les
                 // parenthèses, la ligne finit au bloc ouvrant
-                return new Location(uri, rangeOf(new int[]{at, at + word.length()}));
+                return new Location(target(), rangeOf(new int[]{at, at + word.length()}));
             }
             if (follows == '=' && line.contains("final") && line.endsWith(";")) {
                 // la déclaration de champ : le nom précède le signe
                 // égal, la ligne porte « final » (une constante)
-                return new Location(uri, rangeOf(new int[]{at, at + word.length()}));
+                return new Location(target(), rangeOf(new int[]{at, at + word.length()}));
             }
         }
         return null;
@@ -711,15 +773,16 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
      * @return les couples [début, fin] de chaque occurrence
      */
     private List<int[]> occurrencesOf(String word) {
+        String current = currentText();
         List<int[]> occurrences = new ArrayList<>();
-        int at = text.indexOf(word);
+        int at = current.indexOf(word);
         while (at >= 0) {
             int end = at + word.length();
             if (boundaryBefore(at)
-                    && (end >= text.length() || wordBreak(text.charAt(end)))) {
+                    && (end >= current.length() || wordBreak(current.charAt(end)))) {
                 occurrences.add(new int[]{at, end});
             }
-            at = text.indexOf(word, at + word.length());
+            at = current.indexOf(word, at + word.length());
         }
         return occurrences;
     }
@@ -731,8 +794,9 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
      * @return le mot, null sans mot
      */
     private String wordAt(Position position) {
+        String current = currentText();
         int[] bounds = wordBoundsAt(position);
-        return bounds[1] > bounds[0] ? text.substring(bounds[0], bounds[1]) : null;
+        return bounds[1] > bounds[0] ? current.substring(bounds[0], bounds[1]) : null;
     }
 
     /**
@@ -742,18 +806,19 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
      * @return les bornes absolues [début, fin] du mot
      */
     private int[] wordBoundsAt(Position position) {
-        int caret = Math.min(offsetOf(text, position), text.length());
-        int lineStart = text.lastIndexOf('\n', caret) + 1;
-        int lineEnd = text.indexOf('\n', caret);
+        String current = currentText();
+        int caret = Math.min(offsetOf(current, position), current.length());
+        int lineStart = current.lastIndexOf('\n', caret) + 1;
+        int lineEnd = current.indexOf('\n', caret);
         if (lineEnd < 0) {
-            lineEnd = text.length();
+            lineEnd = current.length();
         }
         int start = caret;
-        while (start > lineStart && !wordBreak(text.charAt(start - 1))) {
+        while (start > lineStart && !wordBreak(current.charAt(start - 1))) {
             start--;
         }
         int end = caret;
-        while (end < lineEnd && !wordBreak(text.charAt(end))) {
+        while (end < lineEnd && !wordBreak(current.charAt(end))) {
             end++;
         }
         return new int[]{start, end};
@@ -766,16 +831,17 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
      * @return les bornes [début, fin] (la fin exclut le saut de ligne)
      */
     private int[] lineBounds(int line) {
+        String current = currentText();
         int start = 0;
-        for (int at = 0; at < text.length() && line > 0; at++) {
-            if (text.charAt(at) == '\n') {
+        for (int at = 0; at < current.length() && line > 0; at++) {
+            if (current.charAt(at) == '\n') {
                 line--;
                 start = at + 1;
             }
         }
-        int end = text.indexOf('\n', start);
+        int end = current.indexOf('\n', start);
         if (end < 0) {
-            end = text.length();
+            end = current.length();
         }
         return new int[]{start, end};
     }
@@ -797,10 +863,11 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
      * @return la position (ligne, colonne)
      */
     private Position positionOf(int offset) {
+        String current = currentText();
         int line = 0;
         int lineStart = 0;
-        for (int at = 0; at < offset && at < text.length(); at++) {
-            if (text.charAt(at) == '\n') {
+        for (int at = 0; at < offset && at < current.length(); at++) {
+            if (current.charAt(at) == '\n') {
                 line++;
                 lineStart = at + 1;
             }
@@ -818,37 +885,38 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
      * @return la signature trouvée, null sans déclaration du nom
      */
     private SignatureInformation signatureOfCall(int openParen) {
+        String current = currentText();
         int nameEnd = openParen;
-        while (nameEnd > 0 && Character.isWhitespace(text.charAt(nameEnd - 1))) {
+        while (nameEnd > 0 && Character.isWhitespace(current.charAt(nameEnd - 1))) {
             nameEnd--;
         }
         int nameStart = nameEnd;
-        while (nameStart > 0 && !wordBreak(text.charAt(nameStart - 1))) {
+        while (nameStart > 0 && !wordBreak(current.charAt(nameStart - 1))) {
             nameStart--;
         }
         if (nameStart == nameEnd) {
             return null;
         }
-        String name = text.substring(nameStart, nameEnd);
+        String name = current.substring(nameStart, nameEnd);
         String declarationLine = null;
-        for (int at = 0; at + name.length() <= text.length(); at++) {
-            if (!text.startsWith(name, at) || !boundaryBefore(at)) {
+        for (int at = 0; at + name.length() <= current.length(); at++) {
+            if (!current.startsWith(name, at) || !boundaryBefore(at)) {
                 continue;
             }
             int after = at + name.length();
-            while (after < text.length()
-                    && Character.isWhitespace(text.charAt(after))) {
+            while (after < current.length()
+                    && Character.isWhitespace(current.charAt(after))) {
                 after++;
             }
-            if (after >= text.length() || text.charAt(after) != '(') {
+            if (after >= current.length() || current.charAt(after) != '(') {
                 continue;
             }
-            int lineStart = text.lastIndexOf('\n', at) + 1;
-            int lineEnd = text.indexOf('\n', at);
+            int lineStart = current.lastIndexOf('\n', at) + 1;
+            int lineEnd = current.indexOf('\n', at);
             if (lineEnd < 0) {
-                lineEnd = text.length();
+                lineEnd = current.length();
             }
-            String line = text.substring(lineStart, lineEnd).trim();
+            String line = current.substring(lineStart, lineEnd).trim();
             if (line.endsWith("{") && line.indexOf('(') >= 0
                     && line.indexOf(')') >= 0) {
                 declarationLine = line;
@@ -883,7 +951,8 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
 
     /** Vrai quand le caractère avant la position borne le mot. */
     private boolean boundaryBefore(int at) {
-        return at == 0 || wordBreak(text.charAt(at - 1));
+        String current = currentText();
+        return at == 0 || wordBreak(current.charAt(at - 1));
     }
 
     /**
@@ -891,35 +960,37 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
      * colonne.
      */
     private String prefixAt(int line, int column) {
+        String current = currentText();
         int start = 0;
-        for (int at = 0; at < text.length() && line > 0; at++) {
-            if (text.charAt(at) == '\n') {
+        for (int at = 0; at < current.length() && line > 0; at++) {
+            if (current.charAt(at) == '\n') {
                 line--;
                 start = at + 1;
             }
         }
-        int end = text.indexOf('\n', start);
+        int end = current.indexOf('\n', start);
         if (end < 0) {
-            end = text.length();
+            end = current.length();
         }
         int caret = start + Math.min(column, end - start);
         int wordStart = caret;
-        while (wordStart > start && !wordBreak(text.charAt(wordStart - 1))) {
+        while (wordStart > start && !wordBreak(current.charAt(wordStart - 1))) {
             wordStart--;
         }
-        return text.substring(wordStart, caret);
+        return current.substring(wordStart, caret);
     }
 
     /** Les diagnostics du texte courant : les parenthèses non appariées. */
     private void publishDiagnostics() {
+        String current = currentText();
         LanguageClient endpoint = client;
         if (endpoint == null) {
             return;
         }
         int unbalanced = 0;
         int depth = 0;
-        for (int at = 0; at < text.length(); at++) {
-            char c = text.charAt(at);
+        for (int at = 0; at < current.length(); at++) {
+            char c = current.charAt(at);
             if (c == '(') {
                 depth++;
             } else if (c == ')') {
@@ -943,7 +1014,11 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
                             + " (compte du serveur de démonstration)",
                     DiagnosticSeverity.Error, "demo-language-server"));
         }
-        endpoint.publishDiagnostics(new PublishDiagnosticsParams(uri, diagnostics));
+        String target = uri != null ? uri : document;
+        if (target == null) {
+            return;
+        }
+        endpoint.publishDiagnostics(new PublishDiagnosticsParams(target, diagnostics));
     }
 
     /**
@@ -952,7 +1027,7 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
      * d'un serveur qui aurait lu le texte (le nôtre le garde).
      */
     private String describeWordAt(int line, int column) {
-        String current = text;
+        String current = texts.getOrDefault(document, "");
         int start = 0;
         for (int at = 0; at < current.length() && line > 0; at++) {
             if (current.charAt(at) == '\n') {

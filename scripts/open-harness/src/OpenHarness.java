@@ -135,6 +135,7 @@ public final class OpenHarness {
         lspEditorFacade();
         lspProtocolFunctions();
         lspDocumentCoverage();
+        workspaceSharedRegistry();
         twoAxisScroll();
         pinchZoom();
         screenRestyle();
@@ -2604,6 +2605,67 @@ public final class OpenHarness {
      * plat défile en largeur ; le traîné de sélection au bord
      * latéral y défile aussi (la colonne atteinte s'y révèle).
      */
+    /**
+     * Le registre partagé (la leçon de Sora Editor) : DEUX éditeurs
+     * branchés au MÊME espace de travail — un seul serveur vit
+     * (la poignée de main n'a couru qu'une fois), les documents y
+     * partagent la liaison, les avis reviennent DISPATCHÉS par URI
+     * (l'avis du document XML n'atteint QUE le second éditeur — le
+     * premier n'en voit rien), le dernier détaché ferme le serveur.
+     */
+    private static void workspaceSharedRegistry() throws Exception {
+        begin("registre partagé : deux éditeurs, un serveur");
+        check("le mode duo part éteint",
+                activity.harnessDuo() == null);
+        click("Duo");
+        // le branchement : les deux façades montent, le registre vit
+        for (int wait = 0; wait < 100
+                && activity.harnessDuo() == null; wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(50L);
+        }
+        check("le second éditeur vit branché",
+                activity.harnessDuo() != null
+                        && activity.harnessDuo().isConnected());
+        check("la façade principale vit raccrochée aussi",
+                activity.harnessLsp().isConnected());
+        check("UN seul serveur vit au registre (le partagé)",
+                activity.harnessWorkspace() != null
+                        && activity.harnessWorkspace().liveServers() == 1);
+        check("les deux documents vivent ouverts au serveur",
+                activity.harnessWorkspace().sharedDocuments() == 2);
+        // le dispatch par URI : la parenthèse non fermée du document
+        // XML porte l'avis au second éditeur SEUL
+        EditorView pair = activity.harnessDuoEditor();
+        pair.caretTo(pair.getBuffer().length());
+        frame();
+        pair.onCreateInputConnection(new EditorInfo()).commitText(")", 1);
+        View.harnessDrain(2000L);
+        frame();
+        for (int wait = 0; wait < 100 && !pair.lineHasDiagnostics(0); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(50L);
+            frame();
+        }
+        check("l'avis du document XML vit au second éditeur",
+                pair.lineHasDiagnostics(0));
+        check("l'avis du document XML n'atteint PAS le premier",
+                !editor.lineHasDiagnostics(0));
+        // le détachement : le bouton range tout (le dernier parti
+        // ferme le serveur — la durée de vie suit les documents)
+        click("Duo ✔");
+        for (int wait = 0; wait < 50
+                && activity.harnessDuo() != null; wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(50L);
+        }
+        check("le mode duo se détache",
+                activity.harnessDuo() == null
+                        && activity.harnessWorkspace() == null);
+        check("la façade principale revient débranchée",
+                !activity.harnessLsp().isConnected());
+    }
+
     private static void twoAxisScroll() throws InterruptedException {
         begin("défilement horizontal : le zoom révèle la largeur, le geste la parcourt");
         openLanguage("Java", 10_000L);
