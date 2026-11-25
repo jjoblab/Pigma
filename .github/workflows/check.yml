@@ -14,10 +14,16 @@ name: check
 # l'action officielle avec sa licence acceptée.
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  # EN PAUSE : le propriétaire la suspend le temps de stabiliser
+  # le dépôt (pigma n'est pas encore stable). Le push et la
+  # pull-request ne la déclenchent plus ; le lancement reste
+  # manuel (onglet Actions → check → Run workflow) et la
+  # réactivation se fait en restaurant les déclencheurs :
+  #   push:
+  #     branches: [main]
+  #   pull_request:
+  #     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
