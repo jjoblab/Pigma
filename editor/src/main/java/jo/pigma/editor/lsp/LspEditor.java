@@ -191,6 +191,15 @@ public final class LspEditor {
     private final Runnable documentSync = this::pushDocumentToServer;
 
     /**
+     * La poignée de main a-t-elle ouvert le document ? La pompe de
+     * synchronisation s'ignore tant que non (un didChange parti
+     * avant le didOpen, le serveur réel l'ignore : le protocole
+     * n'y connaît pas de document non ouvert — EmmyLua perdrait le
+     * texte de vue et la liaison y paraîtrait morte).
+     */
+    private volatile boolean documentOpened;
+
+    /**
      * L'exécuteur de l'arrêt : la poignée de main de la fermeture
      * (l'attente de la réponse du serveur, la fermeture ordonnée
      * des canaux) vit HORS du fil d'interface — l'écran ne gèle
@@ -306,12 +315,31 @@ public final class LspEditor {
         this.session = liaison;
         this.uri = uri;
         resetProviders();
+        // la racine de l'espace de travail se pose AVANT la
+        // négociation (l'initialize la porte aux serveurs réels —
+        // EmmyLua s'y oriente : la référence y pose l'URI du
+        // projet ; l'app y pose le dossier du document)
+        String root = uri.endsWith("/") ? uri : uri + "/..";
+        liaison.setRootUri(root);
         liaison.initialize("pigma").whenComplete((result, failure) -> {
+            // la négociation a échoué (le serveur mort au départ, le
+            // canal cassé) : le document n'y ouvre pas — la liaison
+            // sans poignée de main ne connaît rien
+            if (failure != null || result == null) {
+                return;
+            }
             // les capacités négociées y tombent (le fil du lecteur) :
             // la façade n'y offre que ce que le serveur a DECLARÉ
             // savoir — demander une fonction non déclarée offense le
             // protocole (la leçon de la référence)
             capabilities = LspCapabilities.fromResult(result);
+            // le document n'ouvre qu'APRÈS la poignée de main
+            // complète (la leçon du branchement : un didOpen parti
+            // pendant l'initialize, le serveur réel le rejette —
+            // EmmyLua refuse le premier document, la liaison y
+            // paraît morte : « non connecté »)
+            liaison.didOpen(uri, view.getBuffer().toString(), languageId);
+            documentOpened = true;
             view.post(() -> {
                 view.setServerHighlights(List.of());
                 scheduleHighlightSync();
@@ -321,7 +349,6 @@ public final class LspEditor {
                 refreshDocumentViews();
             });
         });
-        liaison.didOpen(uri, view.getBuffer().toString(), languageId);
         attachProviders();
         // le fournisseur du serveur sur l'ampoule se repose : un
         // débranchement antérieur l'avait retiré (la reconnexion y
@@ -366,6 +393,7 @@ public final class LspEditor {
         view.setServerFoldRegions(List.of());
         view.setServerSemantics(List.of());
         resetProviders();
+        documentOpened = false;
         capabilities = LspCapabilities.NONE;
         // la poignée de main de l'arrêt part au fil de fond : le fil
         // d'interface ne l'attend plus (l'attente d'une seconde y
@@ -1057,7 +1085,7 @@ public final class LspEditor {
      * vol se périme pareillement (la génération avance).
      */
     private void pushDocumentToServer() {
-        if (session != null && uri != null) {
+        if (session != null && uri != null && documentOpened) {
             session.didChange(uri, view.getBuffer().toString());
             resetProviders();
             // les plages surlignées vivaient dans le document d'avant :

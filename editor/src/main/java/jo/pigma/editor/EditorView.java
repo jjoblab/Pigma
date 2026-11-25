@@ -153,6 +153,10 @@ public final class EditorView extends View {
     /** L'ordonnée du foyer du pincement (le milieu des deux doigts au départ). */
     private float pinchFocusY;
 
+    /** L'abscisse du foyer du pincement (la colonne sous les doigts
+     * y demeure pendant le zoom — le texte ne fuit ni en X ni en Y). */
+    private float pinchFocusX;
+
     private SyntaxDocument syntax;
     private LanguageSyntax language;
     private SyntaxTheme theme = EditorThemes.LIGHT;
@@ -198,6 +202,13 @@ public final class EditorView extends View {
     private List<LspRange> serverHighlights = List.of();
 
     /**
+     * Les lignes en point d'arrêt (la gouttière les pose et les
+     * retire au doigt — l'hôte y lira et y branchera son
+     * débogueur). Trié : le dessin et la lecture y vont en ordre.
+     */
+    private final TreeSet<Integer> breakpoints = new TreeSet<>();
+
+    /**
      * Les régions repliables du serveur de langage (le protocole
      * foldingRange) : les bornes composées s'y lisent par-dessus
      * celles du lexer — la gouttière y porte leurs marqueurs.
@@ -236,6 +247,13 @@ public final class EditorView extends View {
     private float lastTapY;
 
     private float scrollY;
+
+    /**
+     * Le décalage horizontal du texte (le pincement l'agrandit, la
+     * ligne longue s'y révèle — le traîné de sélection y défile
+     * aussi). Positif quand le texte défile à gauche.
+     */
+    private float scrollX;
     private float touchStartX;
     private float touchStartY;
     private boolean dragging;
@@ -710,6 +728,7 @@ public final class EditorView extends View {
         caretWidth = dp(2);
         renderCache.invalidate();
         scrollY = clampToRange(scrollY, 0.0f, maxScroll());
+        scrollX = clampToRange(scrollX, 0.0f, maxScrollX());
         invalidate();
     }
 
@@ -735,6 +754,7 @@ public final class EditorView extends View {
         pinchStartSpan = pinchSpan(event);
         pinchStartPx = textPx;
         pinchFocusY = (event.getY(0) + event.getY(1)) / 2.0f;
+        pinchFocusX = (event.getX(0) + event.getX(1)) / 2.0f;
     }
 
     /**
@@ -751,10 +771,16 @@ public final class EditorView extends View {
             return;
         }
         float focusY = (event.getY(0) + event.getY(1)) / 2.0f;
+        float focusX = (event.getX(0) + event.getX(1)) / 2.0f;
         float lineAtFocus = (pinchFocusY - getPaddingTop() + scrollY) / lineHeight;
+        // la colonne sous le foyer du départ demeure sous le foyer
+        // courant : le texte ne fuit sous les doigts, en Y comme en X
+        float columnAtFocus = (pinchFocusX - getPaddingLeft() + scrollX) / charWidth;
         applyTextSize(pinchStartPx * (span / pinchStartSpan));
         scrollY = clampToRange(lineAtFocus * lineHeight - (focusY - getPaddingTop()),
                 0.0f, maxScroll());
+        scrollX = clampToRange(columnAtFocus * charWidth - (focusX - getPaddingLeft()),
+                0.0f, maxScrollX());
         invalidate();
     }
 
@@ -1418,6 +1444,7 @@ public final class EditorView extends View {
         // recuit (sans retokeniser — le nouveau document lexe à la demande)
         renderCache.invalidate();
         scrollY = 0.0f;
+        scrollX = 0.0f;
         clampCaret();
         ensureCaretVisible();
         // la salve du fond attend la fin de la trame d'ouverture (le
@@ -1445,6 +1472,7 @@ public final class EditorView extends View {
         rebuildFoldLayout();
         resetFrameStats();
         scrollY = 0.0f;
+        scrollX = 0.0f;
         clampCaret();
         ensureCaretVisible();
         invalidate();
@@ -2472,6 +2500,21 @@ public final class EditorView extends View {
                     break;
                 }
                 if (!dragging && heldLongEnough()
+                        && touchStartX < dp(24)
+                        && Math.abs(event.getX() - touchStartX) <= touchSlop()
+                        && Math.abs(event.getY() - touchStartY) <= touchSlop()) {
+                    // l'appui long IMMOBILE de la colonne des marqueurs :
+                    // le point d'arrêt se pose (la ligne en pose le
+                    // retire) — le geste du débogueur, le tap simple
+                    // reste au pli
+                    int line = lineOfVisibleIndex(
+                            (int) ((event.getY() - getPaddingTop() + scrollY) / lineHeight));
+                    toggleBreakpoint(line);
+                    clearComposing();
+                    lastTapNanos = 0L;
+                    break;
+                }
+                if (!dragging && heldLongEnough()
                         && (Math.abs(event.getX() - touchStartX) > touchSlop()
                                 || Math.abs(event.getY() - touchStartY) > touchSlop())) {
                     // l'appui long qui glisse : la sélection s'étend au
@@ -2489,12 +2532,19 @@ public final class EditorView extends View {
                     dragSelectionBound(event.getX(), event.getY());
                     break;
                 }
-                if (!dragging && Math.abs(event.getY() - touchStartY) > touchSlop()) {
+                if (!dragging && (Math.abs(event.getY() - touchStartY) > touchSlop()
+                        || Math.abs(event.getX() - touchStartX) > touchSlop())) {
                     dragging = true;
                 }
                 if (dragging) {
+                    // le défilement à DEUX axes : le texte suit le
+                    // doigt en hauteur et en largeur (la ligne longue
+                    // s'y révèle — le pincement l'a agrandie, le
+                    // geste plat la parcourt)
                     scrollY = clampToRange(scrollY - (event.getY() - touchStartY),
                             0.0f, maxScroll());
+                    scrollX = clampToRange(scrollX - (event.getX() - touchStartX),
+                            0.0f, maxScrollX());
                     touchStartY = event.getY();
                     touchStartX = event.getX();
                     invalidate();
@@ -2636,7 +2686,8 @@ public final class EditorView extends View {
         int lineStart = buffer.getLineStart(line);
         int lineEnd = buffer.getLineEnd(line);
         int column = charWidth > 0.0f
-                ? clampToRange((int) ((x - getPaddingLeft()) / charWidth), 0, lineEnd - lineStart)
+                ? clampToRange((int) ((x + scrollX - getPaddingLeft()) / charWidth),
+                        0, lineEnd - lineStart)
                 : 0;
         return buffer.offsetOfPosition(line, column);
     }
@@ -2649,7 +2700,7 @@ public final class EditorView extends View {
     private float[] handleCenter(int offset) {
         int line = buffer.lineOfOffset(offset);
         int column = offset - buffer.getLineStart(line);
-        float x = getPaddingLeft() + column * charWidth;
+        float x = getPaddingLeft() + column * charWidth - scrollX;
         float top = getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
         float y = top + lineHeight + dp(5);
         if (y + dp(7) > getHeight() - getPaddingBottom()) {
@@ -2703,7 +2754,7 @@ public final class EditorView extends View {
      * Le doigt près des bords fait défiler (une ligne par événement).
      */
     private void dragSelectionBound(float x, float y) {
-        autoScrollNearEdges(y);
+        autoScrollNearEdges(x, y);
         dragFingerY = y;
         int offset = offsetNearest(x, y);
         if (selectionDragBound == 1) {
@@ -2721,14 +2772,24 @@ public final class EditorView extends View {
      * bas fait défiler d'une ligne (la saisie suit alors le texte
      * révélé).
      */
-    private void autoScrollNearEdges(float y) {
+    private void autoScrollNearEdges(float x, float y) {
         float band = dp(24);
         float top = getPaddingTop();
         float bottom = getHeight() - getPaddingBottom();
+        float left = getPaddingLeft();
+        float right = getWidth() - getPaddingRight();
         if (y < top + band) {
             scrollY = clampToRange(scrollY - lineHeight, 0.0f, maxScroll());
         } else if (y > bottom - band) {
             scrollY = clampToRange(scrollY + lineHeight, 0.0f, maxScroll());
+        }
+        // le traîné de la borne vers le bord latéral fait défiler
+        // horizontalement (la colonne atteinte s'y révèle) — la
+        // sélection suit le texte révélé
+        if (x < left + band) {
+            scrollX = clampToRange(scrollX - charWidth * 2.0f, 0.0f, maxScrollX());
+        } else if (x > right - band) {
+            scrollX = clampToRange(scrollX + charWidth * 2.0f, 0.0f, maxScrollX());
         }
     }
 
@@ -2762,6 +2823,12 @@ public final class EditorView extends View {
         // guides et la paire après
         drawGutter(canvas, first, last, count);
         drawScopeBand(canvas, first, last, count);
+        // le corps du texte défile horizontalement : la translation
+        // n'y porte QUE lui (la gouttière, les cartes et le bandeau
+        // demeurent posés à la vue — le scrollX y est soustrait à la
+        // main aux rares endroits qui convertissent un point)
+        int textSave = canvas.save();
+        canvas.translate(-scrollX, 0.0f);
         drawSelection(canvas, first, last, count);
         drawSearchHighlights(canvas, first, last, count);
         drawServerHighlights(canvas, first, last, count);
@@ -2784,6 +2851,7 @@ public final class EditorView extends View {
         drawCaret(canvas);
         drawSelectionHandles(canvas);
         drawDragPreview(canvas);
+        canvas.restore();
         drawLoupe(canvas);
         // les candidats AVANT leur dessin (un déplacement de curseur
         // rend ses candidats dans la même trame), les soulignés de
@@ -3209,6 +3277,9 @@ public final class EditorView extends View {
             } else if (warning) {
                 gutter.drawMarker(canvas, Gutter.MARKER_WARNING, markerCx, cy);
             }
+            if (breakpoints.contains(line)) {
+                gutter.drawMarker(canvas, Gutter.MARKER_BREAKPOINT, markerCx, cy);
+            }
             if (line == caretLine && !quickActions.isEmpty()) {
                 gutter.drawMarker(canvas, Gutter.MARKER_LIGHTBULB, markerCx, cy);
             }
@@ -3312,6 +3383,39 @@ public final class EditorView extends View {
             return openQuickActionsAtLine(line);
         }
         return false;
+    }
+
+    /**
+     * Pose ou retire le point d'arrêt d'une ligne (le tap de la
+     * gouttière l'appelle — un point posé s'y retire, une ligne
+     * libre en pose un). Le geste premier de la gouttière demeure
+     * les marqueurs d'erreur ; le point d'arrêt se pose au tap
+     * simple d'une ligne sans marqueur.
+     *
+     * @param line la ligne
+     * @return vrai quand la gouttière a pris le geste
+     */
+    public boolean toggleBreakpoint(int line) {
+        if (line < 0 || line >= buffer.getLineCount()) {
+            return false;
+        }
+        if (breakpoints.contains(line)) {
+            breakpoints.remove(line);
+        } else {
+            breakpoints.add(line);
+        }
+        invalidate();
+        return true;
+    }
+
+    /**
+     * Les lignes en point d'arrêt (l'hôte y branche son débogueur,
+     * le harnais y vérifie la pose).
+     *
+     * @return les lignes triées, jamais null
+     */
+    public java.util.SortedSet<Integer> breakpoints() {
+        return java.util.Collections.unmodifiableSortedSet(breakpoints);
     }
 
     /**
@@ -4432,7 +4536,10 @@ public final class EditorView extends View {
             }
             int column = diagnostic.start() - buffer.getLineStart(line);
             float baseline = lineBaseline(line);
-            float x = getPaddingLeft() + column * charWidth;
+            // le souligné du diagnostic se décale du texte : la
+            // colonne vit dans le corps défilant, le scrollX y
+            // s'applique (le dessin se fait hors translation)
+            float x = getPaddingLeft() + column * charWidth - scrollX;
             canvas.drawLine(x, baseline + dp(3), x + charWidth, baseline + dp(3),
                     diagnosticPaint);
         }
@@ -4648,7 +4755,7 @@ public final class EditorView extends View {
         int column = offset - lineStart;
         // la loupe se centre sur la borne (le contenu suit), fuit le
         // doigt en hauteur (le doigt cache la ligne, jamais la loupe)
-        float centerX = getPaddingLeft() + column * charWidth;
+        float centerX = getPaddingLeft() + column * charWidth - scrollX;
         float lineTop = getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
         float width = Math.min(getWidth() - getPaddingLeft() - getPaddingRight(),
                 dp(160));
@@ -4808,7 +4915,7 @@ public final class EditorView extends View {
         Canvas render = new Canvas(loupeLine);
         // les coordonnées de la vue se ramènent au bitmap : la ligne
         // occupe [0, largeur] × [0, hauteur-de-ligne]
-        render.translate(-getPaddingLeft(), -lineTop);
+        render.translate(-getPaddingLeft() + scrollX, -lineTop);
         if (buffer.getLineEnd(line) > lineStart) {
             drawTokens(render, line, lineStart, lineBaseline(line));
         }
@@ -4979,6 +5086,16 @@ public final class EditorView extends View {
     }
 
     /**
+     * Le défilement horizontal (le harnais y lit le geste à deux
+     * axes et le pincement qui décale la colonne).
+     *
+     * @return le défilement, en pixels
+     */
+    public float harnessScrollX() {
+        return scrollX;
+    }
+
+    /**
      * La sauvegarde d'état (le harnais y appelle celle du cadre :
      * les méthodes du cadre sont protégées, la vue y expose la
      * sienne à son harnais).
@@ -5031,6 +5148,24 @@ public final class EditorView extends View {
         float content = getPaddingTop() + visibleLineCount() * lineHeight
                 + getPaddingBottom();
         return Math.max(0.0f, content - getHeight());
+    }
+
+    /**
+     * La borne du défilement horizontal : la plus large ligne du
+     * document moins la vue (la colonne visible s'y arrête, la
+     * ligne courte n'y défile jamais — le plancher reste zéro).
+     */
+    private float maxScrollX() {
+        float widest = 0.0f;
+        int count = buffer.getLineCount();
+        for (int line = 0; line < count; line++) {
+            int width = buffer.getLineEnd(line) - buffer.getLineStart(line);
+            if (width * charWidth > widest) {
+                widest = width * charWidth;
+            }
+        }
+        return Math.max(0.0f, getPaddingLeft() + widest
+                + getPaddingRight() - getWidth());
     }
 
     /** Seuil de déplacement avant qu'un contact devienne un défilement. */

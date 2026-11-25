@@ -16,6 +16,59 @@ aller-à, signature, sélection, copie du texte). Le harnais
 39/39 verts, l'APK reconstruit (6,99 Mo, signé debug) et livré dans
 download/.**
 
+## Session 39 — la CI en pause, le défilement à deux axes, les points d'arrêt, le branchement Lua corrigé (2026-11-25)
+
+0. **La CI en pause** (demande du propriétaire : le dépôt n'est pas
+   encore stable) : les déclencheurs push et pull-request se
+   retirent, le lancement reste manuel (workflow_dispatch) — la
+   restauration se fait en redéclenchant les lignes du workflow.
+
+0. **Le défilement horizontal** : le champ scrollX vit au côté de
+   scrollY. La ligne large se révèle — le pincement agrandit le
+   corps (le foyer X y demeure sous les doigts comme le foyer Y),
+   le geste plat défile aux deux axes, le traîné de sélection au
+   bord latéral y pousse (l'auto-scroll aux bords porte X aussi),
+   les conversions point→colonne se décalent (le tap, le mot du
+   double-tap, la poignée traînée), la trame de texte se
+   translate (la gouttière et les cartes demeurent posées à la
+   vue), la loupe suit (son rendu comme son centre). Le corps
+   revenu, le défilement se reborne à zéro. Le scénario du
+   harnais y éprouve le pincement, le geste, le traîné, le reborn.
+
+0. **Les points d'arrêt de la gouttière** : l'appui long immobile
+   à la colonne des marqueurs pose le point (le rond plein à
+   l'accent — le style du débogueur), le re-geste le retire. Le
+   tap simple reste au pli (le geste des plis ne se perd pas),
+   le double-tap texte reste au mot. L'API publique breakpoints()
+   expose les lignes à l'hôte (le débogueur à venir s'y
+   branchera). Le scénario y éprouve pose, ordre, retrait au
+   geste, hors borne.
+
+0. **Le branchement Lua corrigé** (le serveur EmmyLua « non
+   connecté ») : trois défauts au câblage, corrigés à la lecture
+   du module app de Sora Editor (LGPL — les idées y viennent,
+   pas le code) :
+
+   - l'initialize ne portait NI rootUri NI workspaceFolders :
+     EmmyLua s'y oriente (sa racine de travail). La liaison les
+     pose maintenant (l'URI du dossier du document) ;
+   - le didOpen partait PENDANT la négociation : EmmyLua refuse
+     le premier document avant la poignée de main complète. Il
+     part maintenant de la future complétée ;
+   - la pompe didChange vivait sans garde : les frappes pendant
+     la négociation partaient en didChange sans document ouvert
+     (le protocole n'y connaît rien, EmmyLua perd le texte de
+     vue). Le drapeau documentOpened verrouille la pompe.
+
+   Le scénario du serveur in-process au harnais éprouve
+   l'ordonnancement corrigé (44/44) ; l'exécutable EmmyLua
+   lui-même (lié au linker Android) ne se lance qu'à l'appareil —
+   le prochain run sur matériel dira la liaison vivante.
+
+Harnais 44/44 scénario(s) vert(s) (défilement à deux axes et
+points d'arrêt neufs), tests des cinq modules verts, politique de
+langue OK (149 fichiers), APK rebâti (8,2 Mo).
+
 ## Session 38 — la CI rouge, la copie des logs, les deux crashs du journal de l'appareil (2026-11-25)
 
 0. **La CI réparée** : le premier run GitHub Actions échouait à

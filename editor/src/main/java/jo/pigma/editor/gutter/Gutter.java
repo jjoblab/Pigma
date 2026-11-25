@@ -35,6 +35,9 @@ public final class Gutter {
     /** Le code du marqueur d'ampoule (les actions rapides de la ligne). */
     public static final int MARKER_LIGHTBULB = 3;
 
+    /** Le code du marqueur de point d'arrêt (le rond plein de la ligne). */
+    public static final int MARKER_BREAKPOINT = 4;
+
     /** Le côté d'un marqueur (dp). */
     private static final int MARKER_SIDE_DP = 18;
 
@@ -133,6 +136,11 @@ public final class Gutter {
             drawTriangleMarker(canvas, cx, cy, true);
         } else if (kind == MARKER_LIGHTBULB) {
             drawLightbulbMarker(canvas, cx, cy);
+        } else if (kind == MARKER_BREAKPOINT) {
+            // le point d'arrêt : le rond plein à l'accent (le style
+            // du débogueur — l'hôte y connectera le sien)
+            markerPaint.setColor(style.accentArgb());
+            canvas.drawCircle(cx, cy, dp(MARKER_SIDE_DP) / 2.0f, markerPaint);
         }
     }
 

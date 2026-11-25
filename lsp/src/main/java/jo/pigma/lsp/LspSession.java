@@ -128,6 +128,11 @@ public final class LspSession {
     /** Ce que l'arrêt doit fermer (le processus, les tubes — pas les flux d'autrui). */
     private final List<AutoCloseable> toClose;
 
+    /**
+     * La racine de l'espace de travail de la négociation (les
+     * serveurs réels s'y orientent — EmmyLua y lit ses ressources).
+     */
+    private String rootUri = "file:///";
     /** La version du document (le protocole y retrouve son ordre). */
     private final AtomicInteger documentVersion = new AtomicInteger();
 
@@ -229,6 +234,18 @@ public final class LspSession {
     }
 
     /**
+     * La racine de l'espace de travail des négociations qui
+     * suivent (l'initialize la porte aux serveurs réels — la
+     * référence y pose l'URI du projet ; l'app y pose l'espace
+     * de travail du document démo).
+     *
+     * @param uri l'URI racine, jamais null
+     */
+    public void setRootUri(String uri) {
+        rootUri = Objects.requireNonNull(uri);
+    }
+
+    /**
      * La liaison sur des flux donnés (un serveur branché autrement) :
      * l'arrêt ferme les flux — la lecture de lsp4j s'arrête avec eux.
      *
@@ -270,6 +287,17 @@ public final class LspSession {
         InitializeParams params = new InitializeParams();
         params.setClientInfo(new ClientInfo(clientName));
         params.setCapabilities(new ClientCapabilities());
+        // la racine de l'espace de travail et son dossier (la
+        // leçon de la référence : EmmyLua s'y oriente — le serveur
+        // sans racine ne sait où lire ses ressources). L'URI du
+        // document OUVERT y sert de racine (l'espace de travail de
+        // l'app : le document y vit)
+        params.setRootUri(rootUri);
+        org.eclipse.lsp4j.WorkspaceFolder folder =
+                new org.eclipse.lsp4j.WorkspaceFolder();
+        folder.setUri(rootUri);
+        folder.setName("pigma");
+        params.setWorkspaceFolders(java.util.List.of(folder));
         return launcher.getRemoteProxy().initialize(params).thenApply(result -> {
             incrementalSync = declaresIncrementalSync(result);
             capabilities = LspCapabilities.fromResult(result);

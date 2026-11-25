@@ -133,8 +133,10 @@ public final class OpenHarness {
         lspEditorFacade();
         lspProtocolFunctions();
         lspDocumentCoverage();
+        twoAxisScroll();
         pinchZoom();
         screenRestyle();
+        gutterBreakpoints();
         serverPositionsHostile();
         crashJournalCapture();
         stateSaveRestore();
@@ -2501,6 +2503,59 @@ public final class OpenHarness {
     }
 
     /**
+     * Le défilement à deux axes : la ligne longue s'y révèle. Le
+     * pincement agrandit le corps (la ligne déborde), le geste
+     * plat défile en largeur ; le traîné de sélection au bord
+     * latéral y défile aussi (la colonne atteinte s'y révèle).
+     */
+    private static void twoAxisScroll() throws InterruptedException {
+        begin("défilement horizontal : le zoom révèle la largeur, le geste la parcourt");
+        openLanguage("Java", 10_000L);
+        check("le défilement horizontal part de zéro",
+                editor.harnessScrollX() < 0.5f);
+        // le corps double : la ligne moyenne déborde la vue
+        float initial = editor.getTextSizeSp();
+        pinch(VIEW_WIDTH / 2.0f, VIEW_HEIGHT / 2.0f, 120.0f, 240.0f);
+        frame();
+        check("l'écart agrandit le corps",
+                editor.getTextSizeSp() > initial + 6.0f);
+        // le geste plat se décale latéralement : le doigt tire la
+        // largeur (scrollX croît quand le doigt va à gauche)
+        float before = editor.harnessScrollX();
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
+                VIEW_WIDTH - 40.0f, 300.0f));
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_MOVE,
+                VIEW_WIDTH - 140.0f, 300.0f));
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_MOVE,
+                VIEW_WIDTH - 340.0f, 300.0f));
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
+                VIEW_WIDTH - 340.0f, 300.0f));
+        frame();
+        check("le geste plat défile la largeur",
+                editor.harnessScrollX() > before + 10.0f);
+        // le traîné de sélection près du bord latéral : la colonne
+        // droite du texte s'y révèle (l'auto-scroll l'y pousse)
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
+                600.0f, 200.0f));
+        Thread.sleep(600L);
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_MOVE,
+                VIEW_WIDTH - 10.0f, 200.0f));
+        frame();
+        float duringDrag = editor.harnessScrollX();
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
+                VIEW_WIDTH - 10.0f, 200.0f));
+        frame();
+        check("le traîné au bord latéral fait défiler la largeur",
+                duringDrag > before + 5.0f);
+        // le corps revient : le défilement se reborne à zéro (la
+        // ligne tient de nouveau dans la vue)
+        editor.setTextSizeSp(initial);
+        frame();
+        check("le retour du corps reborne la largeur",
+                editor.harnessScrollX() < 0.5f);
+    }
+
+    /**
      * Le pincement : le zoom au deux doigts — l'écart porte le
      * facteur, la chasse suit le corps, les bornes serrent, l'appui
      * final ne vaut pas un tap (le curseur ne saute pas au dernier
@@ -2565,6 +2620,65 @@ public final class OpenHarness {
      * déjà n'y vivent plus (la règle de l'instrument de test : chaque
      * commande reste à l'écran seulement si la vue ne la porte pas).
      */
+    /**
+     * Les points d'arrêt de la gouttière : le tap de la colonne des
+     * marqueurs pose le point (le rond à l'accent), le re-tap le
+     * retire ; l'accès public y lit les lignes (l'hôte y branchera
+     * son débogueur).
+     */
+    private static void gutterBreakpoints() {
+        begin("points d'arrêt : la gouttière pose, retire, y lit");
+        openLanguage("Java", 10_000L);
+        check("aucun point d'arrêt au départ",
+                editor.breakpoints().isEmpty());
+        // le tap de la colonne des marqueurs à la ligne 2 : le point s'y pose
+        editor.toggleBreakpoint(2);
+        frame();
+        check("le point se pose à la ligne posée",
+                editor.breakpoints().contains(2));
+        // une seconde ligne : l'ensemble porte les deux, en ordre
+        editor.toggleBreakpoint(5);
+        frame();
+        check("les deux points se lisent en ordre",
+                editor.breakpoints().size() == 2
+                        && editor.breakpoints().first() == 2
+                        && editor.breakpoints().last() == 5);
+        // le re-tap retire : la ligne redevient libre
+        editor.toggleBreakpoint(2);
+        frame();
+        check("le re-tap retire le point",
+                !editor.breakpoints().contains(2)
+                        && editor.breakpoints().size() == 1);
+        // l'appui long immobile de la colonne : la ligne 5 se retire
+        // au geste du débogueur (le tap simple y reste au pli)
+        float markY = lineTop(5) + LINE_HEIGHT / 2.0f;
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
+                12.0f, markY));
+        try {
+            Thread.sleep(600L);
+        } catch (InterruptedException rested) {
+            Thread.currentThread().interrupt();
+        }
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_MOVE,
+                12.0f, markY));
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
+                12.0f, markY));
+        frame();
+        check("l'appui long gouttière retire le point au doigt",
+                editor.breakpoints().isEmpty());
+        // la ligne hors borne ne pose rien
+        check("la ligne hors borne ne pose rien",
+                !editor.toggleBreakpoint(999_999));
+        // le marqueur se dessine : la pose d'un point, une trame —
+        // le rond s'y dessine (la colonne des marqueurs vit avant
+        // les numéros)
+        editor.toggleBreakpoint(1);
+        frame();
+        check("le point posé s'y lit", editor.breakpoints().contains(1));
+        editor.toggleBreakpoint(1);
+        frame();
+    }
+
     private static void screenRestyle() {
         begin("refonte de l'écran : onglets, drawer, feuille basse");
         TabLayout tabs = activity.harnessTabLayout();
