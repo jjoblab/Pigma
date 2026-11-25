@@ -53,13 +53,13 @@ jobs:
           # posé pour que la détection le trouve)
           cp /tmp/jflex-zip/jflex-full-1.9.1.jar "$HOME/tools/jflex.jar"
           cp /tmp/jflex-zip/jflex-full-1.9.1.jar "$HOME/tools/java-cup-runtime-11b-20160615-3.jar"
+          echo "TOOLS=$HOME/tools" >> "$GITHUB_ENV"
 
       - name: Vérifications complètes (tests, style, contrôles, harnais)
         env:
           PIGMA_FORBIDDEN_REFS: ${{ secrets.PIGMA_FORBIDDEN_REFS }}
           PIGMA_FORBIDDEN_REFS_REQUIRED: "1"
           PIGMA_LEXERS_FRESH_REQUIRED: "1"
-          TOOLS: ${{ env.HOME }}/tools
         run: |
           ./gradlew :lsp:compileJava --no-daemon
           ./gradlew check --no-daemon
