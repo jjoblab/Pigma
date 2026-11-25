@@ -109,6 +109,7 @@ public final class OpenHarness {
         semanticFusion();
         completionCard();
         signatureCard();
+        quickDoc();
         languageServer();
         copyMeasures();
 
@@ -1209,6 +1210,37 @@ public final class OpenHarness {
         detail("signature : " + card.label());
     }
 
+    /**
+     * La documentation rapide : le titre porte le mot questionné, le
+     * corps se replie à la largeur — la description de l'index local
+     * (la nature, la ligne de déclaration) y vit, l'appui suivant la
+     * range.
+     */
+    private static void quickDoc() {
+        begin("survol : la documentation rapide au mot sous le doigt");
+        openLanguage("Java", 10_000L);
+        doubleTapOfToken("total");
+        frame();
+        check("le titre porte le mot questionné",
+                "total".equals(editor.infoPopupTitle()));
+        String body = editor.infoPopupText();
+        check("le corps décrit la déclaration (nature, ligne)",
+                body != null && body.contains("méthode")
+                        && body.contains("déclaré ligne"));
+        // un mot ordinaire : le corps dit lui-même
+        doubleTapOfWord("graine");
+        frame();
+        check("un mot ordinaire garde son titre et se dit lui-même",
+                "graine".equals(editor.infoPopupTitle())
+                        && "mot du texte".contentEquals(editor.infoPopupText()));
+        // l'appui suivant masque la documentation
+        tap(400.0f, 80.0f);
+        frame();
+        check("l'appui suivant masque la documentation",
+                !editor.isInfoPopupVisible());
+        detail("corps : " + body);
+    }
+
     /** Le serveur de langage : diagnostics, survol, débranchement. */
     private static void languageServer() throws Exception {
         begin("serveur de langage : diagnostics, survol, débranchement");
@@ -1230,6 +1262,8 @@ public final class OpenHarness {
         String hover = editor.infoPopupText();
         check("le survol du serveur prime dans la popup",
                 hover != null && hover.contains("classe"));
+        check("le titre porte le mot questionné",
+                "static".equals(editor.infoPopupTitle()));
         detail("survol : " + hover);
         // le survol asynchrone : une réponse tardive remplace la popup
         // À SA POSITION — une position périmée ne l'évince pas (la
@@ -1517,6 +1551,33 @@ public final class OpenHarness {
             }
         }
         return new float[] {100.0f, 100.0f};
+    }
+
+    /**
+     * Le point de contact d'un jeton dessiné : sa première occurrence
+     * EXACTE (le mot cherché comme jeton entier, pas noyé dans un
+     * long jeton de commentaire).
+     *
+     * @param word le jeton cherché
+     * @return abscisse et ordonnée du contact
+     */
+    private static float[] spotOfToken(String word) {
+        for (Canvas.TextOp op : canvas.harnessTextsSinceMark()) {
+            if (op.text.equals(word)) {
+                return new float[] {op.x + 3.0f, op.y - 4.0f};
+            }
+        }
+        return new float[] {100.0f, 100.0f};
+    }
+
+    /**
+     * Le double-tap sur un jeton dessiné (sélection puis popup).
+     *
+     * @param word le jeton cherché
+     */
+    private static void doubleTapOfToken(String word) {
+        float[] spot = spotOfToken(word);
+        doubleTap(spot[0], spot[1]);
     }
 
     /**

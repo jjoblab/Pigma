@@ -1137,7 +1137,23 @@ public final class EditorView extends View {
      * @param column la colonne d'ancrage
      */
     public void showInfoPopup(String text, int line, int column) {
-        infoPopup.show(text, line, column);
+        infoPopup.show(null, text, line, column);
+        invalidate();
+    }
+
+    /**
+     * La popup d'info ancrée en documentation rapide : le TITRE (le
+     * mot questionné, encre pleine et gras) au-dessus du CORPS (le
+     * texte replié à la largeur, multi-lignes) — la réponse d'un
+     * survol y passe, la description de l'index local aussi.
+     *
+     * @param title  le mot questionné, ou null pour aucun titre
+     * @param body   le texte du corps, vide ou null pour masquer
+     * @param line   la ligne d'ancrage
+     * @param column la colonne d'ancrage
+     */
+    public void showInfoPopup(String title, String body, int line, int column) {
+        infoPopup.show(title, body, line, column);
         invalidate();
     }
 
@@ -1297,6 +1313,16 @@ public final class EditorView extends View {
      */
     public String infoPopupText() {
         return infoPopup.text();
+    }
+
+    /**
+     * Le titre de la popup d'info (le mot questionné de la
+     * documentation rapide — le harnais le vérifie).
+     *
+     * @return le titre affiché, null si aucun ou masquée
+     */
+    public String infoPopupTitle() {
+        return infoPopup.title();
     }
 
     private void gotoSearchMatch(int index) {
@@ -2966,21 +2992,21 @@ public final class EditorView extends View {
         if (infoProvider != null) {
             String provided = infoProvider.infoFor(line, column, word);
             if (provided != null) {
-                showInfoPopup(provided, line, column);
+                showInfoPopup(word, provided, line, column);
                 return;
             }
         }
-        String text = "« " + word + " » — mot du texte";
+        String description = "mot du texte";
         if (symbolIndex != null) {
             for (SymbolIndex.Symbol symbol : symbolIndex.symbols()) {
                 if (symbol.name().equals(word)) {
-                    text = "« " + word + " » — " + symbol.nature()
-                            + ", déclaré ligne " + (symbol.line() + 1);
+                    description = symbol.nature() + " — déclaré ligne "
+                            + (symbol.line() + 1);
                     break;
                 }
             }
         }
-        showInfoPopup(text, line, column);
+        showInfoPopup(word, description, line, column);
     }
 
     /** Le début du mot qui contient l'offset (ou l'offset lui-même). */
