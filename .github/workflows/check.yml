@@ -41,13 +41,18 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager" \
               "platforms;android-35" > /dev/null
 
-      - name: JFlex du contrôle des lexeurs
+      - name: JFlex du contrôle des lexeurs (jar ombragé de la release)
         run: |
-          mkdir -p "$HOME/tools"
-          curl -fsSL --retry 3 --retry-delay 5 -o "$HOME/tools/jflex.jar" \
-            https://repo1.maven.org/maven2/de/jflex/jflex/1.9.1/jflex-1.9.1.jar
-          curl -fsSL --retry 3 --retry-delay 5 -o "$HOME/tools/java-cup-runtime-11b-20160615-3.jar" \
-            https://repo1.maven.org/maven2/com/vladsch/javacup/java-cup-runtime/11b-20160615-3/java-cup-runtime-11b-20160615-3.jar
+          mkdir -p "$HOME/tools" /tmp/jflex-zip
+          curl -fsSL --retry 3 --retry-delay 5 -o /tmp/jflex.zip \
+            https://github.com/jflex-de/jflex/releases/download/v1.9.1/jflex-1.9.1.zip
+          unzip -j -q /tmp/jflex.zip "jflex-1.9.1/lib/jflex-full-1.9.1.jar" \
+            -d /tmp/jflex-zip
+          # le jar ombragé porte jflex.Main ET le runtime CUP : il
+          # remplace les deux jars du contrôle (le second nom y est
+          # posé pour que la détection le trouve)
+          cp /tmp/jflex-zip/jflex-full-1.9.1.jar "$HOME/tools/jflex.jar"
+          cp /tmp/jflex-zip/jflex-full-1.9.1.jar "$HOME/tools/java-cup-runtime-11b-20160615-3.jar"
 
       - name: Vérifications complètes (tests, style, contrôles, harnais)
         env:
