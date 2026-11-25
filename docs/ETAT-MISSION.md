@@ -64,6 +64,21 @@ download/.**
 Harnais 42/42 scénarios verts (le scénario 39 « positions
 hostiles » neuf), tests des cinq modules verts, politique de
 langue OK (149 fichiers), APK rebâti (8,2 Mo).
+   Suite de la CI (runs 2 à 6) : le SDK du runner par sdkmanager
+   (l'action setup-android cassait au paquet tools disparu —
+   run 2) ; JFlex par le zip de la release GitHub (le jar nu
+   n'existe ni aux assets ni à l'URL Maven devinée — run 3 ; le
+   zip porte lib/jflex-full-1.9.1.jar, le jar OMBRAGÉ : jflex.Main
+   et le runtime CUP en un seul jar) ; les cinq lexeurs du dépôt
+   RÉGÉNÉRÉS par ce jar canonique (le code versionné datait d'une
+   build 1.9.1 différente — mêmes en-têtes, tables DFA
+   divergentes ; tests syntax/editor verts sur le régénéré) ; le
+   chemin TOOLS par GITHUB_ENV (le contexte env.HOME d'étape était
+   vide — run 5). Au run 6, tout le pipeline passe sauf le secret
+   PIGMA_FORBIDDEN_REFS (absent du dépôt GitHub — le propriétaire
+   seul le pose, la démarche vit au PORTAGE) ; sans lui, le mode
+   exigeant échoue à dessein.
+
 
 ## Session 37 — le journal des crashs, les chantiers 5 à 8 du rapport (2026-11-25)
 
