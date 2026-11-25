@@ -1,17 +1,35 @@
 package android.content;
 
 /**
- * Clip de démonstration : une étiquette et un texte, le presse-
- * papiers les porte.
+ * Clip de démonstration : une étiquette et des articles, le presse-
+ * papiers les porte. L'API reproduit celle du système — l'article
+ * porte le texte, le clip n'expose que ses articles (les raccourcis
+ * du système y passent aussi : getItemCount, getItemAt).
  */
 public final class ClipData {
 
-    private final CharSequence label;
-    private final CharSequence text;
+    /** Un article du clip : le texte qu'il porte. */
+    public static final class Item {
 
-    private ClipData(CharSequence label, CharSequence text) {
+        private final CharSequence text;
+
+        public Item(CharSequence text) {
+            this.text = text;
+        }
+
+        /** Le texte de l'article (null : pas du texte). */
+        public CharSequence getText() {
+            return text;
+        }
+    }
+
+    private final CharSequence label;
+
+    private final Item[] items;
+
+    private ClipData(CharSequence label, Item[] items) {
         this.label = label;
-        this.text = text;
+        this.items = items;
     }
 
     /**
@@ -22,7 +40,7 @@ public final class ClipData {
      * @return le clip neuf
      */
     public static ClipData newPlainText(CharSequence label, CharSequence text) {
-        return new ClipData(label, text);
+        return new ClipData(label, new Item[] {new Item(text)});
     }
 
     /** L'étiquette du clip. */
@@ -30,8 +48,19 @@ public final class ClipData {
         return label;
     }
 
-    /** Le contenu du clip. */
-    public CharSequence getText() {
-        return text;
+    /** Le compte d'articles du clip. */
+    public int getItemCount() {
+        return items.length;
+    }
+
+    /**
+     * L'article à la position.
+     *
+     * @param index la position demandée
+     * @return l'article
+     * @throws IndexOutOfBoundsException hors des bornes
+     */
+    public Item getItemAt(int index) {
+        return items[index];
     }
 }

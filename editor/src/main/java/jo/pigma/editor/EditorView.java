@@ -2662,7 +2662,8 @@ public final class EditorView extends View {
             return null;
         }
         ClipData clip = manager.getPrimaryClip();
-        CharSequence text = clip == null ? null : clip.getText();
+        CharSequence text = clip == null || clip.getItemCount() == 0
+                ? null : clip.getItemAt(0).getText();
         return text == null || text.length() == 0 ? null : text.toString();
     }
 

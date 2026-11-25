@@ -279,8 +279,9 @@ public final class OpenHarness {
         android.content.ClipData copied =
                 android.content.Context.harnessClipboard().getPrimaryClip();
         check("le presse-papiers porte le texte entier",
-                copied != null && "sélection Pigma".contentEquals(copied.getLabel())
-                        && copied.getText().length() == length);
+                copied != null && copied.getItemCount() == 1
+                        && "sélection Pigma".contentEquals(copied.getLabel())
+                        && copied.getItemAt(0).getText().length() == length);
         click("Quitter la sélection");
         check("la sélection se range", !editor.hasSelection());
     }
@@ -1281,7 +1282,7 @@ public final class OpenHarness {
                 editor.selectionBar().centerY());
         frame();
         CharSequence clip = android.content.Context.harnessClipboard()
-                .getPrimaryClip().getText();
+                .getPrimaryClip().getItemAt(0).getText();
         check("Copier porte la sélection au presse-papiers",
                 clip != null && "graine".contentEquals(clip));
         check("la pastille Coller naît du texte copié",
@@ -1314,7 +1315,7 @@ public final class OpenHarness {
                 editor.overflowCard().rowCenterY(0));
         frame();
         CharSequence coupe = android.content.Context.harnessClipboard()
-                .getPrimaryClip().getText();
+                .getPrimaryClip().getItemAt(0).getText();
         check("Couper retire l'occurrence sélectionnée",
                 countOccurrences(editor.getBuffer().toString(), "graine") == avant - 1);
         check("Couper copie la sélection au presse-papiers",
@@ -1371,7 +1372,7 @@ public final class OpenHarness {
                 editor.selectionBar().centerY());
         frame();
         CharSequence tout = android.content.Context.harnessClipboard()
-                .getPrimaryClip().getText();
+                .getPrimaryClip().getItemAt(0).getText();
         check("Tout copier porte le document entier au presse-papiers",
                 tout != null && tout.length() == editor.getBuffer().length());
         check("la pastille Coller vit après tout copier",
@@ -1501,7 +1502,8 @@ public final class OpenHarness {
     private static void copyMeasures() {
         begin("copie des mesures : le tableau complet au presse-papiers");
         click("Copier les mesures");
-        CharSequence clip = android.content.Context.harnessClipboard().getPrimaryClip().getText();
+        CharSequence clip = android.content.Context.harnessClipboard()
+                .getPrimaryClip().getItemAt(0).getText();
         String measures = clip == null ? "" : clip.toString();
         check("l'en-tête du relevé s'y trouve",
                 measures.startsWith("Relevés appareil Pigma"));
