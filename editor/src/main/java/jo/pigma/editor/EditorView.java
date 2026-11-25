@@ -15,8 +15,12 @@ import jo.pigma.editor.render.RenderCache;
 import jo.pigma.editor.popups.PopupMetrics;
 import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.editor.popups.CompletionCard;
+import jo.pigma.editor.popups.OverflowCard;
+import jo.pigma.editor.popups.SelectionBar;
 import jo.pigma.editor.popups.SignatureCard;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -250,6 +254,25 @@ public final class EditorView extends View {
     /** La carte de signature au caret — l'aide aux paramètres d'un appel. */
     private SignatureCard signatureCard;
 
+    /** La barre de sélection — les actions de la sélection en pastilles. */
+    private SelectionBar selectionBar;
+
+    /** La carte de débordement de la barre — les actions repliées. */
+    private OverflowCard overflowCard;
+
+    /** La trame de la dernière sonde du presse-papiers (la sonde s'amortit). */
+    private long clipboardProbeFrame = -1;
+
+    /** Le presse-papiers portait-il du texte à la dernière sonde ? */
+    private boolean clipboardHasText;
+
+    /**
+     * Le plafond des copies au presse-papiers, en caractères : la
+     * transaction de la plateforme plafonne à un méga-octet — au-delà,
+     * le système tue l'appelant. La copie tronque au plafond.
+     */
+    private static final int MAX_CLIPBOARD_CHARS = 200_000;
+
     /** La gouttière — les numéros de ligne, au paquet du même nom. */
     private Gutter gutter;
 
@@ -425,6 +448,9 @@ public final class EditorView extends View {
         completionCard = new CompletionCard(dp(1));
         completionCard.bind(this);
         signatureCard = new SignatureCard(dp(1));
+        selectionBar = new SelectionBar(dp(1));
+        selectionBar.bind(this);
+        overflowCard = new OverflowCard(dp(1));
         gutter = new Gutter(dp(1));
         inputContract = createInputContract();
         trackedLineCount = buffer.getLineCount();
@@ -712,6 +738,8 @@ public final class EditorView extends View {
         completionCard.set(List.of(), "");
         suggestionWordStart = -1;
         signatureCard.set(null, 0);
+        selectionBar.hide();
+        overflowCard.close();
         // autre document : la sélection n'y désigne plus rien, la
         // recherche et la popup d'info non plus
         selection.setAnchor(-1);
@@ -1537,7 +1565,11 @@ public final class EditorView extends View {
                     || (completionCard != null && completionCard.isShown()
                             && completionCard.onTouchArea(event.getX(), event.getY()))
                     || (signatureCard != null && signatureCard.isShown()
-                            && signatureCard.onTouchArea(event.getX(), event.getY()));
+                            && signatureCard.onTouchArea(event.getX(), event.getY()))
+                    || (selectionBar != null && selectionBar.isShown()
+                            && selectionBar.onTouchArea(event.getX(), event.getY()))
+                    || (overflowCard != null && overflowCard.isShown()
+                            && overflowCard.onTouchArea(event.getX(), event.getY()));
             if (downOnCard) {
                 return true;
             }
@@ -1863,10 +1895,12 @@ public final class EditorView extends View {
         refreshAnalysis();
         updateSuggestions();
         updateSignature();
+        updateSelectionBar();
         drawDiagnostics(canvas, first, last, count);
         drawCompletionCard(canvas);
         drawInfoPopup(canvas);
         drawSignatureCard(canvas);
+        drawSelectionBar(canvas);
         // les cartes de recherche et d'aller-à, par-dessus tout :
         // dessinées dans la vue, posées au
         // caret, le clavier délégué (la pose se recalcule ici : le
@@ -1999,6 +2033,12 @@ public final class EditorView extends View {
         }
         float anchorTop = getPaddingTop()
                 + visibleIndexOf(infoPopup.line()) * lineHeight - scrollY;
+        // la barre de sélection vit : la documentation s'y empile —
+        // la popup s'ancre au-dessus de la barre (le « i » l'a ouverte
+        // sur la sélection)
+        if (selectionBar.isShown()) {
+            anchorTop = Math.min(anchorTop, selectionBar.poseY());
+        }
         infoPopup.draw(canvas, anchorTop, popupMetrics());
     }
 
@@ -2370,6 +2410,13 @@ public final class EditorView extends View {
      * appel, ou un nom sans déclaration, la range.
      */
     private void updateSignature() {
+        // la barre de sélection tient l'espace au-dessus de la ligne :
+        // tant qu'une sélection vit, la carte de signature y cède (la
+        // frappe la ramène — elle remplace la sélection)
+        if (selectionBarAlive()) {
+            signatureCard.set(null, 0);
+            return;
+        }
         int caret = Math.min(selection.caret(), buffer.length());
         SignatureHelp help = signatureProvider != null
                 ? signatureProvider.signatureAt(caret) : localSignatureAt(caret);
@@ -2460,6 +2507,232 @@ public final class EditorView extends View {
             }
         }
         return null;
+    }
+
+    /**
+     * La barre de sélection (le harnais la lit) : les actions de la
+     * sélection en pastilles.
+     *
+     * @return la barre de sélection
+     */
+    public SelectionBar selectionBar() {
+        return selectionBar;
+    }
+
+    /**
+     * La carte de débordement de la barre de sélection (le harnais la
+     * lit) : les actions repliées.
+     *
+     * @return la carte de débordement
+     */
+    public OverflowCard overflowCard() {
+        return overflowCard;
+    }
+
+    /**
+     * Copie la sélection au presse-papiers du système (tronquée au
+     * plafond de transaction — la copie monstre ne tue pas l'appel).
+     * La barre s'y rafraîchit : la pastille Coller en naît.
+     */
+    public void copySelection() {
+        if (!hasSelection()) {
+            return;
+        }
+        CharSequence selected = selectedText();
+        placeClipboard("sélection Pigma", selected);
+        clipboardProbeFrame = -1;
+        invalidate();
+    }
+
+    /**
+     * Colle le texte du presse-papiers sur la sélection (une unité
+     * d'annulation) ; sans sélection, le texte se pose au curseur.
+     */
+    public void pasteFromClipboard() {
+        CharSequence clip = clipboardText();
+        if (clip == null || clip.length() == 0) {
+            return;
+        }
+        int start = hasSelection() ? selectionStart() : Math.min(selection.caret(), buffer.length());
+        int end = hasSelection() ? selectionEnd() : start;
+        applyEdit(start, end, clip.toString());
+    }
+
+    /**
+     * Copie TOUT le document au presse-papiers du système — « tout
+     * copier », tronqué au plafond de transaction. La barre s'y
+     * rafraîchit : la pastille Coller en naît.
+     */
+    public void copyAllText() {
+        placeClipboard("document Pigma", buffer.toString());
+        clipboardProbeFrame = -1;
+        invalidate();
+    }
+
+    /**
+     * La documentation rapide du mot sélectionné : la popup d'info
+     * y répond (le fournisseur de l'hôte d'abord, l'index local
+     * sinon) — le « i » de la barre de sélection.
+     */
+    public void showSelectionDocs() {
+        if (!hasSelection()) {
+            return;
+        }
+        int start = selectionStart();
+        int end = selectionEnd();
+        int line = buffer.lineOfOffset(start);
+        showSymbolInfo(start, end, line, start - buffer.getLineStart(line));
+    }
+
+    /**
+     * Ouvre la carte de débordement de la barre : les actions
+     * repliées — couper, tout sélectionner, quitter la sélection. La
+     * puce la referme (le menu se rabat) ; le choix d'une rangée la
+     * referme AVANT d'exécuter ; elle ne survit jamais à sa barre (la
+     * sélection morte la ferme).
+     */
+    public void showOverflowMenu() {
+        if (overflowCard.isShown()) {
+            overflowCard.close();
+            invalidate();
+            return;
+        }
+        overflowCard.open(List.of(
+                new OverflowCard.Row("Couper", this::cutSelection),
+                new OverflowCard.Row("Tout sélectionner", this::selectAll),
+                new OverflowCard.Row("Quitter la sélection", this::clearSelection)));
+    }
+
+    /**
+     * La barre de sélection vit-elle à cette trame ? Une sélection
+     * vivante, tenue par aucun geste (la poignée traînée, le traîné
+     * ou le défilement la tiennent) — la barre se pose au-dessus
+     * d'elle, les pastilles vives (la pastille Coller naît du
+     * presse-papiers).
+     */
+    private boolean selectionBarAlive() {
+        return hasSelection() && selectionDragBound == 0
+                && !textDragging && !dragging;
+    }
+
+    private void updateSelectionBar() {
+        if (!selectionBarAlive()) {
+            selectionBar.hide();
+            overflowCard.close();
+            clipboardProbeFrame = -1;
+            return;
+        }
+        selectionBar.show(clipboardHasText());
+    }
+
+    /** Coupe la sélection : copie puis remplace par le vide. */
+    private void cutSelection() {
+        if (!hasSelection()) {
+            return;
+        }
+        copySelection();
+        applyEdit(selectionStart(), selectionEnd(), "");
+    }
+
+    /** Range la sélection (le curseur seul demeure). */
+    private void clearSelection() {
+        selection.setAnchor(-1);
+        invalidate();
+    }
+
+    /** Pose le texte au presse-papiers du système, tronqué au plafond. */
+    private void placeClipboard(String label, CharSequence text) {
+        Object service = getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+        if (!(service instanceof ClipboardManager manager)) {
+            return;
+        }
+        String bounded = text.length() > MAX_CLIPBOARD_CHARS
+                ? text.toString().substring(0, MAX_CLIPBOARD_CHARS)
+                : text.toString();
+        manager.setPrimaryClip(ClipData.newPlainText(label, bounded));
+    }
+
+    /**
+     * Le texte du presse-papiers du système, ou null (vide, ou pas du
+     * texte).
+     */
+    private String clipboardText() {
+        Object service = getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+        if (!(service instanceof ClipboardManager manager)) {
+            return null;
+        }
+        ClipData clip = manager.getPrimaryClip();
+        CharSequence text = clip == null ? null : clip.getText();
+        return text == null || text.length() == 0 ? null : text.toString();
+    }
+
+    /**
+     * Le presse-papiers porte-t-il du texte ? La sonde s'amortit —
+     * la lecture traverse la frontière du système, la barre ne la
+     * paie pas à chaque trame (à la pose, aux actions de copie, et
+     * par intervalle court pendant qu'elle vit).
+     */
+    private boolean clipboardHasText() {
+        if (clipboardProbeFrame < 0
+                || frameCount - clipboardProbeFrame > 15) {
+            clipboardProbeFrame = frameCount;
+            clipboardHasText = clipboardText() != null;
+        }
+        return clipboardHasText;
+    }
+
+    /**
+     * Le bord haut de la sélection en pixels de vue (sa première
+     * ligne visible — les plis ne la déplacent pas).
+     */
+    private float selectionTopPx() {
+        int line = buffer.lineOfOffset(Math.min(selectionStart(), selectionEnd()));
+        return getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
+    }
+
+    /**
+     * Le bord bas de la sélection en pixels de vue (sa dernière
+     * ligne, la hauteur comprise).
+     */
+    private float selectionBottomPx() {
+        int end = Math.max(selectionStart(), selectionEnd());
+        int line = buffer.lineOfOffset(Math.min(end, buffer.length()));
+        return getPaddingTop() + (visibleIndexOf(line) + 1) * lineHeight - scrollY;
+    }
+
+    /**
+     * Le centre horizontal de la sélection en pixels de vue : le
+     * milieu de son étendue sur sa première ligne (le mot centré,
+     * la sélection large ramène au milieu de la ligne).
+     */
+    private float selectionCenterX() {
+        int start = Math.min(selectionStart(), selectionEnd());
+        int end = Math.max(selectionStart(), selectionEnd());
+        int line = buffer.lineOfOffset(start);
+        int lineStart = buffer.getLineStart(line);
+        int lineEnd = buffer.getLineEnd(line);
+        int from = Math.max(start, lineStart) - lineStart;
+        int to = Math.min(end, lineEnd) - lineStart;
+        return getPaddingLeft() + (from + to) / 2.0f * charWidth;
+    }
+
+    /**
+     * La barre de sélection et sa carte de débordement, par-dessus
+     * tout : posées sur la sélection, re-posées à chaque trame — la
+     * sélection bouge, la barre la suit.
+     */
+    private void drawSelectionBar(Canvas canvas) {
+        if (!selectionBar.isShown() && !overflowCard.isShown()) {
+            return;
+        }
+        float top = selectionTopPx();
+        float bottom = selectionBottomPx();
+        float centerX = selectionCenterX();
+        if (overflowCard.isShown()) {
+            overflowCard.draw(canvas, selectionBar.poseY(), bottom, centerX,
+                    popupMetrics());
+        }
+        selectionBar.draw(canvas, top, bottom, centerX, popupMetrics());
     }
 
     /**
@@ -2969,13 +3242,13 @@ public final class EditorView extends View {
         int wordStart = wordBoundsStart(offset, lineStart);
         int wordEnd = wordBoundsEnd(offset, lineEnd);
         // le curseur d'abord (le poser range la sélection), l'ancre
-        // ensuite la rouvre
+        // ensuite la rouvre ; la barre de sélection naît de la
+        // sélection — la documentation rapide s'y ouvre par le « i »
         selection.setAnchor(-1);
         caretTo(offset);
         if (wordEnd > wordStart) {
             selection.setAnchor(wordStart);
             selection.setCaret(wordEnd);
-            showSymbolInfo(wordStart, wordEnd, line, offset - lineStart);
             invalidate();
         }
     }

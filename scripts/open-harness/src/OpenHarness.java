@@ -24,7 +24,8 @@ import jo.pigma.syntax.SyntaxDocument;
  * machine virtuelle, sans appareil — la création, le premier dessin,
  * le remplissage du fond, les langages, le thème, la frappe et le
  * clavier par événements, la sélection et ses poignées, l'appui long
- * qui glisse, la recherche et le remplacement, le fichier hors
+ * qui glisse, la barre de sélection et son débordement, la recherche et le
+ * remplacement, le fichier hors
  * normes, les plis, la fusion sémantique, le serveur de langage de
  * démonstration et la copie des mesures. Chaque scénario s'imprime :
  * le résumé final dit tout vert ou non, le code de sortie suit.
@@ -110,6 +111,7 @@ public final class OpenHarness {
         completionCard();
         signatureCard();
         quickDoc();
+        selectionBar();
         languageServer();
         copyMeasures();
 
@@ -1221,6 +1223,10 @@ public final class OpenHarness {
         openLanguage("Java", 10_000L);
         doubleTapOfToken("total");
         frame();
+        // la documentation s'ouvre par le « i » de la barre de
+        // sélection (le double-tap ne fait que sélectionner)
+        tap(editor.selectionBar().docsCenterX(), editor.selectionBar().centerY());
+        frame();
         check("le titre porte le mot questionné",
                 "total".equals(editor.infoPopupTitle()));
         String body = editor.infoPopupText();
@@ -1229,6 +1235,8 @@ public final class OpenHarness {
                         && body.contains("déclaré ligne"));
         // un mot ordinaire : le corps dit lui-même
         doubleTapOfWord("graine");
+        frame();
+        tap(editor.selectionBar().docsCenterX(), editor.selectionBar().centerY());
         frame();
         check("un mot ordinaire garde son titre et se dit lui-même",
                 "graine".equals(editor.infoPopupTitle())
@@ -1239,6 +1247,153 @@ public final class OpenHarness {
         check("l'appui suivant masque la documentation",
                 !editor.isInfoPopupVisible());
         detail("corps : " + body);
+    }
+
+    /**
+     * La barre de sélection : les pastilles (Copier, Coller au
+     * presse-papiers près, Tout copier), l'icône « i » de la
+     * documentation, la puce « ⋯ » de débordement et ses actions
+     * repliées.
+     */
+    private static void selectionBar() {
+        begin("barre de sélection : pastilles, documentation, débordement");
+        openLanguage("Java", 10_000L);
+        // presse-papiers vide : la pastille inutile ne se promène pas
+        android.content.Context.harnessClipboard().setPrimaryClip(null);
+        doubleTapOfWord("graine");
+        frame();
+        check("la barre naît de la sélection",
+                editor.selectionBar().isShown());
+        check("sans presse-papiers, la pastille Coller ne vit pas",
+                !editor.selectionBar().hasChip("Coller"));
+        check("les pastilles Copier et Tout copier vivent",
+                editor.selectionBar().hasChip("Copier")
+                        && editor.selectionBar().hasChip("Tout copier"));
+        int selLine = editor.getBuffer().lineOfOffset(editor.selectionStart());
+        check("la barre flotte au-dessus de la ligne sélectionnée, dans les murs",
+                editor.selectionBar().poseY() + editor.selectionBar().height()
+                        <= lineTop(selLine) + LINE_HEIGHT
+                        && editor.selectionBar().poseX() >= 0
+                        && editor.selectionBar().poseX()
+                                + editor.selectionBar().width() <= editor.getWidth());
+        // Copier : la sélection au presse-papiers, la pastille Coller en naît
+        tap(editor.selectionBar().chipCenterX("Copier"),
+                editor.selectionBar().centerY());
+        frame();
+        CharSequence clip = android.content.Context.harnessClipboard()
+                .getPrimaryClip().getText();
+        check("Copier porte la sélection au presse-papiers",
+                clip != null && "graine".contentEquals(clip));
+        check("la pastille Coller naît du texte copié",
+                editor.selectionBar().hasChip("Coller"));
+        // le « i » : la documentation rapide du mot sélectionné
+        tap(editor.selectionBar().docsCenterX(), editor.selectionBar().centerY());
+        frame();
+        check("le « i » ouvre la documentation du mot sélectionné",
+                "graine".equals(editor.infoPopupTitle()));
+        // la puce « ⋯ » : les actions repliées en rangées
+        tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
+        frame();
+        java.util.List<String> repliees = editor.overflowCard().labels();
+        check("le débordement porte les actions repliées",
+                repliees.size() == 3
+                        && "Couper".equals(repliees.get(0))
+                        && "Tout sélectionner".equals(repliees.get(1))
+                        && "Quitter la sélection".equals(repliees.get(2)));
+        // la puce referme la carte (le menu se rabat)
+        tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
+        frame();
+        check("la puce referme la carte de débordement",
+                !editor.overflowCard().isShown());
+        // Couper : la carte se referme avant d'exécuter, la sélection
+        // copiée puis effacée, la barre se range avec elle
+        tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
+        frame();
+        int avant = countOccurrences(editor.getBuffer().toString(), "graine");
+        tap(editor.overflowCard().poseX() + 10.0f,
+                editor.overflowCard().rowCenterY(0));
+        frame();
+        CharSequence coupe = android.content.Context.harnessClipboard()
+                .getPrimaryClip().getText();
+        check("Couper retire l'occurrence sélectionnée",
+                countOccurrences(editor.getBuffer().toString(), "graine") == avant - 1);
+        check("Couper copie la sélection au presse-papiers",
+                coupe != null && "graine".contentEquals(coupe));
+        check("la carte refermée, la barre se range avec la sélection morte",
+                !editor.overflowCard().isShown() && !editor.selectionBar().isShown());
+        click("Annuler");
+        check("l'annulation rend le mot coupé",
+                countOccurrences(editor.getBuffer().toString(), "graine") == avant);
+        // Coller : le texte du presse-papiers remplace la sélection
+        android.content.Context.harnessClipboard().setPrimaryClip(
+                android.content.ClipData.newPlainText("essai", "grelin"));
+        doubleTapOfWord("graine");
+        frame();
+        check("la pastille Coller vit du texte du presse-papiers",
+                editor.selectionBar().hasChip("Coller"));
+        tap(editor.selectionBar().chipCenterX("Coller"),
+                editor.selectionBar().centerY());
+        frame();
+        check("Coller remplace la sélection par le texte du presse-papiers",
+                countOccurrences(editor.getBuffer().toString(), "grelin") == 1
+                        && countOccurrences(editor.getBuffer().toString(),
+                                "graine") == avant - 1);
+        click("Annuler");
+        check("l'annulation rend le texte initial",
+                countOccurrences(editor.getBuffer().toString(), "grelin") == 0
+                        && countOccurrences(editor.getBuffer().toString(),
+                                "graine") == avant);
+        // Tout sélectionner, depuis le débordement
+        doubleTapOfWord("graine");
+        frame();
+        tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
+        frame();
+        tap(editor.overflowCard().poseX() + 10.0f,
+                editor.overflowCard().rowCenterY(1));
+        frame();
+        check("Tout sélectionner prend le document entier",
+                editor.hasSelection()
+                        && editor.selectedText().length()
+                                == editor.getBuffer().length());
+        // Quitter la sélection, depuis le débordement
+        tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
+        frame();
+        tap(editor.overflowCard().poseX() + 10.0f,
+                editor.overflowCard().rowCenterY(2));
+        frame();
+        check("Quitter la sélection rend le curseur seul",
+                !editor.hasSelection() && !editor.selectionBar().isShown());
+        // Tout copier : le document entier au presse-papiers
+        android.content.Context.harnessClipboard().setPrimaryClip(null);
+        doubleTapOfWord("graine");
+        frame();
+        tap(editor.selectionBar().chipCenterX("Tout copier"),
+                editor.selectionBar().centerY());
+        frame();
+        CharSequence tout = android.content.Context.harnessClipboard()
+                .getPrimaryClip().getText();
+        check("Tout copier porte le document entier au presse-papiers",
+                tout != null && tout.length() == editor.getBuffer().length());
+        check("la pastille Coller vit après tout copier",
+                editor.selectionBar().hasChip("Coller"));
+        // la frappe remplace la sélection : la barre ne prend jamais le focus
+        connection.commitText("P", 1);
+        frame();
+        check("la frappe remplace la sélection, la barre se range",
+                countOccurrences(editor.getBuffer().toString(), "graine") == avant - 1
+                        && !editor.selectionBar().isShown());
+        click("Annuler");
+        // le doigt hors de la barre poursuit sa vie : le curseur y va,
+        // la sélection meurt, la barre se range
+        doubleTapOfWord("graine");
+        frame();
+        tap(400.0f, 700.0f);
+        frame();
+        check("le doigt hors de la barre va au curseur, la barre se range",
+                !editor.hasSelection() && !editor.selectionBar().isShown());
+        click("Annuler");
+        check("le texte demeure intact à la fin",
+                countOccurrences(editor.getBuffer().toString(), "graine") == avant);
     }
 
     /** Le serveur de langage : diagnostics, survol, débranchement. */
@@ -1258,6 +1413,10 @@ public final class OpenHarness {
         check("la parenthèse fermée ramène le compte à zéro (deux deltas)",
                 awaitText("LSP : 0", 8000L));
         doubleTapOfWord("static");
+        frame();
+        // le survol du serveur se demande par le « i » de la barre de
+        // sélection (le double-tap ne fait que sélectionner)
+        tap(editor.selectionBar().docsCenterX(), editor.selectionBar().centerY());
         View.harnessDrain(2000L);
         String hover = editor.infoPopupText();
         check("le survol du serveur prime dans la popup",
