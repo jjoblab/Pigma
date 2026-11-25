@@ -36,6 +36,7 @@ import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.ShowMessageRequestParams;
+import org.eclipse.lsp4j.SignatureHelpParams;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TextDocumentItem;
@@ -401,6 +402,25 @@ public final class LspSession {
                 new TextDocumentIdentifier(uri), position.toLsp());
         return launcher.getRemoteProxy().getTextDocumentService()
                 .completion(params).thenApply(LspSession::completionLabels);
+    }
+
+    /**
+     * Demande l'aide aux paramètres à une position : la réponse porte
+     * la signature active et son paramètre actif (le serveur peut
+     * proposer plusieurs signatures — les surcharges — l'active seule
+     * revient, la première sans désignation).
+     *
+     * @param uri      le document interrogé
+     * @param position la position du curseur
+     * @return le futur de la signature, null quand le serveur ne sait
+     *         pas (hors appel, nom inconnu)
+     */
+    public CompletableFuture<LspSignatureHelp> signatureHelp(String uri,
+            LspPosition position) {
+        SignatureHelpParams params = new SignatureHelpParams(
+                new TextDocumentIdentifier(uri), position.toLsp());
+        return launcher.getRemoteProxy().getTextDocumentService()
+                .signatureHelp(params).thenApply(LspSignatureHelp::fromLsp);
     }
 
     /**

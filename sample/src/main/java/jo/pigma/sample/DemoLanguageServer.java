@@ -27,6 +27,10 @@ import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.ServerCapabilities;
+import org.eclipse.lsp4j.SignatureHelp;
+import org.eclipse.lsp4j.SignatureHelpOptions;
+import org.eclipse.lsp4j.SignatureHelpParams;
+import org.eclipse.lsp4j.SignatureInformation;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
 import org.eclipse.lsp4j.services.LanguageClient;
@@ -41,8 +45,10 @@ import org.eclipse.lsp4j.services.WorkspaceService;
  * capacités, le document ouvert publie les parenthèses non appariées
  * (une lecture lexicale, pas l'analyse de la bibliothèque : le serveur
  * fait semblant d'être extérieur), le survol rend la description des
- * mots-clés et le compte des occurrences. Le reste de l'interface de
- * service se tait — lsp4j le remplit par défaut.
+ * mots-clés et le compte des occurrences, l'aide aux paramètres rend
+ * la signature de la déclaration du nom appelé — à sa façon : les
+ * paramètres d'abord, le type de retour après. Le reste de
+ * l'interface de service se tait — lsp4j le remplit par défaut.
  */
 final class DemoLanguageServer implements LanguageServer, TextDocumentService,
         LanguageClientAware {
@@ -230,6 +236,131 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
             items.add(new CompletionItem(word));
         }
         return CompletableFuture.completedFuture(Either.forLeft(items));
+    }
+
+    @Override
+    public CompletableFuture<SignatureHelp> signatureHelp(SignatureHelpParams params) {
+        int caret = offsetOf(text, params.getPosition());
+        // l'ouvrante non fermée de l'appel courant : en remontant du
+        // curseur, les fermantes se consomment ; un finisseur
+        // d'instruction avant elle coupe la recherche
+        int depth = 0;
+        int openParen = -1;
+        for (int at = caret - 1; at >= 0; at--) {
+            char c = text.charAt(at);
+            if (c == ')') {
+                depth++;
+            } else if (c == '(') {
+                if (depth == 0) {
+                    openParen = at;
+                    break;
+                }
+                depth--;
+            } else if (c == ';' || c == '{' || c == '}') {
+                break;
+            }
+        }
+        if (openParen < 0) {
+            return CompletableFuture.completedFuture(null);
+        }
+        // le paramètre actif : les virgules de profondeur nulle entre
+        // l'ouvrante de l'appel et le curseur
+        int active = 0;
+        int nested = 0;
+        for (int at = openParen + 1; at < caret; at++) {
+            char c = text.charAt(at);
+            if (c == '(' || c == '[' || c == '{') {
+                nested++;
+            } else if (c == ')' || c == ']' || c == '}') {
+                nested--;
+            } else if (c == ',' && nested == 0) {
+                active++;
+            }
+        }
+        SignatureInformation signature = signatureOfCall(openParen);
+        if (signature == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return CompletableFuture.completedFuture(new SignatureHelp(
+                List.of(signature), 0, active));
+    }
+
+    /**
+     * La signature du nom appelé : sa déclaration dans le texte — la
+     * ligne qui porte le nom, des parenthèses et le bloc ouvrant —
+     * réécrite à la façon du serveur (les paramètres d'abord, le type
+     * de retour après).
+     *
+     * @param openParen l'ouvrante de l'appel en cours
+     * @return la signature trouvée, null sans déclaration du nom
+     */
+    private SignatureInformation signatureOfCall(int openParen) {
+        int nameEnd = openParen;
+        while (nameEnd > 0 && Character.isWhitespace(text.charAt(nameEnd - 1))) {
+            nameEnd--;
+        }
+        int nameStart = nameEnd;
+        while (nameStart > 0 && !wordBreak(text.charAt(nameStart - 1))) {
+            nameStart--;
+        }
+        if (nameStart == nameEnd) {
+            return null;
+        }
+        String name = text.substring(nameStart, nameEnd);
+        String declarationLine = null;
+        for (int at = 0; at + name.length() <= text.length(); at++) {
+            if (!text.startsWith(name, at) || !boundaryBefore(at)) {
+                continue;
+            }
+            int after = at + name.length();
+            while (after < text.length()
+                    && Character.isWhitespace(text.charAt(after))) {
+                after++;
+            }
+            if (after >= text.length() || text.charAt(after) != '(') {
+                continue;
+            }
+            int lineStart = text.lastIndexOf('\n', at) + 1;
+            int lineEnd = text.indexOf('\n', at);
+            if (lineEnd < 0) {
+                lineEnd = text.length();
+            }
+            String line = text.substring(lineStart, lineEnd).trim();
+            if (line.endsWith("{") && line.indexOf('(') >= 0
+                    && line.indexOf(')') >= 0) {
+                declarationLine = line;
+                break;
+            }
+        }
+        if (declarationLine == null) {
+            return null;
+        }
+        int open = declarationLine.indexOf('(');
+        int close = declarationLine.lastIndexOf(')');
+        String parameters = declarationLine.substring(open, close + 1);
+        String head = declarationLine.substring(0, open).trim();
+        // le nom appelé finit la tête : le type de retour est le mot
+        // juste avant lui
+        int headEnd = head.length();
+        while (headEnd > 0 && !Character.isWhitespace(head.charAt(headEnd - 1))) {
+            headEnd--;
+        }
+        String beforeName = head.substring(0, headEnd).trim();
+        int returnTypeStart = beforeName.length();
+        while (returnTypeStart > 0
+                && !Character.isWhitespace(beforeName.charAt(returnTypeStart - 1))) {
+            returnTypeStart--;
+        }
+        String returnType = beforeName.substring(returnTypeStart).trim();
+        if (returnType.isEmpty()) {
+            returnType = name;
+        }
+        return new SignatureInformation(name + parameters + " : " + returnType);
+    }
+
+    /** Vrai quand le caractère avant la position borne le mot. */
+    private boolean boundaryBefore(int at) {
+        return at == 0 || wordBreak(text.charAt(at - 1));
     }
 
     /**

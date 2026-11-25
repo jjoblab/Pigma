@@ -108,6 +108,16 @@ public final class MainActivity extends Activity {
     private final java.util.List<String> completionCache =
             java.util.Collections.synchronizedList(new java.util.ArrayList<>());
 
+    /** La génération de la demande de signature vivante (le texte change : la réponse en vol se périme). */
+    private final java.util.concurrent.atomic.AtomicLong signatureGeneration =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    /** Le curseur de la dernière demande de signature (la clef du cache). */
+    private volatile int signatureCaret = -1;
+
+    /** La dernière signature reçue du serveur (null : pas de réponse). */
+    private volatile EditorView.SignatureHelp signatureAnswer;
+
     /** Le report du changement de document vers le serveur (la synchronisation intégrale se amortit). */
     private final Runnable lspSync = this::pushDocumentToServer;
 
@@ -554,6 +564,10 @@ public final class MainActivity extends Activity {
     private void detachLsp() {
         editorView.setInfoProvider(null);
         editorView.setSuggestionProvider(null);
+        editorView.setSignatureProvider(null);
+        signatureGeneration.incrementAndGet();
+        signatureCaret = -1;
+        signatureAnswer = null;
         lspSession.shutdown();
         lspSession = null;
         lspUri = null;
@@ -570,11 +584,13 @@ public final class MainActivity extends Activity {
      * Les fournisseurs de la liaison branchée : la popup d'info
      * interroge le survol (la réponse du serveur prime sur l'index
      * local — le fournisseur rend null quand le serveur ne sait pas,
-     * il attend au plus 200 ms) ; la complétion du serveur monte au
-     * bandeau (la vue tire à chaque trame — le fournisseur cache par
+     * il attend au plus 200 ms) ; la complétion du serveur monte à la
+     * carte (la vue tire à chaque trame — le fournisseur cache par
      * préfixe, la réponse revient asynchrone sur le fil du lecteur :
      * la neuve évince l'ancienne si le préfixe n'a pas bougé, la
-     * trame suivante la porte).
+     * trame suivante la porte) ; l'aide aux paramètres du serveur
+     * prime sur l'index local — la réponse y arrive pareillement
+     * asynchrone, la trame suivante la porte.
      */
     private void attachProviders() {
         final String uri = lspUri;
@@ -606,7 +622,7 @@ public final class MainActivity extends Activity {
             }
             return null;
         });
-        // la complétion du serveur au bandeau : la vue tire à chaque
+        // la complétion du serveur à la carte : la vue tire à chaque
         // trame — le fournisseur cache par préfixe (le même préfixe y
         // rend la même liste, O(1)), la réponse revient asynchrone sur
         // le fil du lecteur : la neuve évince l'ancienne si le préfixe
@@ -631,6 +647,34 @@ public final class MainActivity extends Activity {
             }
             return java.util.List.copyOf(completionCache);
         });
+        // l'aide aux paramètres du serveur prime : la vue tire à
+        // chaque trame — le fournisseur cache par curseur, la réponse
+        // revient asynchrone sur le fil du lecteur (la génération
+        // déclasse une réponse du texte d'avant : un changement de
+        // document ou de curseur), la trame suivante la porte
+        editorView.setSignatureProvider(caret -> {
+            if (lspSession == null) {
+                return null;
+            }
+            if (caret != signatureCaret) {
+                signatureCaret = caret;
+                signatureAnswer = null;
+                final long generation = signatureGeneration.incrementAndGet();
+                TextBuffer buffer = editorView.getBuffer();
+                int line = buffer.lineOfOffset(caret);
+                lspSession.signatureHelp(uri,
+                                new LspPosition(line, caret - buffer.getLineStart(line)))
+                        .whenComplete((help, failure) -> {
+                            if (help != null
+                                    && generation == signatureGeneration.get()) {
+                                signatureAnswer = new EditorView.SignatureHelp(
+                                        help.label(), help.activeParameter());
+                                editorView.post(editorView::invalidate);
+                            }
+                        });
+            }
+            return signatureAnswer;
+        });
     }
 
     /**
@@ -645,9 +689,13 @@ public final class MainActivity extends Activity {
             // le document a changé côté serveur : les complétions reçues
             // décrivent l'ancien texte — le cache se range et la trame
             // suivante redemande (l'ordre du canal porte le didChange
-            // avant la demande neuve)
+            // avant la demande neuve) ; la signature en vol se périme
+            // pareillement (la génération avance, le cache se vide)
             completionPrefix = null;
             completionCache.clear();
+            signatureGeneration.incrementAndGet();
+            signatureCaret = -1;
+            signatureAnswer = null;
             editorView.invalidate();
         }
     }

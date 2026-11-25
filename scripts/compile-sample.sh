@@ -7,13 +7,24 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 
-ANDROID=/home/z/my-project/tools/android-sdk/platforms/android-35/android.jar
+ANDROID=${PIGMA_ANDROID_JAR:-/home/z/my-project/tools/android-sdk/platforms/android-35/android.jar}
 GRADLE_HOME=/home/z/my-project/tools/gradle-home
-LSP4J="$GRADLE_HOME/caches/modules-2/files-2.1/org.eclipse.lsp4j/org.eclipse.lsp4j/1.0.0/414d75c051310033de34af07c0cec3705d6d0ab5/org.eclipse.lsp4j-1.0.0.jar"
-JSONRPC="$GRADLE_HOME/caches/modules-2/files-2.1/org.eclipse.lsp4j/org.eclipse.lsp4j.jsonrpc/1.0.0/11580adce31a287dda1ed6eb4fb8f76f1a2cc815/org.eclipse.lsp4j.jsonrpc-1.0.0.jar"
-GSON="$GRADLE_HOME/caches/modules-2/files-2.1/com.google.code.gson/gson/2.15.0/3c8f3903bd90f774de74f126be756bbc1408abcb/gson-2.15.0.jar"
-JAVAC=/home/z/my-project/tools/jdk-17.0.21.1+2/bin/javac
-EDITOR="$ROOT/editor/build/intermediates/runtime_library_classes_dir/release/bundleLibRuntimeToDirRelease"
+# Les jars se cherchent dans le cache (le réempoilage change la somme du
+# répertoire, la version reste la clé).
+jar_du_cache() {
+    find "$GRADLE_HOME/caches/modules-2/files-2.1/$1" \
+        -name "$2" ! -name '*-sources*' ! -name '*-javadoc*' 2>/dev/null \
+        | sort | tail -1
+}
+LSP4J="$(jar_du_cache org.eclipse.lsp4j/org.eclipse.lsp4j org.eclipse.lsp4j-1.0.0.jar)"
+JSONRPC="$(jar_du_cache org.eclipse.lsp4j/org.eclipse.lsp4j.jsonrpc org.eclipse.lsp4j.jsonrpc-1.0.0.jar)"
+GSON="$(jar_du_cache com.google.code.gson/gson gson-2.15.0.jar)"
+if [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/javac" ]; then
+    JAVAC="${JAVA_HOME}/bin/javac"
+else
+    JAVAC=javac
+fi
+EDITOR="${PIGMA_EDITOR_CLASSES:-$ROOT/editor/build/intermediates/runtime_library_classes_dir/release/bundleLibRuntimeToDirRelease}"
 BUILD=/tmp/pigma-sample-check
 
 rm -rf "$BUILD"

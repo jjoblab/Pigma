@@ -1455,10 +1455,41 @@ public final class OpenHarness {
         check("la complétion du serveur arrive à la carte",
                 completions.contains("graine"));
         detail("complétions : " + completions);
+        // l'aide aux paramètres du serveur : « total( » frappé, la
+        // carte porte la signature du serveur dès l'arrivée — le
+        // « : double » est sa façon d'écrire, l'index local n'écrit
+        // jamais ce style (la trame suivante porte la réponse)
+        editor.caretTo(editor.getBuffer().length());
+        frame();
+        connection.commitText("total(", 1);
+        frame();
+        for (int wait = 0; wait < 100 && !(editor.signatureCard().isShown()
+                && editor.signatureCard().label().contains(" : double")); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            frame();
+        }
+        check("la signature du serveur arrive à la carte",
+                editor.signatureCard().isShown()
+                        && editor.signatureCard().label().contains(" : double"));
+        detail("signature : " + editor.signatureCard().label());
+        // la virgule frappée déplace le paramètre actif du serveur
+        connection.commitText("5,", 1);
+        frame();
+        for (int wait = 0; wait < 100
+                && editor.signatureCard().activeParameter() != 1; wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            frame();
+        }
+        check("la virgule du serveur déplace l'actif",
+                editor.signatureCard().activeParameter() == 1);
         click("Annuler");
         click("Annuler");
         click("Annuler");
-        check("la triple annulation rend le texte",
+        click("Annuler");
+        click("Annuler");
+        check("les cinq annulations rendent le texte",
                 editor.getBuffer().toString().equals(original));
         click("LSP ✔");
         check("le débranchement rend le bouton",

@@ -21,6 +21,10 @@ import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.ServerCapabilities;
+import org.eclipse.lsp4j.SignatureHelp;
+import org.eclipse.lsp4j.SignatureHelpParams;
+import org.eclipse.lsp4j.SignatureInformation;
+import org.eclipse.lsp4j.ParameterInformation;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
 import org.eclipse.lsp4j.services.LanguageClient;
@@ -31,6 +35,7 @@ import org.eclipse.lsp4j.services.TextDocumentService;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -67,6 +72,9 @@ public class LspSessionTest {
 
         /** La plage de la dernière notification (null : texte entier). */
         volatile Range lastChangeRange;
+
+        /** Vrai : l'aide aux paramètres se tait (le serveur ne sait pas). */
+        volatile boolean signatureSilent;
 
         @Override
         public void connect(LanguageClient client) {
@@ -177,6 +185,25 @@ public class LspSessionTest {
                     new Hover(new MarkupContent("plaintext", "mot sous le curseur")));
         }
 
+        @Override
+        public CompletableFuture<SignatureHelp> signatureHelp(
+                SignatureHelpParams params) {
+            if (signatureSilent) {
+                return CompletableFuture.completedFuture(null);
+            }
+            // deux signatures — l'active est la seconde ; le paramètre
+            // actif manque (la première adaptation du domaine le borne)
+            SignatureInformation first = new SignatureInformation(
+                    "essai(int a)");
+            SignatureInformation second = new SignatureInformation(
+                    "essai(int a, int b)");
+            second.setParameters(List.of(
+                    new ParameterInformation("int a"),
+                    new ParameterInformation("int b")));
+            return CompletableFuture.completedFuture(new SignatureHelp(
+                    List.of(first, second), 1, null));
+        }
+
         private void publish() {
             int unbalanced = 0;
             int depth = 0;
@@ -227,8 +254,28 @@ public class LspSessionTest {
                 new LspPosition(1, 9)).get(5, TimeUnit.SECONDS);
         assertEquals("mot sous le curseur", hover);
 
+        LspSignatureHelp signature = session.signatureHelp("file:///demo.java",
+                new LspPosition(1, 9)).get(5, TimeUnit.SECONDS);
+        assertEquals("la signature active revient", "essai(int a, int b)",
+                signature.label());
+        assertEquals("le paramètre actif absent vaut le premier", 0,
+                signature.activeParameter());
+
         session.shutdown();
         assertTrue("la liaison s'arrête", !session.isRunning());
+    }
+
+    /** Le serveur qui ne sait pas rend null, jamais une signature vide. */
+    @Test
+    public void signatureHelpAnswersNullWhenTheServerDoesNotKnow() throws Exception {
+        TrialServer server = new TrialServer();
+        server.signatureSilent = true;
+        LspSession session = LspSession.beside(server, null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        assertNull("le serveur muet rend null",
+                session.signatureHelp("file:///demo.java",
+                        new LspPosition(0, 0)).get(5, TimeUnit.SECONDS));
+        session.shutdown();
     }
 
     /** Plusieurs requêtes en vol : chacune reçoit SA réponse (la corrélation). */
