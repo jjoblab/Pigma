@@ -32,6 +32,8 @@ consigné au moment de la décision.
 | Fonctionnalité | Décision | Chantier cible |
 | --- | --- | --- |
 | Popups (feuille du bas/haut, popup ancrée) | **réécrit** (chantier 24) : la feuille du bas porte la recherche et le remplacement (sample), la popup ancrée se dessine dans la vue (info de symbole, réponse de survol d'un serveur de langage) — la feuille du haut reste à faire si un besoin la justifie | 8 |
+| Liste de complétion au caret | **réécrit** (chantier 56) : le bandeau horizontal devient la carte en rangées verticales au caret (fil flou accenté, flèche/validation déléguées, fenêtre ramassée à la place) — le bandeau du bas est supprimé | 8 |
+| Aide aux paramètres (signature) | **réécrit** (chantier 57) : la carte de signature au caret — paliers frappé/actif/à venir, fournisseur local sur l'index de symboles, remplaçable par l'hôte | 8 |
 | Gouttière (numéros, marqueurs) | **réécrit** (chantiers 14-15) : marqueurs de plis, guides de profondeur | 6 |
 | Pliage | **réécrit** (chantier 14) : plis par la gouttière, la bande de portée les borde | 6–7 |
 | Multi-curseurs | non repris (aucun besoin exprimé) | 6 |

@@ -13,8 +13,11 @@ ARCHUNIT="/home/z/my-project/tools/gradle-home/caches/modules-2/files-2.1/com.tn
 SLF4J="/home/z/my-project/tools/gradle-home/caches/modules-2/files-2.1/org.slf4j/slf4j-api/2.0.12/48f109a2a6d8f446c794f3e3fa0d86df0cdfa312/slf4j-api-2.0.12.jar"
 BUILD=/tmp/pigma-syntax-build
 TESTS=/tmp/pigma-syntax-tests
-JAVAC=/home/z/my-project/tools/jdk-17.0.21.1+2/bin/javac
-JAVA=/home/z/my-project/tools/jdk-17.0.21.1+2/bin/java
+if [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/javac" ]; then
+    JAVAC="${JAVA_HOME}/bin/javac"; JAVA="${JAVA_HOME}/bin/java"
+else
+    JAVAC=javac; JAVA=java
+fi
 
 rm -rf "$BUILD" "$TESTS"
 mkdir -p "$BUILD" "$TESTS"

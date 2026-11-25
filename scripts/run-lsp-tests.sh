@@ -15,8 +15,11 @@ JSONRPC="$GRADLE_HOME/caches/modules-2/files-2.1/org.eclipse.lsp4j/org.eclipse.l
 GSON="$GRADLE_HOME/caches/modules-2/files-2.1/com.google.code.gson/gson/2.15.0/3c8f3903bd90f774de74f126be756bbc1408abcb/gson-2.15.0.jar"
 ARCHUNIT="$GRADLE_HOME/caches/modules-2/files-2.1/com.tngtech.archunit/archunit/1.3.0/4f4c504ec5369491d9d5c16afa6fc5261a5d81/archunit-1.3.0.jar"
 SLF4J="$GRADLE_HOME/caches/modules-2/files-2.1/org.slf4j/slf4j-api/2.0.12/48f109a2a6d8f446c794f3e3fa0d86df0cdfa312/slf4j-api-2.0.12.jar"
-JAVAC=/home/z/my-project/tools/jdk-17.0.21.1+2/bin/javac
-JAVA=/home/z/my-project/tools/jdk-17.0.21.1+2/bin/java
+if [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/javac" ]; then
+    JAVAC="${JAVA_HOME}/bin/javac"; JAVA="${JAVA_HOME}/bin/java"
+else
+    JAVAC=javac; JAVA=java
+fi
 BUILD=/tmp/pigma-lsp-build
 TESTS=/tmp/pigma-lsp-tests
 

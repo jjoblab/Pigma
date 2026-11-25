@@ -14,7 +14,7 @@ import jo.pigma.editor.popups.InfoPopup;
 import jo.pigma.editor.render.RenderCache;
 import jo.pigma.editor.popups.PopupMetrics;
 import jo.pigma.editor.popups.SearchBar;
-import jo.pigma.editor.popups.SuggestionBand;
+import jo.pigma.editor.popups.CompletionCard;
 
 import android.content.Context;
 import android.graphics.Canvas;
@@ -243,8 +243,8 @@ public final class EditorView extends View {
     /** La taille d'une tranche d'analyse (lignes avalées par post). */
     private static final int ANALYSIS_SLICE_LINES = 256;
 
-    /** Le bandeau de complétion — état et dessin au paquet des popups. */
-    private SuggestionBand suggestionBand;
+    /** La carte de complétion au caret — état et dessin au paquet des popups. */
+    private CompletionCard completionCard;
 
     /** La gouttière — les numéros de ligne, au paquet du même nom. */
     private Gutter gutter;
@@ -418,7 +418,8 @@ public final class EditorView extends View {
         diagnosticPaint.setStyle(Paint.Style.STROKE);
         diagnosticPaint.setStrokeWidth(dp(2));
         diagnosticPaint.setColor(0xFFFF3B30);
-        suggestionBand = new SuggestionBand(dp(1));
+        completionCard = new CompletionCard(dp(1));
+        completionCard.bind(this);
         gutter = new Gutter(dp(1));
         inputContract = createInputContract();
         trackedLineCount = buffer.getLineCount();
@@ -703,7 +704,7 @@ public final class EditorView extends View {
         diagnosticsBuilder = null;
         analysisRevision = -1;
         lastAnalysisStartNanos = -Long.MAX_VALUE / 2;
-        suggestionBand.set(List.of());
+        completionCard.set(List.of(), "");
         suggestionWordStart = -1;
         // autre document : la sélection n'y désigne plus rien, la
         // recherche et la popup d'info non plus
@@ -1391,6 +1392,15 @@ public final class EditorView extends View {
                         return;
                     }
                 }
+                // la carte de COMPLÉTION suit : elle ne prend jamais
+                // le texte tapé (il poursuit vers le tampon — la
+                // carte se re-filtre à la trame suivante), seule la
+                // validation lui revient
+                if (completionCard != null && text != null && text.length() == 1
+                        && text.charAt(0) == '\n'
+                        && completionCard.onEnter()) {
+                    return;
+                }
                 EditorView.this.applyEdit(start, end, text);
             }
 
@@ -1419,9 +1429,15 @@ public final class EditorView extends View {
             @Override
             public void moveCaretVertically(int delta) {
                 // la flèche verticale de la carte ouverte navigue la
-                // carte (les correspondances de la recherche)
+                // carte (les correspondances de la recherche) ; celle
+                // de la carte de complétion navigue ses candidats — le
+                // texte tapé, lui, poursuit vers le tampon
                 KeyboardCard carte = openCard();
                 if (carte != null && carte.onArrow(delta)) {
+                    return;
+                }
+                if (completionCard != null && completionCard.isShown()
+                        && completionCard.onArrow(delta)) {
                     return;
                 }
                 EditorView.this.moveCaretVertically(delta);
@@ -1445,7 +1461,9 @@ public final class EditorView extends View {
             downOnCard = (searchBar != null && searchBar.isShown()
                     && searchBar.onTouchArea(event.getX(), event.getY()))
                     || (gotoBar != null && gotoBar.isShown()
-                            && gotoBar.onTouchArea(event.getX(), event.getY()));
+                            && gotoBar.onTouchArea(event.getX(), event.getY()))
+                    || (completionCard != null && completionCard.isShown()
+                            && completionCard.onTouchArea(event.getX(), event.getY()));
             if (downOnCard) {
                 return true;
             }
@@ -1571,13 +1589,6 @@ public final class EditorView extends View {
                     requestFocus();
                     toggleFoldAt(lineOfVisibleIndex(
                             (int) ((event.getY() - getPaddingTop() + scrollY) / lineHeight)));
-                    clearComposing();
-                } else if (!suggestionBand.words().isEmpty() && event.getY() > getHeight()
-                        - dp(28) - getPaddingBottom()) {
-                    // le bandeau de complétion : le candidat désigné
-                    // complète le mot courant
-                    requestFocus();
-                    insertSuggestion(event.getX());
                     clearComposing();
                 } else if (heldLongEnough()
                         || tappedTwice(event.getX(), event.getY())) {
@@ -1778,7 +1789,7 @@ public final class EditorView extends View {
         refreshAnalysis();
         updateSuggestions();
         drawDiagnostics(canvas, first, last, count);
-        drawSuggestions(canvas);
+        drawCompletionCard(canvas);
         drawInfoPopup(canvas);
         // les cartes de recherche et d'aller-à, par-dessus tout :
         // dessinées dans la vue, posées au
@@ -2258,7 +2269,7 @@ public final class EditorView extends View {
         int caret = Math.min(selection.caret(), buffer.length());
         int wordStart = wordStartAt(caret);
         if (wordStart < 0) {
-            suggestionBand.set(List.of());
+            completionCard.set(List.of(), "");
             suggestionWordStart = -1;
             return;
         }
@@ -2268,12 +2279,12 @@ public final class EditorView extends View {
             // la source extérieure tire à la trame : elle cache sa
             // réponse asynchrone (le contrat y est documenté)
             int line = buffer.lineOfOffset(caret);
-            suggestionBand.set(suggestionProvider.completionsFor(prefix,
-                    line, caret - buffer.getLineStart(line)));
+            completionCard.set(suggestionProvider.completionsFor(prefix,
+                    line, caret - buffer.getLineStart(line)), prefix);
             return;
         }
-        suggestionBand.set(symbolIndex == null
-                ? List.of() : symbolIndex.query(prefix, 8));
+        completionCard.set(symbolIndex == null
+                ? List.of() : symbolIndex.query(prefix, 8), prefix);
     }
 
     /**
@@ -2406,39 +2417,49 @@ public final class EditorView extends View {
     }
 
     /**
-     * Le bandeau de complétion : les candidats du mot courant côte à
-     * côte, en bas de la vue — les abscisses se gardent pour le toucher.
+     * La carte de complétion : les candidats du mot courant en rangées
+     * verticales au caret — la pose se recalcule au dessin, le caret la
+     * suit (le clavier délégué y navigue, le doigt y insère).
      */
-    private void drawSuggestions(Canvas canvas) {
-        suggestionBand.draw(canvas, popupMetrics());
+    private void drawCompletionCard(Canvas canvas) {
+        completionCard.draw(canvas, popupMetrics());
     }
 
     /**
-     * Un toucher dans le bandeau : le candidat désigné complète le mot
-     * courant (le préfixe se remplace par le candidat entier).
+     * Insère un candidat de complétion : le préfixe tapé se remplace
+     * par le candidat entier — une seule unité d'annulation (la carte
+     * et le clavier délégué y passent, l'hôte aussi).
      *
-     * @param x l'abscisse du toucher
+     * @param candidate le candidat à insérer, jamais vide
      */
-    private void insertSuggestion(float x) {
-        for (int at = 0; at < suggestionBand.drawnCount(); at++) {
-            float next = at + 1 < suggestionBand.drawnCount()
-                    ? suggestionBand.xAt(at + 1) : getWidth();
-            if (x >= suggestionBand.xAt(at) && x < next) {
-                applyEdit(suggestionWordStart, Math.min(selection.caret(), buffer.length()),
-                        suggestionBand.words().get(at));
-                return;
-            }
+    public void insertCompletion(String candidate) {
+        if (candidate == null || candidate.isEmpty() || suggestionWordStart < 0) {
+            return;
+        }
+        int end = Math.min(selection.caret(), buffer.length());
+        if (end > suggestionWordStart) {
+            applyEdit(suggestionWordStart, end, candidate);
         }
     }
 
     /**
-     * Les candidats courants du bandeau (le harnais les vérifie, l'hôte
+     * Les candidats courants de la carte (le harnais les vérifie, l'hôte
      * peut les afficher ailleurs).
      *
      * @return les candidats du mot courant, jamais {@code null}
      */
     public List<String> suggestions() {
-        return suggestionBand.words();
+        return completionCard.words();
+    }
+
+    /**
+     * La carte de complétion (null si jamais montrée — la carte naît à
+     * la construction, le harnais la lit).
+     *
+     * @return la carte de complétion au caret
+     */
+    public CompletionCard completionCard() {
+        return completionCard;
     }
 
     /**

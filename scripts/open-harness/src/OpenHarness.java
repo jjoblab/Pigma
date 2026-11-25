@@ -13,6 +13,7 @@ import android.widget.Toast;
 
 import jo.pigma.core.TextBuffer;
 import jo.pigma.editor.EditorView;
+import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.editor.popups.GotoBar;
 import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.syntax.SyntaxDocument;
@@ -105,6 +106,7 @@ public final class OpenHarness {
         hugeFileLanguages();
         folds();
         semanticFusion();
+        completionCard();
         languageServer();
         copyMeasures();
 
@@ -1033,6 +1035,113 @@ public final class OpenHarness {
                 + editor.symbolCount() + " symbole(s)");
     }
 
+    /**
+     * La carte de complétion : les candidats du mot courant en rangées
+     * au caret — la flèche déléguée y navigue (bornée aux murs de la
+     * liste), la validation y insère, le doigt sur une rangée aussi,
+     * la carte se range quand le préfixe meurt.
+     */
+    private static void completionCard() {
+        begin("complétion : la carte au caret, flèche, validation, doigt");
+        // le document court d'abord : un candidat unique — la flèche y
+        // reste bornée, la validation insère
+        openLanguage("Java", 10_000L);
+        String original = editor.getBuffer().toString();
+        editor.caretTo(editor.getBuffer().length());
+        frame();
+        connection.commitText("ta", 1);
+        frame();
+        CompletionCard card = editor.completionCard();
+        check("la carte vit au préfixe tapé (deux caractères)", card.isShown());
+        check("le préfixe se porte", card.prefix().equals("ta"));
+        check("les candidats poursuivent le préfixe",
+                !card.words().isEmpty()
+                        && card.words().get(0).startsWith("ta"));
+        check("le premier candidat est le courant", card.highlighted() == 0);
+        int caretLine = editor.getBuffer().getLineCount() - 1;
+        check("la carte se pose au caret — dessous ou dessus, dans les murs",
+                (card.poseY() >= lineTop(caretLine) + LINE_HEIGHT
+                        || card.poseY() + card.height() <= lineTop(caretLine))
+                        && card.poseX() >= 0
+                        && card.poseX() + card.width() <= editor.getWidth());
+        // la flèche déléguée sur un candidat unique reste bornée
+        pressKey(KeyEvent.KEYCODE_DPAD_DOWN);
+        frame();
+        check("la flèche sur un candidat unique reste au courant",
+                card.highlighted() == 0);
+        // la validation déléguée insère : le préfixe se remplace par
+        // le candidat entier
+        String candidate = card.words().get(card.highlighted());
+        pressKey(KeyEvent.KEYCODE_ENTER);
+        frame();
+        check("la validation insère le candidat courant (le préfixe remplacé)",
+                editor.getBuffer().toString().endsWith(candidate));
+        click("Annuler");
+        click("Annuler");
+        check("la double annulation rend le texte",
+                editor.getBuffer().toString().equals(original));
+        // le gros fichier : plusieurs candidats — la flèche y navigue,
+        // le doigt sur une rangée insère aussi
+        openLanguage("Gros", 30_000L);
+        // le veilleur du panneau et les tranches d'analyse y courent
+        // (l'index du gros fichier se bâtit par tranches postées — le
+        // drainage les laisse finir)
+        View.harnessDrain(2_000L);
+        frame();
+        View.harnessDrain(2_000L);
+        frame();
+        String grosOriginal = editor.getBuffer().toString();
+        editor.caretTo(editor.getBuffer().length());
+        frame();
+        connection.commitText("bl", 1);
+        frame();
+        check("la carte porte plusieurs candidats", card.words().size() >= 2);
+        check("les candidats du gros fichier poursuivent le préfixe",
+                card.words().stream()
+                        .allMatch(word -> word.startsWith("bl")));
+        pressKey(KeyEvent.KEYCODE_DPAD_DOWN);
+        pressKey(KeyEvent.KEYCODE_DPAD_DOWN);
+        frame();
+        check("deux flèches baissent descendent au troisième candidat",
+                card.highlighted() == 2);
+        pressKey(KeyEvent.KEYCODE_DPAD_UP);
+        frame();
+        check("la flèche haut remonte", card.highlighted() == 1);
+        String second = card.words().get(1);
+        tap(card.poseX() + card.width() / 2.0f, card.rowCenterY(1));
+        frame();
+        check("le doigt sur la rangée l'insère",
+                editor.getBuffer().toString().endsWith(second));
+        click("Annuler");
+        click("Annuler");
+        check("la double annulation rend le gros texte",
+                editor.getBuffer().toString().equals(grosOriginal));
+        // le préfixe meurt : la carte se range
+        editor.caretTo(editor.getBuffer().length());
+        frame();
+        connection.commitText("b", 1);
+        frame();
+        check("un caractère seul ne montre rien", !card.isShown());
+        connection.commitText("l", 1);
+        frame();
+        check("le deuxième caractère montre la carte", card.isShown());
+        pressKey(KeyEvent.KEYCODE_DEL);
+        pressKey(KeyEvent.KEYCODE_DEL);
+        frame();
+        check("le préfixe mort range la carte", !card.isShown());
+        // les trois unités (le « b », le « l », les deux suppressions
+        // n'en font qu'une ici) se défont — le scénario suivant part
+        // d'un texte intact
+        for (int undo = 0; undo < 4
+                && !editor.getBuffer().toString().equals(grosOriginal); undo++) {
+            click("Annuler");
+        }
+        check("le texte du gros fichier revient intact",
+                editor.getBuffer().toString().equals(grosOriginal));
+        detail(card.words().size() + " candidats au plus, pose [" + card.poseX() + ", "
+                + card.poseY() + "] " + card.width() + "×" + card.height());
+    }
+
     /** Le serveur de langage : diagnostics, survol, débranchement. */
     private static void languageServer() throws Exception {
         begin("serveur de langage : diagnostics, survol, débranchement");
@@ -1082,10 +1191,10 @@ public final class OpenHarness {
             View.harnessDrain(500L);
             frame();
         }
-        java.util.List<String> band = editor.suggestions();
-        check("la complétion du serveur arrive au bandeau",
-                band.contains("graine"));
-        detail("complétions : " + band);
+        java.util.List<String> completions = editor.suggestions();
+        check("la complétion du serveur arrive à la carte",
+                completions.contains("graine"));
+        detail("complétions : " + completions);
         click("Annuler");
         click("Annuler");
         click("Annuler");
