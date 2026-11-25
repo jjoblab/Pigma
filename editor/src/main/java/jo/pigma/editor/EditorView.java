@@ -15,6 +15,7 @@ import jo.pigma.editor.render.RenderCache;
 import jo.pigma.editor.popups.PopupMetrics;
 import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.editor.popups.CompletionCard;
+import jo.pigma.editor.popups.SignatureCard;
 
 import android.content.Context;
 import android.graphics.Canvas;
@@ -246,6 +247,9 @@ public final class EditorView extends View {
     /** La carte de complétion au caret — état et dessin au paquet des popups. */
     private CompletionCard completionCard;
 
+    /** La carte de signature au caret — l'aide aux paramètres d'un appel. */
+    private SignatureCard signatureCard;
+
     /** La gouttière — les numéros de ligne, au paquet du même nom. */
     private Gutter gutter;
 
@@ -420,6 +424,7 @@ public final class EditorView extends View {
         diagnosticPaint.setColor(0xFFFF3B30);
         completionCard = new CompletionCard(dp(1));
         completionCard.bind(this);
+        signatureCard = new SignatureCard(dp(1));
         gutter = new Gutter(dp(1));
         inputContract = createInputContract();
         trackedLineCount = buffer.getLineCount();
@@ -706,6 +711,7 @@ public final class EditorView extends View {
         lastAnalysisStartNanos = -Long.MAX_VALUE / 2;
         completionCard.set(List.of(), "");
         suggestionWordStart = -1;
+        signatureCard.set(null, 0);
         // autre document : la sélection n'y désigne plus rien, la
         // recherche et la popup d'info non plus
         selection.setAnchor(-1);
@@ -1230,6 +1236,46 @@ public final class EditorView extends View {
 
     private SuggestionProvider suggestionProvider;
 
+    /**
+     * Le fournisseur d'aide aux paramètres : l'hôte y branche une
+     * source extérieure (un serveur de langage par exemple) — sans
+     * fournisseur, l'index local des symboles porte la carte (le nom
+     * de l'appel se cherche dans les déclarations, la ligne de la
+     * déclaration devient la signature).
+     */
+    public interface SignatureProvider {
+
+        /**
+         * L'aide aux paramètres de l'appel au curseur.
+         *
+         * @param caretOffset le décalage du curseur dans le tampon
+         * @return la signature et son paramètre actif, null pour
+         *         ranger la carte
+         */
+        SignatureHelp signatureAt(int caretOffset);
+    }
+
+    /** La signature montrée : la ligne entière et le paramètre actif. */
+    public record SignatureHelp(String label, int activeParameter) {
+    }
+
+    /**
+     * Branche un fournisseur d'aide aux paramètres (null débranche :
+     * l'index local reprend la carte).
+     *
+     * @param provider le fournisseur, ou null
+     */
+    public void setSignatureProvider(SignatureProvider provider) {
+        signatureProvider = provider;
+    }
+
+    private SignatureProvider signatureProvider;
+
+    /** La carte de signature (le harnais la lit). */
+    public SignatureCard signatureCard() {
+        return signatureCard;
+    }
+
     /** Masque la popup d'info. */
     public void dismissInfoPopup() {
         if (infoPopup.text() != null) {
@@ -1463,7 +1509,9 @@ public final class EditorView extends View {
                     || (gotoBar != null && gotoBar.isShown()
                             && gotoBar.onTouchArea(event.getX(), event.getY()))
                     || (completionCard != null && completionCard.isShown()
-                            && completionCard.onTouchArea(event.getX(), event.getY()));
+                            && completionCard.onTouchArea(event.getX(), event.getY()))
+                    || (signatureCard != null && signatureCard.isShown()
+                            && signatureCard.onTouchArea(event.getX(), event.getY()));
             if (downOnCard) {
                 return true;
             }
@@ -1788,9 +1836,11 @@ public final class EditorView extends View {
         // la popup d'info par-dessus le bandeau
         refreshAnalysis();
         updateSuggestions();
+        updateSignature();
         drawDiagnostics(canvas, first, last, count);
         drawCompletionCard(canvas);
         drawInfoPopup(canvas);
+        drawSignatureCard(canvas);
         // les cartes de recherche et d'aller-à, par-dessus tout :
         // dessinées dans la vue, posées au
         // caret, le clavier délégué (la pose se recalcule ici : le
@@ -2288,6 +2338,105 @@ public final class EditorView extends View {
     }
 
     /**
+     * L'aide aux paramètres du curseur : le fournisseur de l'hôte
+     * répond le premier (un serveur de langage par exemple), l'index
+     * local des symboles porte sinon la carte — une position hors
+     * appel, ou un nom sans déclaration, la range.
+     */
+    private void updateSignature() {
+        int caret = Math.min(selection.caret(), buffer.length());
+        SignatureHelp help = signatureProvider != null
+                ? signatureProvider.signatureAt(caret) : localSignatureAt(caret);
+        signatureCard.set(help == null ? null : help.label(),
+                help == null ? 0 : help.activeParameter());
+    }
+
+    /**
+     * L'aide aux paramètres par l'index local : l'appel se lit en
+     * remontant du curseur vers sa parenthèse ouvrante non fermée (la
+     * fenêtre se borne à 256 caractères — jamais le document pour un
+     * appel) ; le nom de l'appel se cherche dans les déclarations, la
+     * ligne de la déclaration devient la signature (coupée de son
+     * bloc ouvrant) ; les virgules de profondeur nulle entre
+     * l'ouvrante et le curseur disent le paramètre actif.
+     *
+     * @param caret le décalage du curseur dans le tampon
+     * @return la signature et son paramètre actif, null hors appel
+     */
+    private SignatureHelp localSignatureAt(int caret) {
+        if (caret <= 0 || caret > buffer.length() || symbolIndex == null) {
+            return null;
+        }
+        int windowStart = Math.max(0, caret - 256);
+        // l'ouvrante non fermée : en remontant du curseur, les
+        // fermantes se consomment, l'ouvrante à profondeur nulle est
+        // celle de l'appel ; un finisseur d'instruction avant elle
+        // coupe la recherche
+        int depth = 0;
+        int openParen = -1;
+        for (int at = caret - 1; at >= windowStart; at--) {
+            char c = buffer.charAt(at);
+            if (c == ')') {
+                depth++;
+            } else if (c == '(') {
+                if (depth == 0) {
+                    openParen = at;
+                    break;
+                }
+                depth--;
+            } else if (c == ';' || c == '{' || c == '}') {
+                return null;
+            }
+        }
+        if (openParen < 0) {
+            return null;
+        }
+        // le nom de l'appel : le mot avant l'ouvrante
+        int nameEnd = openParen;
+        while (nameEnd > windowStart
+                && Character.isWhitespace(buffer.charAt(nameEnd - 1))) {
+            nameEnd--;
+        }
+        int nameStart = nameEnd;
+        while (nameStart > windowStart && isWordChar(buffer.charAt(nameStart - 1))) {
+            nameStart--;
+        }
+        if (nameStart == nameEnd) {
+            return null;
+        }
+        String callName = buffer.getText(nameStart, nameEnd).toString();
+        // le paramètre actif : les virgules de profondeur nulle
+        int active = 0;
+        int nested = 0;
+        for (int at = openParen + 1; at < caret; at++) {
+            char c = buffer.charAt(at);
+            if (c == '(' || c == '[' || c == '{') {
+                nested++;
+            } else if (c == ')' || c == ']' || c == '}') {
+                nested--;
+            } else if (c == ',' && nested == 0) {
+                active++;
+            }
+        }
+        // la déclaration du nom : sa ligne devient la signature
+        for (SymbolIndex.Symbol symbol : symbolIndex.symbols()) {
+            if (symbol.name().equals(callName)) {
+                int lineStart = buffer.getLineStart(symbol.line());
+                int lineEnd = buffer.getLineEnd(symbol.line());
+                String text = buffer.getText(lineStart, lineEnd).toString().trim();
+                if (text.endsWith("{")) {
+                    text = text.substring(0, text.length() - 1).trim();
+                }
+                if (text.isEmpty() || text.indexOf('(') < 0) {
+                    return null;
+                }
+                return new SignatureHelp(text, active);
+            }
+        }
+        return null;
+    }
+
+    /**
      * Le début du mot au curseur, ou -1 s'il est trop court. La fenêtre
      * de lecture est bornée : jamais le document pour un mot.
      */
@@ -2414,6 +2563,14 @@ public final class EditorView extends View {
             canvas.drawLine(x, baseline + dp(3), x + charWidth, baseline + dp(3),
                     diagnosticPaint);
         }
+    }
+
+    /**
+     * La carte de signature : l'aide aux paramètres au caret — la
+     * pose se recalcule au dessin, le caret la suit.
+     */
+    private void drawSignatureCard(Canvas canvas) {
+        signatureCard.draw(canvas, popupMetrics());
     }
 
     /**

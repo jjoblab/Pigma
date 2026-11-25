@@ -16,6 +16,7 @@ import jo.pigma.editor.EditorView;
 import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.editor.popups.GotoBar;
 import jo.pigma.editor.popups.SearchBar;
+import jo.pigma.editor.popups.SignatureCard;
 import jo.pigma.syntax.SyntaxDocument;
 
 /**
@@ -107,6 +108,7 @@ public final class OpenHarness {
         folds();
         semanticFusion();
         completionCard();
+        signatureCard();
         languageServer();
         copyMeasures();
 
@@ -1140,6 +1142,71 @@ public final class OpenHarness {
                 editor.getBuffer().toString().equals(grosOriginal));
         detail(card.words().size() + " candidats au plus, pose [" + card.poseX() + ", "
                 + card.poseY() + "] " + card.width() + "×" + card.height());
+    }
+
+    /**
+     * La carte de signature : l'aide aux paramètres au curseur — la
+     * signature de la déclaration s'y montre, les virgules y
+     * déplacent le paramètre actif, la fermeture de l'appel la
+     * range, la frappe d'un appel l'y fait naître.
+     */
+    private static void signatureCard() {
+        begin("signature : l'aide aux paramètres au curseur");
+        openLanguage("Java", 10_000L);
+        String original = editor.getBuffer().toString();
+        SignatureCard card = editor.signatureCard();
+        // le curseur DANS les paramètres de la déclaration : la
+        // signature s'y montre
+        int args = original.indexOf("int graine");
+        editor.caretTo(args + 3);
+        frame();
+        check("la carte vit dans les paramètres de l'appel", card.isShown());
+        check("la signature porte le nom et les deux paramètres",
+                card.label().contains("total") && card.label().contains("graine")
+                        && card.label().contains("taille"));
+        check("le premier paramètre est actif", card.activeParameter() == 0);
+        int caretLine = editor.getBuffer().lineOfOffset(args + 3);
+        check("la carte se pose au-dessus de la ligne du caret, dans les murs",
+                card.poseY() + card.height() <= lineTop(caretLine) + LINE_HEIGHT
+                        && card.poseX() >= 0
+                        && card.poseX() + card.width() <= editor.getWidth());
+        // la virgule déplace le paramètre actif
+        int comma = original.indexOf(", int taille");
+        editor.caretTo(comma + 1);
+        frame();
+        check("la virgule déplace le paramètre actif", card.activeParameter() == 1);
+        // le curseur avant la fermante : le deuxième reste actif
+        int closeParen = original.indexOf("taille)");
+        editor.caretTo(closeParen + "taille".length());
+        frame();
+        check("le curseur avant la fermante garde le paramètre",
+                card.activeParameter() == 1);
+        // après la fermante : la carte se range
+        editor.caretTo(closeParen + "taille".length() + 1);
+        frame();
+        check("la fermeture de l'appel range la carte", !card.isShown());
+        // la frappe d'un appel NEUF : la carte y naît, les virgules y
+        // déplacent l'actif, la fermante la range
+        editor.caretTo(editor.getBuffer().length());
+        frame();
+        connection.commitText("total(", 1);
+        frame();
+        check("la carte naît de l'appel frappé", card.isShown()
+                && card.activeParameter() == 0);
+        connection.commitText("5,", 1);
+        frame();
+        check("la virgule frappée déplace l'actif", card.activeParameter() == 1);
+        connection.commitText(" 2)", 1);
+        frame();
+        check("la fermante frappée range la carte", !card.isShown());
+        check("l'appel frappé se lit dans le texte",
+                editor.getBuffer().toString().endsWith("total(5, 2)"));
+        click("Annuler");
+        click("Annuler");
+        click("Annuler");
+        check("la triple annulation rend le texte",
+                editor.getBuffer().toString().equals(original));
+        detail("signature : " + card.label());
     }
 
     /** Le serveur de langage : diagnostics, survol, débranchement. */

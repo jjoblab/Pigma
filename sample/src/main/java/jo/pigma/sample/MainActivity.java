@@ -77,6 +77,9 @@ public final class MainActivity extends Activity {
 
     private Button searchButton;
 
+    /** Le bouton « Signature » : le curseur aux paramètres de la démo. */
+    private Button signatureButton;
+
     /** Le bouton LSP : branche (et débranche) le serveur de démonstration. */
     private Button lspButton;
 
@@ -197,6 +200,9 @@ public final class MainActivity extends Activity {
         gotoButton = new Button(this);
         gotoButton.setText("Aller à");
         gotoButton.setOnClickListener(view -> editorView.toggleGotoPopup());
+        signatureButton = new Button(this);
+        signatureButton.setText("Signature");
+        signatureButton.setOnClickListener(this::onSignatureClicked);
         lspButton = new Button(this);
         lspButton.setText("LSP");
         lspButton.setOnClickListener(this::onLspToggleClicked);
@@ -244,7 +250,7 @@ public final class MainActivity extends Activity {
                 undoButton, redoButton));
 
         root.addView(row(margin, copyButton, selectButton, copyTextButton,
-                searchButton, gotoButton, lspButton, lspLuaButton));
+                searchButton, gotoButton, signatureButton, lspButton, lspLuaButton));
 
         LinearLayout.LayoutParams diagnosticsParams =
                 new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
@@ -383,6 +389,19 @@ public final class MainActivity extends Activity {
         } else {
             editorView.selectAll();
             selectButton.setText("Quitter la sélection");
+        }
+    }
+
+    /**
+     * Le curseur aux paramètres de la méthode de démonstration : la
+     * carte de signature s'y montre — les virgules y déplacent le
+     * paramètre actif, la fermeture de l'appel la range.
+     */
+    private void onSignatureClicked(View button) {
+        String text = editorView.getBuffer().toString();
+        int args = text.indexOf("int graine");
+        if (args >= 0) {
+            editorView.caretTo(args + 3);
         }
     }
 
