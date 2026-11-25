@@ -10,7 +10,9 @@ import jo.pigma.editor.selection.SelectionState;
 
 import jo.pigma.editor.popups.KeyboardCard;
 import jo.pigma.editor.popups.GotoBar;
+import jo.pigma.editor.popups.HistoryCard;
 import jo.pigma.editor.popups.InfoPopup;
+import jo.pigma.editor.popups.LocalHistory;
 import jo.pigma.editor.render.RenderCache;
 import jo.pigma.editor.popups.PopupMetrics;
 import jo.pigma.editor.popups.SearchBar;
@@ -26,6 +28,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeSet;
 
@@ -257,8 +260,25 @@ public final class EditorView extends View {
     /** La barre de sélection — les actions de la sélection en pastilles. */
     private SelectionBar selectionBar;
 
-    /** La carte de débordement de la barre — les actions repliées. */
+    /** La carte de débordement de la barre — les étages d'actions repliées. */
     private OverflowCard overflowCard;
+
+    /** L'historique local — chaque écriture y laisse sa trace. */
+    private LocalHistory localHistory;
+
+    /** La carte de l'historique local — l'histoire d'une plage de lignes. */
+    private HistoryCard historyCard;
+
+    /** Les actions de l'hôte sur la barre de sélection (posées par l'app). */
+    private final List<SelectionBar.HostAction> hostSelectionActions =
+            new ArrayList<>();
+
+    /**
+     * L'étiquette du geste en cours (l'historique local la porte sur sa
+     * trace : collage, complétion, remplacement… null : le geste par
+     * défaut se calcule de la transaction).
+     */
+    private String pendingEditLabel;
 
     /** La trame de la dernière sonde du presse-papiers (la sonde s'amortit). */
     private long clipboardProbeFrame = -1;
@@ -390,6 +410,7 @@ public final class EditorView extends View {
             clampCaret();
             shiftFolds(start);
             ensureCaretVisible();
+            recordLocalTrace(start, removedLength, insertedLength);
             // une édition déplace tout ce qui suit : les positions des
             // correspondances seraient des mensonges — la recherche se
             // range (la feuille la relance), la popup d'info aussi
@@ -451,6 +472,9 @@ public final class EditorView extends View {
         selectionBar = new SelectionBar(dp(1));
         selectionBar.bind(this);
         overflowCard = new OverflowCard(dp(1));
+        localHistory = new LocalHistory();
+        historyCard = new HistoryCard(dp(1));
+        historyCard.bind(this);
         gutter = new Gutter(dp(1));
         inputContract = createInputContract();
         trackedLineCount = buffer.getLineCount();
@@ -740,6 +764,10 @@ public final class EditorView extends View {
         signatureCard.set(null, 0);
         selectionBar.hide();
         overflowCard.close();
+        historyCard.close();
+        // autre document : l'histoire locale du précédent n'y désigne
+        // plus rien (les lignes d'avant parlent d'un autre texte)
+        localHistory.clear();
         // autre document : la sélection n'y désigne plus rien, la
         // recherche et la popup d'info non plus
         selection.setAnchor(-1);
@@ -832,6 +860,24 @@ public final class EditorView extends View {
      */
     public UndoStack getUndoStack() {
         return undoStack;
+    }
+
+    /**
+     * Annule la dernière unité (le bouton de l'hôte y passe : le geste
+     * porte son étiquette à l'historique local).
+     */
+    public void undo() {
+        pendingEditLabel = "annulation";
+        undoStack.undo();
+    }
+
+    /**
+     * Rétablit la dernière unité annulée (le bouton de l'hôte y passe :
+     * le geste porte son étiquette à l'historique local).
+     */
+    public void redo() {
+        pendingEditLabel = "rétablissement";
+        undoStack.redo();
     }
 
     /**
@@ -1027,6 +1073,7 @@ public final class EditorView extends View {
         if (end > buffer.length()) {
             return;
         }
+        pendingEditLabel = "remplacement";
         applyEdit(start, end, replacement);
         search(searchQuery);
     }
@@ -1045,6 +1092,7 @@ public final class EditorView extends View {
         if (searchQuery == null || searchMatches.length == 0) {
             return 0;
         }
+        pendingEditLabel = "remplacement global";
         // un instantané avant la transaction : l'écouteur du tampon
         // (notifié au PREMIER remplacement) range la recherche — la
         // boucle doit tenir ses positions, pas celles du champ
@@ -1084,10 +1132,15 @@ public final class EditorView extends View {
             return;
         }
         if (searchBar == null) {
-            searchBar = new SearchBar();
+            searchBar = new SearchBar(dp(1));
             searchBar.bind(this);
         }
         searchBar.show();
+        // la carte naît clavier levé : le champ de requête attend une
+        // frappe — le clavier logiciel se montre dès l'ouverture, sinon
+        // le doigt qui vise le champ ne lève jamais rien (la carte ne
+        // prend jamais le focus elle-même : le clavier reste à l'éditeur)
+        openKeyboard();
         invalidate();
     }
 
@@ -1115,10 +1168,13 @@ public final class EditorView extends View {
             return;
         }
         if (gotoBar == null) {
-            gotoBar = new GotoBar();
+            gotoBar = new GotoBar(dp(1));
             gotoBar.bind(this);
         }
         gotoBar.show();
+        // la carte naît clavier levé : les chiffres attendent une
+        // frappe — même règle que la recherche
+        openKeyboard();
         invalidate();
     }
 
@@ -1558,19 +1614,29 @@ public final class EditorView extends View {
         // des cartes poursuit sa vie vers l'éditeur (le caret bouge,
         // la sélection suit)
         if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
-            downOnCard = (searchBar != null && searchBar.isShown()
-                    && searchBar.onTouchArea(event.getX(), event.getY()))
-                    || (gotoBar != null && gotoBar.isShown()
-                            && gotoBar.onTouchArea(event.getX(), event.getY()))
+            boolean touchedSearch = searchBar != null && searchBar.isShown()
+                    && searchBar.onTouchArea(event.getX(), event.getY());
+            boolean touchedGoto = !touchedSearch && gotoBar != null && gotoBar.isShown()
+                    && gotoBar.onTouchArea(event.getX(), event.getY());
+            downOnCard = touchedSearch || touchedGoto
                     || (completionCard != null && completionCard.isShown()
                             && completionCard.onTouchArea(event.getX(), event.getY()))
                     || (signatureCard != null && signatureCard.isShown()
                             && signatureCard.onTouchArea(event.getX(), event.getY()))
+                    || (historyCard != null && historyCard.isShown()
+                            && historyCard.onTouchArea(event.getX(), event.getY()))
                     || (selectionBar != null && selectionBar.isShown()
                             && selectionBar.onTouchArea(event.getX(), event.getY()))
                     || (overflowCard != null && overflowCard.isShown()
                             && overflowCard.onTouchArea(event.getX(), event.getY()));
             if (downOnCard) {
+                // le doigt vise un CHAMP de la carte : le clavier se
+                // lève — la carte ne prend jamais le focus, le clavier
+                // reste à l'éditeur qui route les frappes à la carte
+                if ((touchedSearch && searchBar.keyboardWanted())
+                        || (touchedGoto && gotoBar.keyboardWanted())) {
+                    openKeyboard();
+                }
                 return true;
             }
         } else if (downOnCard) {
@@ -1668,10 +1734,14 @@ public final class EditorView extends View {
                 if (selectionDragBound != 0) {
                     // la poignée se lâche : la sélection reste posée,
                     // l'appui ne compte pas pour un tap (le suivant ne
-                    // serait pas un double-tap)
+                    // serait pas un double-tap) ; la trame se redemande —
+                    // la loupe s'y range, la barre de sélection y naît
+                    // (sans elle, la dernière trame — loupe comprise —
+                    // resterait gelée à l'écran)
                     selectionDragBound = 0;
                     dragFixedBound = -1;
                     lastTapNanos = 0L;
+                    invalidate();
                     break;
                 }
                 if (textDragging) {
@@ -1713,6 +1783,25 @@ public final class EditorView extends View {
                 lastTapNanos = System.nanoTime();
                 lastTapX = event.getX();
                 lastTapY = event.getY();
+                break;
+            case MotionEvent.ACTION_CANCEL:
+                // le système reprend le geste (la navigation par geste,
+                // une vue parente) : les traînements se rangent comme
+                // au lâcher — sinon la loupe resterait posée à jamais
+                // et la barre de sélection ne naîtrait jamais (l'état
+                // de poignée tenue tuerait les deux)
+                if (selectionDragBound != 0 || textDragging || dragging) {
+                    removeCallbacks(edgeScroll);
+                    edgeScrollScheduled = false;
+                    selectionDragBound = 0;
+                    dragFixedBound = -1;
+                    textDragging = false;
+                    textDragArmed = false;
+                    dropOffset = -1;
+                    dragging = false;
+                    lastTapNanos = 0L;
+                    invalidate();
+                }
                 break;
             default:
                 break;
@@ -2393,14 +2482,46 @@ public final class EditorView extends View {
         suggestionWordStart = wordStart;
         if (suggestionProvider != null) {
             // la source extérieure tire à la trame : elle cache sa
-            // réponse asynchrone (le contrat y est documenté)
+            // réponse asynchrone (le contrat y est documenté) — les
+            // colonnes de détail vivent vides (la nature neutre) quand
+            // le fournisseur ne rend que des noms
             int line = buffer.lineOfOffset(caret);
-            completionCard.set(suggestionProvider.completionsFor(prefix,
+            completionCard.setNames(suggestionProvider.completionsFor(prefix,
                     line, caret - buffer.getLineStart(line)), prefix);
             return;
         }
-        completionCard.set(symbolIndex == null
-                ? List.of() : symbolIndex.query(prefix, 8), prefix);
+        completionCard.set(localCompletionEntries(prefix), prefix);
+    }
+
+    /**
+     * Les candidats détaillés de l'index local : la nature y porte
+     * l'icône, la nature et la ligne de déclaration portent la
+     * colonne de droite (la facture de l'atelier).
+     *
+     * @param prefix le préfixe tapé
+     * @return les candidats détaillés, jamais null
+     */
+    private List<CompletionCard.Entry> localCompletionEntries(String prefix) {
+        if (symbolIndex == null) {
+            return List.of();
+        }
+        List<CompletionCard.Entry> entries = new ArrayList<>();
+        for (SymbolIndex.Candidate candidate : symbolIndex.queryDetailed(prefix, 8)) {
+            String nature = candidate.nature();
+            int kind = CompletionCard.KIND_WORD;
+            if ("type".equals(nature)) {
+                kind = CompletionCard.KIND_CLASS;
+            } else if ("méthode".equals(nature)) {
+                kind = CompletionCard.KIND_FUNCTION;
+            } else if ("champ".equals(nature)) {
+                kind = CompletionCard.KIND_FIELD;
+            }
+            String detail = "mot".equals(nature) ? ""
+                    : nature + (candidate.line() >= 0 ? " · ligne " + (candidate.line() + 1)
+                            : "");
+            entries.add(new CompletionCard.Entry(candidate.name(), detail, kind));
+        }
+        return entries;
     }
 
     /**
@@ -2555,6 +2676,7 @@ public final class EditorView extends View {
         }
         int start = hasSelection() ? selectionStart() : Math.min(selection.caret(), buffer.length());
         int end = hasSelection() ? selectionEnd() : start;
+        pendingEditLabel = "collage";
         applyEdit(start, end, clip.toString());
     }
 
@@ -2586,9 +2708,15 @@ public final class EditorView extends View {
 
     /**
      * Ouvre la carte de débordement de la barre : les actions
-     * repliées — couper, tout sélectionner, quitter la sélection. La
-     * puce la referme (le menu se rabat) ; le choix d'une rangée la
-     * referme AVANT d'exécuter ; elle ne survit jamais à sa barre (la
+     * repliées en ÉTAGES — la navigation (aller à la ligne, rechercher),
+     * l'édition (commenter, casse, dupliquer, supprimer la ligne), le
+     * presse-papiers (couper, tout sélectionner, quitter la sélection),
+     * l'historique local de la sélection (une sélection vit), l'hôte
+     * (ses actions que la pilule ne portait pas). Les étages naissent
+     * du contexte : le langage sans commentaire de ligne n'y offre pas
+     * le sien, l'étage hôte ne vit que de ses actions. La puce la
+     * referme (le menu se rabat) ; le choix d'une rangée la referme
+     * AVANT d'exécuter ; elle ne survit jamais à sa barre (la
      * sélection morte la ferme).
      */
     public void showOverflowMenu() {
@@ -2597,10 +2725,40 @@ public final class EditorView extends View {
             invalidate();
             return;
         }
-        overflowCard.open(List.of(
+        List<OverflowCard.Section> families = new ArrayList<>();
+        families.add(new OverflowCard.Section("Navigation", List.of(
+                new OverflowCard.Row("Aller à la ligne…", this::toggleGotoPopup),
+                new OverflowCard.Row("Rechercher…", this::toggleSearchPopup))));
+        List<OverflowCard.Row> edition = new ArrayList<>();
+        if (!lineCommentPrefix().isEmpty()) {
+            edition.add(new OverflowCard.Row("Commenter / décommenter",
+                    this::toggleLineComment));
+        }
+        if (hasSelection()) {
+            edition.add(new OverflowCard.Row("En majuscules", this::uppercaseSelection));
+            edition.add(new OverflowCard.Row("En minuscules", this::lowercaseSelection));
+        }
+        edition.add(new OverflowCard.Row("Dupliquer la ligne", this::duplicateLine));
+        edition.add(new OverflowCard.Row("Supprimer la ligne", this::deleteLines));
+        families.add(new OverflowCard.Section("Édition", edition));
+        families.add(new OverflowCard.Section("Presse-papiers", List.of(
                 new OverflowCard.Row("Couper", this::cutSelection),
                 new OverflowCard.Row("Tout sélectionner", this::selectAll),
-                new OverflowCard.Row("Quitter la sélection", this::clearSelection)));
+                new OverflowCard.Row("Quitter la sélection", this::clearSelection))));
+        if (hasSelection()) {
+            families.add(new OverflowCard.Section("Historique", List.of(
+                    new OverflowCard.Row("Historique de la sélection",
+                            this::showHistoryPopup))));
+        }
+        List<OverflowCard.Row> hosts = new ArrayList<>();
+        for (SelectionBar.HostAction action : selectionBar.hostOverflowActions()) {
+            hosts.add(new OverflowCard.Row(action.label(), action.action()));
+        }
+        if (!hosts.isEmpty()) {
+            families.add(new OverflowCard.Section("Hôte", hosts));
+        }
+        overflowCard.openSections(families);
+        invalidate();
     }
 
     /**
@@ -2619,10 +2777,261 @@ public final class EditorView extends View {
         if (!selectionBarAlive()) {
             selectionBar.hide();
             overflowCard.close();
+            historyCard.close();
             clipboardProbeFrame = -1;
             return;
         }
-        selectionBar.show(clipboardHasText());
+        selectionBar.show(clipboardHasText(), hostSelectionActions);
+    }
+
+    /**
+     * L'hôte pose SA pastille sur la barre de sélection : l'action vit
+     * en pastille tant que la pilule tient au budget, le trop se
+     * replie à la carte de débordement (l'étage « Hôte »).
+     *
+     * @param label  le libellé de la pastille, jamais vide
+     * @param action ce qu'elle fait, jamais null
+     */
+    public void addSelectionAction(String label, Runnable action) {
+        if (label == null || label.isEmpty() || action == null) {
+            return;
+        }
+        hostSelectionActions.add(new SelectionBar.HostAction(label, action));
+        invalidate();
+    }
+
+    /** Range les pastilles de l'hôte (l'application les retire). */
+    public void clearSelectionActions() {
+        hostSelectionActions.clear();
+        invalidate();
+    }
+
+    /**
+     * Le préfixe de commentaire de fin de ligne du langage courant —
+     * vide quand le langage n'en porte pas (XML, JSON : l'action de
+     * commentaire s'y cache).
+     */
+    private String lineCommentPrefix() {
+        String name = language == null ? "" : language.name();
+        switch (name) {
+            case "Java":
+            case "Kotlin":
+                return "//";
+            case "Lua":
+            case "SQL":
+                return "--";
+            default:
+                return "";
+        }
+    }
+
+    /**
+     * Commente ou décommente les lignes de la sélection (la ligne du
+     * curseur sans sélection) : les lignes déjà commentées perdent
+     * leur préfixe, les autres le gagnent à leur indentation — une
+     * seule unité d'annulation, un seul geste pour l'historique.
+     */
+    public void toggleLineComment() {
+        String prefix = lineCommentPrefix();
+        if (prefix.isEmpty()) {
+            return;
+        }
+        int from = buffer.lineOfOffset(Math.min(selectionStart(), buffer.length()));
+        int to = buffer.lineOfOffset(Math.max(selectionEnd(), selection.caret()));
+        int lineCount = buffer.getLineCount();
+        if (lineCount == 0) {
+            return;
+        }
+        to = Math.min(to, lineCount - 1);
+        pendingEditLabel = "commentaire";
+        try (TextTransaction transaction = undoStack.newTransaction()) {
+            for (int line = from; line <= to; line++) {
+                int lineStart = buffer.getLineStart(line);
+                int lineEnd = buffer.getLineEnd(line);
+                String content = buffer.getText(lineStart, lineEnd).toString();
+                int first = 0;
+                while (first < content.length()
+                        && content.charAt(first) == ' ') {
+                    first++;
+                }
+                if (content.startsWith(prefix, first)) {
+                    int cutEnd = first + prefix.length();
+                    if (cutEnd < content.length() && content.charAt(cutEnd) == ' ') {
+                        cutEnd++;
+                    }
+                    if (cutEnd <= content.length()) {
+                        transaction.replace(lineStart + first,
+                                lineStart + cutEnd, "");
+                    }
+                } else {
+                    if (first < content.length()) {
+                        transaction.replace(lineStart + first, lineStart + first,
+                                prefix + " ");
+                    } else {
+                        transaction.replace(lineStart, lineStart, prefix);
+                    }
+                }
+            }
+        }
+        invalidate();
+    }
+
+    /**
+     * La sélection passe en MAJUSCULES — une unité d'annulation, un
+     * geste pour l'historique. Sans sélection vivante, rien ne se
+     * paye.
+     */
+    public void uppercaseSelection() {
+        if (!hasSelection()) {
+            return;
+        }
+        pendingEditLabel = "casse";
+        applyEdit(selectionStart(), selectionEnd(),
+                selectedText().toString().toUpperCase(java.util.Locale.ROOT));
+    }
+
+    /**
+     * La sélection passe en minuscules — une unité d'annulation, un
+     * geste pour l'historique.
+     */
+    public void lowercaseSelection() {
+        if (!hasSelection()) {
+            return;
+        }
+        pendingEditLabel = "casse";
+        applyEdit(selectionStart(), selectionEnd(),
+                selectedText().toString().toLowerCase(java.util.Locale.ROOT));
+    }
+
+    /**
+     * Duplique la ligne (celle de la sélection, celle du curseur
+     * sinon) : sa copie se pose dessous, le curseur y descend — une
+     * unité d'annulation, un geste pour l'historique.
+     */
+    public void duplicateLine() {
+        if (buffer.getLineCount() == 0) {
+            return;
+        }
+        int line = buffer.lineOfOffset(Math.min(selectionStart(), buffer.length()));
+        int lineStart = buffer.getLineStart(line);
+        int lineEnd = buffer.getLineEnd(line);
+        String carried = buffer.getText(lineStart, lineEnd).toString();
+        pendingEditLabel = "duplication";
+        try (TextTransaction transaction = undoStack.newTransaction()) {
+            transaction.replace(lineEnd, lineEnd, "\n" + carried);
+        }
+        caretTo(lineEnd + 1 + carried.length());
+        invalidate();
+    }
+
+    /**
+     * Supprime les lignes de la sélection (celle du curseur sinon) —
+     * le saut de fin compris, une unité d'annulation, un geste pour
+     * l'historique. La dernière ligne du document garde son saut
+     * d'avant : le tampon demeure cohérent.
+     */
+    public void deleteLines() {
+        int lineCount = buffer.getLineCount();
+        if (lineCount == 0) {
+            return;
+        }
+        int from = buffer.lineOfOffset(Math.min(selectionStart(), buffer.length()));
+        int to = Math.min(buffer.lineOfOffset(
+                Math.max(selectionEnd(), selection.caret())), lineCount - 1);
+        int start = buffer.getLineStart(from);
+        int end = to + 1 < lineCount
+                ? buffer.getLineStart(to + 1) : buffer.length();
+        if (end <= start) {
+            return;
+        }
+        pendingEditLabel = "suppression de ligne";
+        try (TextTransaction transaction = undoStack.newTransaction()) {
+            transaction.replace(start, end, "");
+        }
+        clampCaret();
+        invalidate();
+    }
+
+    /**
+     * L'historique local du document (le harnais le lit, l'hôte peut
+     * le vider à l'ouverture d'un autre fichier).
+     *
+     * @return l'historique local, jamais null
+     */
+    public LocalHistory localHistory() {
+        return localHistory;
+    }
+
+    /**
+     * La carte de l'historique local (le harnais la lit).
+     *
+     * @return la carte, jamais null
+     */
+    public HistoryCard historyCard() {
+        return historyCard;
+    }
+
+    /**
+     * Ouvre la carte de l'historique local de la sélection (la ligne
+     * du curseur sans sélection) : les traces qui touchent la plage, du
+     * dernier au premier — l'histoire d'une partie du code.
+     */
+    public void showHistoryPopup() {
+        int from = buffer.lineOfOffset(Math.min(selectionStart(), buffer.length()));
+        int to = buffer.lineOfOffset(Math.max(selectionEnd(), selection.caret()));
+        to = Math.min(to, buffer.getLineCount() - 1);
+        historyCard.open(localHistory.between(from, to), from + 1, to + 1);
+        invalidate();
+    }
+
+    /**
+     * Restaure la ligne d'une trace passée : le texte de la ligne
+     * d'alors remet à sa place — une unité d'annulation, la
+     * restauration s'enregistre à son tour (elle se défait comme elle
+     * s'est faite). La ligne morte au présent se borne au document.
+     *
+     * @param trace la trace à restaurer, jamais null
+     */
+    public void restoreHistoryLine(LocalHistory.Trace trace) {
+        int lineCount = buffer.getLineCount();
+        if (lineCount == 0 || trace == null) {
+            return;
+        }
+        int line = Math.min(trace.line(), lineCount - 1);
+        int lineStart = buffer.getLineStart(line);
+        int lineEnd = buffer.getLineEnd(line);
+        pendingEditLabel = "restauration";
+        applyEdit(lineStart, lineEnd, trace.lineText());
+    }
+
+    /**
+     * Une écriture du tampon laisse sa trace à l'historique local :
+     * l'étiquette du geste en cours (collage, complétion…) ou le geste
+     * par défaut (insertion, suppression, remplacement), la ligne
+     * touchée, le texte de la ligne APRÈS le geste — la vue du passé
+     * se lit par plage de lignes. L'étiquette se consomme au passage.
+     */
+    private void recordLocalTrace(int start, int removedLength, int insertedLength) {
+        String gesture = pendingEditLabel;
+        pendingEditLabel = null;
+        if (gesture == null) {
+            gesture = removedLength == 0 ? "insertion"
+                    : insertedLength == 0 ? "suppression" : "remplacement";
+        }
+        if (buffer.length() == 0 && insertedLength == 0) {
+            localHistory.record(System.currentTimeMillis(), gesture, 0, "");
+            return;
+        }
+        int line = buffer.lineOfOffset(Math.min(start, buffer.length()));
+        String lineText = "";
+        if (buffer.getLineCount() > 0 && line < buffer.getLineCount()) {
+            int lineStart = buffer.getLineStart(line);
+            int lineEnd = buffer.getLineEnd(line);
+            if (lineEnd > lineStart) {
+                lineText = buffer.getText(lineStart, lineEnd).toString();
+            }
+        }
+        localHistory.record(System.currentTimeMillis(), gesture, line, lineText);
     }
 
     /** Coupe la sélection : copie puis remplace par le vide. */
@@ -2718,17 +3127,23 @@ public final class EditorView extends View {
     }
 
     /**
-     * La barre de sélection et sa carte de débordement, par-dessus
-     * tout : posées sur la sélection, re-posées à chaque trame — la
-     * sélection bouge, la barre la suit.
+     * La barre de sélection, sa carte de débordement et sa carte
+     * d'historique, par-dessus tout : posées sur la sélection,
+     * re-posées à chaque trame — la sélection bouge, les cartes la
+     * suivent.
      */
     private void drawSelectionBar(Canvas canvas) {
-        if (!selectionBar.isShown() && !overflowCard.isShown()) {
+        if (!selectionBar.isShown() && !overflowCard.isShown()
+                && !historyCard.isShown()) {
             return;
         }
         float top = selectionTopPx();
         float bottom = selectionBottomPx();
         float centerX = selectionCenterX();
+        if (historyCard.isShown()) {
+            historyCard.draw(canvas, selectionBar.poseY(), bottom, centerX,
+                    popupMetrics());
+        }
         if (overflowCard.isShown()) {
             overflowCard.draw(canvas, selectionBar.poseY(), bottom, centerX,
                     popupMetrics());
@@ -2895,6 +3310,7 @@ public final class EditorView extends View {
         }
         int end = Math.min(selection.caret(), buffer.length());
         if (end > suggestionWordStart) {
+            pendingEditLabel = "complétion";
             applyEdit(suggestionWordStart, end, candidate);
         }
     }
@@ -3214,6 +3630,7 @@ public final class EditorView extends View {
         int end = selectionEnd();
         String moved = buffer.getText(start, end);
         if (drop < start || drop > end) {
+            pendingEditLabel = "déplacement";
             try (TextTransaction transaction = undoStack.newTransaction()) {
                 transaction.replace(start, end, "");
                 // un dépôt après la sélection : la suppression a
@@ -3495,6 +3912,19 @@ public final class EditorView extends View {
         if (manager != null) {
             manager.showSoftInput(this, 0);
         }
+    }
+
+    /**
+     * Le clavier se lève pour la carte ouverte : la carte ne prend
+     * jamais le focus — la vue le prend pour elle, le clavier
+     * logiciel se montre, et le contrat d'entrée route les frappes
+     * vers la carte (le champ visé s'y voit actif). L'hôte peut y
+     * passer aussi : la carte EST le clavier de l'éditeur, le temps
+     * qu'elle vit.
+     */
+    public void openKeyboard() {
+        requestFocus();
+        showSoftInput();
     }
 
     private static int clampToRange(int value, int min, int max) {

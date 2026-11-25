@@ -3,46 +3,50 @@ package jo.pigma.editor.popups;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import jo.pigma.editor.EditorView;
 
 /**
- * La carte de complétion, DESSINÉE DANS LA VUE : les candidats du mot
- * courant en rangées verticales au caret — dessous si elle tient,
- * dessus sinon —, bornée aux murs. Les caractères du libellé qui
- * poursuivent le préfixe tapé passent à l'accent et au gras (le fil
- * flou : sous-séquence gloutonne, cas ignorée). Le candidat courant se
- * surligne ; la flèche verticale déléguée y navigue, la validation
- * déléguée l'insère (le préfixe se remplace par le candidat entier),
- * le doigt sur une rangée l'insère aussi.
+ * La carte de complétion à la facture de l'atelier : les candidats du
+ * mot courant en COLONNES — l'icône de nature à gauche, le nom au
+ * milieu (les caractères qui poursuivent le préfixe tapé passent à
+ * l'accent et au gras), le détail à droite (la nature et la ligne de
+ * la déclaration, aligné à droite, atténué) — puis un PIED DE CARTE
+ * (le compte des candidats, l'indice des touches), une barre de
+ * défilement quand la fenêtre ne montre pas tout, et la rangée
+ * courante surlignée d'un filet d'accent. La carte se pose au caret
+ * (dessous si elle tient, dessus sinon), bornée aux murs.
  *
- * <p>La carte ne prend jamais le focus : le texte tapé poursuit sa vie
- * vers le tampon — la carte ne montre que ce qu'on lui pose, elle se
- * re-filtre à la trame suivante. Le filtrage vit chez l'éditeur ; la
- * fenêtre de rangées se resserre quand la place manque sous le caret
- * (au moins deux rangées, huit au plus) et défile pour garder le
- * candidat courant visible.</p>
+ * <p>La carte ne prend jamais le focus : le texte tapé poursuit sa
+ * vie vers le tampon — la carte se re-filtre à la trame suivante. La
+ * flèche verticale déléguée y navigue, la validation déléguée insère
+ * (le préfixe se remplace par le candidat entier), le doigt sur une
+ * rangée l'insère aussi.</p>
  */
 public final class CompletionCard {
 
     /** Le plafond de rangées montrées quand la place abonde. */
-    private static final int MAX_ROWS = 8;
+    private static final int MAX_ROWS = 10;
 
     /** Le plancher de rangées quand la place manque sous le caret. */
-    private static final int MIN_ROWS = 2;
+    private static final int MIN_ROWS = 3;
 
     /** La hauteur d'une rangée (dp). */
-    private static final int ROW_HEIGHT_DP = 30;
+    private static final int ROW_HEIGHT_DP = 36;
+
+    /** La hauteur du pied de carte (dp). */
+    private static final int FOOTER_DP = 26;
 
     /** La respiration intérieure de la carte (dp). */
     private static final int PAD_DP = 4;
 
     /** La largeur plancher de la carte (dp). */
-    private static final int MIN_WIDTH_DP = 150;
+    private static final int MIN_WIDTH_DP = 240;
 
     /** La largeur plafond de la carte (dp). */
-    private static final int MAX_WIDTH_DP = 280;
+    private static final int MAX_WIDTH_DP = 340;
 
     /** La marge aux murs de la vue (dp). */
     private static final int MARGIN_DP = 8;
@@ -50,9 +54,47 @@ public final class CompletionCard {
     /** L'écart entre le caret et la carte (dp). */
     private static final int GAP_DP = 2;
 
-    private List<String> words = List.of();
+    /** La colonne d'icône : sa largeur (dp). */
+    private static final int ICON_DP = 24;
 
-    /** Le préfixe tapé — ses caractères passent à l'accent dans les libellés. */
+    /** Le filet d'accent de la rangée courante (dp). */
+    private static final int ACCENT_BAR_DP = 3;
+
+    /** La nature inconnue : le carré neutre, aucune lettre dedans. */
+    public static final int KIND_UNKNOWN = 0;
+
+    /** Un mot du texte : la pastille neutre. */
+    public static final int KIND_WORD = 1;
+
+    /** Un mot-clé du langage. */
+    public static final int KIND_KEYWORD = 2;
+
+    /** Une méthode (une fonction déclarée). */
+    public static final int KIND_FUNCTION = 3;
+
+    /** Un type (une classe). */
+    public static final int KIND_CLASS = 4;
+
+    /** Un champ (une variable déclarée). */
+    public static final int KIND_FIELD = 5;
+
+    /** Un module (une unité importable). */
+    public static final int KIND_MODULE = 6;
+
+    /**
+     * Un candidat : son nom, son détail (la colonne de droite — la
+     * nature, la ligne de déclaration) et sa nature (l'icône).
+     *
+     * @param name   le nom insérable, jamais vide
+     * @param detail le détail de droite, vide pour aucun
+     * @param kind   la nature, une des constantes KIND_ de la carte
+     */
+    public record Entry(String name, String detail, int kind) {
+    }
+
+    private List<Entry> entries = List.of();
+
+    /** Le préfixe tapé — ses caractères passent à l'accent dans les noms. */
     private String prefix = "";
 
     /** L'index du candidat courant, -1 si la carte est vide. */
@@ -80,7 +122,14 @@ public final class CompletionCard {
     private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint accentPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint detailPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint footerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint selectionPaint = new Paint();
+    private final Paint accentBarPaint = new Paint();
+    private final Paint scrollbarPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint iconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint iconLetterPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint footerRulePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     /**
      * Une carte neuve, ses pinceaux propres.
@@ -93,10 +142,20 @@ public final class CompletionCard {
         borderPaint.setStyle(Paint.Style.STROKE);
         borderPaint.setStrokeWidth(1.0f);
         textPaint.setColor(0xFF202124);
-        textPaint.setTextSize(13.0f * density);
+        textPaint.setTextSize(14.0f * density);
         accentPaint.setColor(0xFF1A73E8);
-        accentPaint.setTextSize(13.0f * density);
+        accentPaint.setTextSize(14.0f * density);
+        detailPaint.setColor(0xFF80868B);
+        detailPaint.setTextSize(12.0f * density);
+        footerPaint.setColor(0xFF5F6368);
+        footerPaint.setTextSize(11.0f * density);
         selectionPaint.setColor(0x1F1A73E8);
+        accentBarPaint.setColor(0xFF1A73E8);
+        scrollbarPaint.setColor(0x66B5B5B5);
+        iconPaint.setStyle(Paint.Style.FILL);
+        iconLetterPaint.setColor(0xFFFFFFFF);
+        iconLetterPaint.setTextSize(10.0f * density);
+        iconLetterPaint.setFakeBoldText(true);
     }
 
     /**
@@ -110,32 +169,56 @@ public final class CompletionCard {
     }
 
     /**
-     * Pose les candidats du mot courant et le préfixe tapé — le
-     * premier candidat devient le courant quand la liste change ; la
+     * Pose les candidats détaillés du mot courant et le préfixe tapé —
+     * le premier candidat devient le courant quand la liste change ; la
      * fenêtre repart du haut. La liste vide range la carte.
      *
      * @param candidates les candidats, déjà filtrés, jamais null
      * @param typedPrefix le préfixe tapé (vide pour aucun surlignage)
      */
-    public void set(List<String> candidates, String typedPrefix) {
-        List<String> fresh = List.copyOf(candidates);
-        boolean changed = !fresh.equals(words);
-        words = fresh;
+    public void set(List<Entry> candidates, String typedPrefix) {
+        List<Entry> fresh = List.copyOf(candidates);
+        boolean changed = !fresh.equals(entries);
+        entries = fresh;
         prefix = typedPrefix == null ? "" : typedPrefix;
         if (changed) {
-            highlighted = words.isEmpty() ? -1 : 0;
+            highlighted = entries.isEmpty() ? -1 : 0;
             topRow = 0;
         }
     }
 
+    /**
+     * Pose les candidats de noms seuls — les colonnes de détail et
+     * d'icône vivent vides (la nature neutre).
+     *
+     * @param candidates les candidats, déjà filtrés, jamais null
+     * @param typedPrefix le préfixe tapé (vide pour aucun surlignage)
+     */
+    public void setNames(List<String> candidates, String typedPrefix) {
+        List<Entry> wrapped = new ArrayList<>();
+        for (String name : candidates) {
+            wrapped.add(new Entry(name, "", KIND_UNKNOWN));
+        }
+        set(wrapped, typedPrefix);
+    }
+
     /** La carte vit-elle ? (au moins un candidat) */
     public boolean isShown() {
-        return !words.isEmpty();
+        return !entries.isEmpty();
     }
 
     /** Les candidats montrés. */
     public List<String> words() {
-        return words;
+        List<String> names = new ArrayList<>();
+        for (Entry entry : entries) {
+            names.add(entry.name());
+        }
+        return names;
+    }
+
+    /** Les candidats détaillés montrés (le harnais y lit les colonnes). */
+    public List<Entry> entries() {
+        return entries;
     }
 
     /** Le préfixe tapé. */
@@ -167,11 +250,11 @@ public final class CompletionCard {
      * @return vrai quand la carte a pris la flèche
      */
     public boolean onArrow(int step) {
-        if (words.isEmpty()) {
+        if (entries.isEmpty()) {
             return false;
         }
         int target = highlighted < 0 ? 0
-                : Math.min(words.size() - 1, Math.max(0, highlighted + step));
+                : Math.min(entries.size() - 1, Math.max(0, highlighted + step));
         highlighted = target;
         keepCurrentVisible();
         return true;
@@ -184,18 +267,18 @@ public final class CompletionCard {
      * @return vrai quand la carte a pris la validation
      */
     public boolean onEnter() {
-        if (highlighted < 0 || highlighted >= words.size()) {
+        if (highlighted < 0 || highlighted >= entries.size()) {
             return false;
         }
-        insert(words.get(highlighted));
+        insert(entries.get(highlighted).name());
         return true;
     }
 
     /**
      * Le doigt tombé sur la carte lui appartient : la rangée visée
-     * insère son candidat ; le reste de la carte se consomme sans
-     * agir. Hors de la carte : faux — le geste poursuit sa vie vers
-     * l'éditeur.
+     * insère son candidat ; le pied de carte consomme sans agir ; le
+     * reste de la carte se consomme sans agir. Hors de la carte : faux
+     * — le geste poursuit sa vie vers l'éditeur.
      *
      * @param x l'abscisse du doigt (px, coordonnées de la vue)
      * @param y l'ordonnée du doigt (px, coordonnées de la vue)
@@ -206,25 +289,31 @@ public final class CompletionCard {
                 || y < poseY || y >= poseY + cardH) {
             return false;
         }
-        int row = (int) ((y - poseY - dp(PAD_DP)) / dp(ROW_HEIGHT_DP)) + topRow;
-        if (row >= topRow && row < topRow + shownRows && row < words.size()) {
-            insert(words.get(row));
+        float rowH = dp(ROW_HEIGHT_DP);
+        float rowsBottom = poseY + dp(PAD_DP) + shownRows * rowH;
+        if (y < rowsBottom) {
+            int row = (int) ((y - poseY - dp(PAD_DP)) / rowH) + topRow;
+            if (row >= topRow && row < topRow + shownRows && row < entries.size()) {
+                insert(entries.get(row).name());
+            }
         }
         return true;
     }
 
     /**
      * Dessine la carte : la pose se recalcule d'abord — le caret la
-     * suit (défilement, navigation) — puis les rangées de la fenêtre,
-     * le candidat courant surligné, les libellés à l'accent sur les
-     * caractères qui poursuivent le préfixe.
+     * suit (défilement, navigation) — puis la fenêtre de rangées (le
+     * candidat courant surligné, son filet d'accent, l'icône de
+     * nature, le nom à l'accent sur le préfixe, le détail à droite),
+     * la barre de défilement si la fenêtre cache des rangées, et le
+     * pied de carte (le compte, l'indice des touches).
      *
      * @param canvas  le canevas de la vue
      * @param metrics la géométrie courante de la vue
      */
     public void draw(Canvas canvas, PopupMetrics metrics) {
         density = metrics.density();
-        if (words.isEmpty()) {
+        if (entries.isEmpty()) {
             cardH = 0.0f;
             shownRows = 0;
             return;
@@ -237,15 +326,29 @@ public final class CompletionCard {
                 radius, radius, borderPaint);
         float rowH = dp(ROW_HEIGHT_DP);
         float pad = dp(PAD_DP);
-        for (int at = topRow; at < topRow + shownRows && at < words.size(); at++) {
+        float rowsBottom = poseY + pad + shownRows * rowH;
+        for (int at = topRow; at < topRow + shownRows && at < entries.size(); at++) {
             float top = poseY + pad + (at - topRow) * rowH;
             if (at == highlighted) {
                 canvas.drawRect(poseX + 1.0f, top,
                         poseX + cardW - 1.0f, top + rowH, selectionPaint);
+                canvas.drawRect(poseX + 1.0f, top,
+                        poseX + 1.0f + dp(ACCENT_BAR_DP), top + rowH, accentBarPaint);
             }
-            drawLabel(canvas, ellipsize(words.get(at)),
-                    poseX + dp(12), top + rowH * 0.68f);
+            drawIcon(canvas, entries.get(at).kind(),
+                    poseX + dp(8), top + rowH / 2.0f);
+            drawLabel(canvas, ellipsize(entries.get(at).name(), nameColumnWidth()),
+                    poseX + dp(ICON_DP) + dp(6), top + rowH * 0.68f, at == highlighted);
+            String detail = entries.get(at).detail();
+            if (!detail.isEmpty()) {
+                String shown = shrink(detail, detailPaint, detailColumnWidth());
+                canvas.drawText(shown,
+                        poseX + cardW - dp(12) - detailPaint.measureText(shown),
+                        top + rowH * 0.68f, detailPaint);
+            }
         }
+        drawScrollbar(canvas, rowsBottom);
+        drawFooter(canvas, rowsBottom);
     }
 
     /** L'abscisse posée (le harnais la lit). */
@@ -295,7 +398,7 @@ public final class CompletionCard {
         float pad = dp(PAD_DP);
         cardW = Math.min(Math.max(measuredWidth(), dp(MIN_WIDTH_DP)),
                 dp(MAX_WIDTH_DP));
-        int rows = Math.min(MAX_ROWS, words.size());
+        int rows = Math.min(MAX_ROWS, entries.size());
         // la place de chaque côté : la carte vit du côté qui en a le
         // plus — le dessous d'abord quand les deux tiennent
         float belowTop = metrics.caretY() + metrics.lineHeight() + gap;
@@ -303,10 +406,10 @@ public final class CompletionCard {
         float aboveSpace = metrics.caretY() - gap - margin;
         boolean below = belowSpace >= aboveSpace;
         float space = below ? belowSpace : aboveSpace;
-        int fitting = (int) Math.floor((space - 2 * pad) / rowH);
+        int fitting = (int) Math.floor((space - 2 * pad - dp(FOOTER_DP)) / rowH);
         rows = Math.max(MIN_ROWS, Math.min(rows, Math.max(fitting, MIN_ROWS)));
-        shownRows = Math.min(rows, words.size());
-        cardH = 2 * pad + shownRows * rowH;
+        shownRows = Math.min(rows, entries.size());
+        cardH = 2 * pad + shownRows * rowH + dp(FOOTER_DP);
         if (below) {
             poseY = Math.min(belowTop,
                     Math.max(margin, metrics.viewHeight() - cardH - margin));
@@ -319,15 +422,53 @@ public final class CompletionCard {
     }
 
     /**
-     * La largeur qu'il faut pour le plus large libellé, respirations
-     * comprises.
+     * La largeur qu'il faut pour le plus large nom + l'icône + le plus
+     * large détail, respirations comprises.
      */
     private float measuredWidth() {
-        float widest = 0.0f;
-        for (String word : words) {
-            widest = Math.max(widest, textPaint.measureText(word));
+        float widestName = 0.0f;
+        float widestDetail = 0.0f;
+        for (Entry entry : entries) {
+            widestName = Math.max(widestName, textPaint.measureText(entry.name()));
+            if (!entry.detail().isEmpty()) {
+                widestDetail = Math.max(widestDetail,
+                        detailPaint.measureText(entry.detail()));
+            }
         }
-        return widest + 2 * dp(12);
+        return dp(ICON_DP) + dp(6) + widestName + (widestDetail > 0 ? dp(16) + widestDetail : 0)
+                + 2 * dp(12);
+    }
+
+    /** La largeur de la colonne du nom. */
+    private float nameColumnWidth() {
+        return cardW - dp(ICON_DP) - dp(6) - detailReserved() - 2 * dp(12);
+    }
+
+    /** La largeur de la colonne du détail. */
+    private float detailColumnWidth() {
+        return detailReserved() - dp(8);
+    }
+
+    /** La largeur réservée au détail (nulle sans aucun détail). */
+    private float detailReserved() {
+        for (Entry entry : entries) {
+            if (!entry.detail().isEmpty()) {
+                // un tiers de la carte, plafonné au plus large détail
+                return Math.min(dp(120), measuredDetailWidth() + dp(8));
+            }
+        }
+        return 0.0f;
+    }
+
+    /** Le plus large détail des candidats. */
+    private float measuredDetailWidth() {
+        float widest = 0.0f;
+        for (Entry entry : entries) {
+            if (!entry.detail().isEmpty()) {
+                widest = Math.max(widest, detailPaint.measureText(entry.detail()));
+            }
+        }
+        return widest;
     }
 
     /**
@@ -345,17 +486,17 @@ public final class CompletionCard {
 
     /** La fenêtre vit dans les murs de la liste. */
     private void clampWindow() {
-        int maxTop = Math.max(0, words.size() - Math.max(1, shownRows));
+        int maxTop = Math.max(0, entries.size() - Math.max(1, shownRows));
         topRow = Math.min(Math.max(0, topRow), maxTop);
     }
 
     /**
-     * Le libellé, caractère par caractère : les positions qui
-     * poursuivent le préfixe tapé (sous-séquence gloutonne, cas
-     * ignorée) passent à l'accent et au gras, les autres gardent
-     * l'encre des libellés.
+     * Le nom, caractère par caractère : les positions qui poursuivent
+     * le préfixe tapé (sous-séquence gloutonne, cas ignorée) passent à
+     * l'accent et au gras, les autres gardent l'encre des noms.
      */
-    private void drawLabel(Canvas canvas, String label, float x, float baseline) {
+    private void drawLabel(Canvas canvas, String label, float x,
+            float baseline, boolean boldPlain) {
         boolean[] matched = matchedPositions(label);
         float cursor = x;
         int at = 0;
@@ -367,7 +508,7 @@ public final class CompletionCard {
             }
             String segment = label.substring(at, end + 1);
             Paint paint = isMatch ? accentPaint : textPaint;
-            paint.setFakeBoldText(isMatch);
+            paint.setFakeBoldText(isMatch || boldPlain);
             canvas.drawText(segment, cursor, baseline, paint);
             paint.setFakeBoldText(false);
             cursor += paint.measureText(segment);
@@ -376,8 +517,106 @@ public final class CompletionCard {
     }
 
     /**
-     * Les positions du libellé qui poursuivent le préfixe (sous-
-     * séquence gloutonne, cas ignorée).
+     * L'icône de nature : un carré arrondi teinté par la nature, une
+     * lettre au centre (f pour une méthode, C pour un type…) ; la
+     * nature neutre garde le carré vide et pâle.
+     */
+    private void drawIcon(Canvas canvas, int kind, float left, float cy) {
+        float side = dp(16);
+        float top = cy - side / 2.0f;
+        iconPaint.setColor(iconColor(kind));
+        canvas.drawRoundRect(left, top, left + side, top + side,
+                dp(3), dp(3), iconPaint);
+        String letter = iconLetter(kind);
+        if (!letter.isEmpty()) {
+            float letterW = iconLetterPaint.measureText(letter);
+            canvas.drawText(letter, left + (side - letterW) / 2.0f,
+                    cy + side * 0.28f, iconLetterPaint);
+        }
+    }
+
+    /** La teinte de l'icône selon la nature. */
+    private int iconColor(int kind) {
+        switch (kind) {
+            case KIND_FUNCTION:
+                return 0xFF8E44AD;
+            case KIND_CLASS:
+                return 0xFF2878B5;
+            case KIND_FIELD:
+                return 0xFF00897B;
+            case KIND_KEYWORD:
+                return 0xFF5F6368;
+            case KIND_MODULE:
+                return 0xFFC2185B;
+            case KIND_WORD:
+                return 0xFF95A5A6;
+            default:
+                return 0xFFCFD8DC;
+        }
+    }
+
+    /** La lettre de l'icône selon la nature (vide pour la neutre). */
+    private String iconLetter(int kind) {
+        switch (kind) {
+            case KIND_FUNCTION:
+                return "f";
+            case KIND_CLASS:
+                return "C";
+            case KIND_FIELD:
+                return "v";
+            case KIND_KEYWORD:
+                return "k";
+            case KIND_MODULE:
+                return "M";
+            default:
+                return "";
+        }
+    }
+
+    /**
+     * La barre de défilement : la fenêtre montre-t-elle moins que la
+     * liste ? Le pouce se pose au prorata des rangées visibles.
+     */
+    private void drawScrollbar(Canvas canvas, float rowsBottom) {
+        if (shownRows >= entries.size()) {
+            return;
+        }
+        float trackTop = poseY + dp(PAD_DP);
+        float trackBottom = rowsBottom - dp(2);
+        float thumb = (trackBottom - trackTop) * shownRows / entries.size();
+        float trackSpan = trackBottom - trackTop - thumb;
+        float thumbTop = entries.size() <= 1 ? trackTop
+                : trackTop + trackSpan * topRow / (entries.size() - shownRows);
+        canvas.drawRect(poseX + cardW - dp(5), thumbTop,
+                poseX + cardW - dp(3), thumbTop + thumb, scrollbarPaint);
+    }
+
+    /**
+     * Le pied de carte : le compte des candidats (ce que la fenêtre
+     * cache le dit aussi), l'indice des touches à droite.
+     */
+    private void drawFooter(Canvas canvas, float footerTop) {
+        float baseline = footerTop + dp(FOOTER_DP) * 0.66f;
+        String count = entries.size() == 1 ? "1 candidat"
+                : entries.size() + " candidats";
+        if (shownRows < entries.size()) {
+            count += " · " + (entries.size() - shownRows) + " cachés";
+        }
+        canvas.drawText(count, poseX + dp(12), baseline, footerPaint);
+        String hint = "↑↓ naviguer · Entrée insère";
+        canvas.drawText(hint,
+                poseX + cardW - dp(12) - footerPaint.measureText(hint),
+                baseline, footerPaint);
+        // un filet sépare les rangées du pied
+        footerRulePaint.setStrokeWidth(1.0f);
+        footerRulePaint.setStyle(Paint.Style.STROKE);
+        canvas.drawLine(poseX + dp(8), footerTop, poseX + cardW - dp(8),
+                footerTop, footerRulePaint);
+    }
+
+    /**
+     * Les positions du nom qui poursuivent le préfixe (sous-séquence
+     * gloutonne, cas ignorée).
      */
     private boolean[] matchedPositions(String label) {
         boolean[] matched = new boolean[label.length()];
@@ -397,11 +636,10 @@ public final class CompletionCard {
     }
 
     /**
-     * Coupe le libellé à la largeur de la carte — la queue se garde,
-     * la tête s'abrège en « … ».
+     * Coupe le nom à la largeur de sa colonne — la queue se garde, la
+     * tête s'abrège en « … ».
      */
-    private String ellipsize(String label) {
-        float available = cardW - 2 * dp(12);
+    private String ellipsize(String label, float available) {
         if (textPaint.measureText(label) <= available || label.length() < 2) {
             return label;
         }
@@ -410,6 +648,22 @@ public final class CompletionCard {
             tail = tail.substring(1);
         }
         return "…" + tail;
+    }
+
+    /**
+     * Coupe un texte de droite à la largeur : la TÊTE se garde (le
+     * détail se lit par sa fin — la ligne de déclaration), la queue
+     * s'abrège en « … » devant.
+     */
+    private String shrink(String text, Paint paint, float maxWidth) {
+        if (paint.measureText(text) <= maxWidth || text.length() < 2) {
+            return text;
+        }
+        String head = text.substring(0, text.length() - 1);
+        while (head.length() > 1 && paint.measureText(head + "…") > maxWidth) {
+            head = head.substring(0, head.length() - 1);
+        }
+        return head + "…";
     }
 
     /**

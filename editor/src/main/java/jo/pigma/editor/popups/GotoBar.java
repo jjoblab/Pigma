@@ -12,7 +12,8 @@ import jo.pigma.editor.EditorView;
  * fenêtre flottante, pas de jeton de fenêtre, pas de conflit de
  * focus avec l'IME) ; rien ne prend le focus, le clavier reste à
  * l'éditeur, qui rend les verdicts des touches à la carte
- * (KeyboardCard — les chiffres s'y posent, la validation y va). La
+ * (KeyboardCard — les chiffres s'y posent, la validation y va) — et
+ * quand le doigt vise le champ, l'éditeur y lève le clavier. La
  * pose : AU CARET — dessous si elle tient, dessus sinon — bornée
  * aux murs, et le caret la suit.
  * L'invite reste celle d'Android Studio : « Aller à la ligne : », le
@@ -21,10 +22,28 @@ import jo.pigma.editor.EditorView;
  */
 public final class GotoBar implements KeyboardCard {
 
+    /** La hauteur d'une rangée de la carte (dp). */
+    private static final int ROW_HEIGHT_DP = 44;
+
+    /** La respiration intérieure de la carte (dp). */
+    private static final int PAD_DP = 8;
+
+    /** La largeur d'un glyphe d'action (dp). */
+    private static final int GLYPH_DP = 44;
+
+    /** La largeur plancher de la carte (dp). */
+    private static final int MIN_WIDTH_DP = 300;
+
+    /** La largeur plafond de la carte (dp). */
+    private static final int MAX_WIDTH_DP = 360;
+
     private final StringBuilder digits = new StringBuilder();
     private String feedback = "";
 
     private boolean shown;
+
+    /** Le doigt vient-il de viser le champ ? (l'éditeur y lève le clavier). */
+    private boolean fieldTapped;
 
     /** La pose de la carte (px, coordonnées de la vue) — le harnais la lit. */
     private float poseX;
@@ -44,20 +63,25 @@ public final class GotoBar implements KeyboardCard {
     private final Paint smallPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint glyphPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-    public GotoBar() {
+    /**
+     * Une carte neuve, ses pinceaux propres.
+     *
+     * @param density la densité de l'écran (le dp en pixels)
+     */
+    public GotoBar(float density) {
         cardPaint.setColor(0xFFF3F3F3);
         borderPaint.setColor(0xFFB5B5B5);
         borderPaint.setStyle(Paint.Style.STROKE);
         borderPaint.setStrokeWidth(1.0f);
         textPaint.setColor(0xFF202124);
-        textPaint.setTextSize(14.0f);
+        textPaint.setTextSize(16.0f * density);
         hintPaint.setColor(0xFF80868B);
-        hintPaint.setTextSize(14.0f);
+        hintPaint.setTextSize(16.0f * density);
         smallPaint.setColor(0xFF5F6368);
-        smallPaint.setTextSize(12.0f);
+        smallPaint.setTextSize(13.0f * density);
         glyphPaint.setColor(0xFF5F6368);
         glyphPaint.setStyle(Paint.Style.STROKE);
-        glyphPaint.setStrokeWidth(1.6f);
+        glyphPaint.setStrokeWidth(1.6f * density);
     }
 
     /**
@@ -82,11 +106,22 @@ public final class GotoBar implements KeyboardCard {
     public void hide() {
         shown = false;
         digits.setLength(0);
+        fieldTapped = false;
     }
 
     /** La carte vit-elle ? */
     public boolean isShown() {
         return shown;
+    }
+
+    /**
+     * Le doigt vient-il de viser le champ des chiffres ? (l'éditeur y
+     * lève le clavier logiciel après le toucher).
+     *
+     * @return vrai quand le dernier toucher visait le champ
+     */
+    public boolean keyboardWanted() {
+        return fieldTapped;
     }
 
     /**
@@ -102,10 +137,12 @@ public final class GotoBar implements KeyboardCard {
         ancreX = metrics.caretX();
         ancreY = metrics.caretY();
         float margin = dp(8);
-        float pad = dp(6);
-        float rowHeight = dp(34);
-        cardW = Math.min(metrics.viewWidth() - 2 * margin, dp(280));
-        cardH = 2 * pad + rowHeight + dp(16);
+        float pad = dp(PAD_DP);
+        float rowHeight = dp(ROW_HEIGHT_DP);
+        cardW = Math.max(Math.min(metrics.viewWidth() - 2 * margin,
+                dp(MAX_WIDTH_DP)), Math.min(dp(MIN_WIDTH_DP),
+                        metrics.viewWidth() - 2 * margin));
+        cardH = 2 * pad + rowHeight + dp(20);
         float gap = dp(4);
         float below = ancreY + metrics.lineHeight() + gap;
         poseY = below + cardH <= metrics.viewHeight() - margin
@@ -124,36 +161,37 @@ public final class GotoBar implements KeyboardCard {
      */
     public void draw(Canvas canvas, PopupMetrics metrics) {
         poser(metrics);
-        float radius = dp(10);
+        float radius = dp(12);
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, cardPaint);
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, borderPaint);
-        float pad = dp(6);
-        float rowHeight = dp(34);
+        float pad = dp(PAD_DP);
+        float rowHeight = dp(ROW_HEIGHT_DP);
         float rowTop = poseY + pad;
         float baseline = rowTop + rowHeight * 0.7f;
         // l'invite d'Android Studio, puis les chiffres (l'indication
         // si le champ est vierge), puis la croix
         float inviteWidth = textPaint.measureText("Aller à la ligne : ");
-        canvas.drawText("Aller à la ligne : ", poseX + dp(8), baseline, textPaint);
+        canvas.drawText("Aller à la ligne : ", poseX + dp(10), baseline, textPaint);
         canvas.drawText(digits.length() == 0 ? "numéro" : digits.toString(),
-                poseX + dp(8) + inviteWidth + dp(4), baseline,
+                poseX + dp(10) + inviteWidth + dp(4), baseline,
                 digits.length() == 0 ? hintPaint : textPaint);
-        float glyphW = dp(36);
+        float glyphW = dp(GLYPH_DP);
         float cy = rowTop + rowHeight / 2;
         float crossCx = poseX + cardW - dp(2) - glyphW / 2;
-        float s = dp(5);
+        float s = dp(6);
         canvas.drawLine(crossCx - s, cy - s, crossCx + s, cy + s, glyphPaint);
         canvas.drawLine(crossCx - s, cy + s, crossCx + s, cy - s, glyphPaint);
         // le retour grisonne dessous
-        canvas.drawText(feedback, poseX + dp(8),
-                rowTop + rowHeight + dp(12), smallPaint);
+        canvas.drawText(feedback, poseX + dp(10),
+                rowTop + rowHeight + dp(14), smallPaint);
     }
 
     /**
      * Le doigt tombé sur la carte lui appartient (les popups se
      * dessinent et se touchent) : la croix range la carte,
+     * le champ des chiffres lève le clavier (l'éditeur s'en charge),
      * le reste s'y consomme. Hors de la carte : faux — le geste
      * poursuit sa vie vers l'éditeur.
      *
@@ -166,13 +204,17 @@ public final class GotoBar implements KeyboardCard {
                 || y < poseY || y >= poseY + cardH) {
             return false;
         }
-        float pad = dp(6);
-        float rowHeight = dp(34);
-        float glyphW = dp(36);
+        float pad = dp(PAD_DP);
+        float rowHeight = dp(ROW_HEIGHT_DP);
+        float glyphW = dp(GLYPH_DP);
         if (y < poseY + pad + rowHeight
                 && x >= poseX + cardW - dp(2) - glyphW) {
             close();
+            return true;
         }
+        // le champ des chiffres : le clavier délégué lui revient —
+        // l'éditeur y lève le clavier
+        fieldTapped = true;
         return true;
     }
 

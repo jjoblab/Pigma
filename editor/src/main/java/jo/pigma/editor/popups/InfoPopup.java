@@ -24,7 +24,7 @@ import java.util.List;
 public final class InfoPopup {
 
     /** Le nombre maximal de rangées du corps (la queue s'abrège). */
-    private static final int MAX_BODY_ROWS = 4;
+    private static final int MAX_BODY_ROWS = 8;
 
     /** Le titre montré (null : aucun titre, ou la popup est rangée). */
     private String title;
@@ -50,10 +50,10 @@ public final class InfoPopup {
      */
     public InfoPopup(float density) {
         titlePaint.setColor(0xFF202124);
-        titlePaint.setTextSize(12.0f * density);
+        titlePaint.setTextSize(14.0f * density);
         titlePaint.setFakeBoldText(true);
         bodyPaint.setColor(0xFF3C4043);
-        bodyPaint.setTextSize(12.0f * density);
+        bodyPaint.setTextSize(14.0f * density);
         background.setStyle(Paint.Style.FILL);
         background.setColor(0xF2FFFFFF);
         border.setStyle(Paint.Style.STROKE);
@@ -148,11 +148,11 @@ public final class InfoPopup {
             return;
         }
         float density = metrics.density();
-        float padding = 8.0f * density;
+        float padding = 10.0f * density;
         float available = metrics.viewWidth() - metrics.paddingLeft()
                 - metrics.paddingRight() - 2.0f * padding;
         List<String> rows = wrap(body, bodyPaint, available, MAX_BODY_ROWS);
-        float rowHeight = -bodyPaint.getFontMetrics().top + 2.0f * density;
+        float rowHeight = -bodyPaint.getFontMetrics().top + 3.0f * density;
         int rowCount = (title == null ? 0 : 1) + rows.size();
         float boxWidth = boxWidth(available, rows, padding);
         float boxHeight = padding + rowCount * rowHeight + padding / 2.0f;
@@ -168,9 +168,9 @@ public final class InfoPopup {
                     metrics.viewHeight() - boxHeight);
         }
         canvas.drawRoundRect(left, top, left + boxWidth, top + boxHeight,
-                4.0f * density, 4.0f * density, background);
+                8.0f * density, 8.0f * density, background);
         canvas.drawRoundRect(left, top, left + boxWidth, top + boxHeight,
-                4.0f * density, 4.0f * density, border);
+                8.0f * density, 8.0f * density, border);
         float baseline = top + padding - bodyPaint.getFontMetrics().top;
         if (title != null) {
             canvas.drawText(title, left + padding, baseline, titlePaint);

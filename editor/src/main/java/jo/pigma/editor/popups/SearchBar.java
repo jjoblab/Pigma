@@ -11,14 +11,15 @@ import jo.pigma.editor.EditorView;
 /**
  * La carte de recherche et remplacement, DESSINÉE DANS LA VUE
  * (jamais de fenêtre flottante, pas de jeton de fenêtre, pas de
- * conflit de focus avec l'IME) ; rien ne prend le focus, le
- * clavier reste à l'éditeur, qui rend les verdicts des touches à la
- * carte (KeyboardCard). La pose : AU CARET — dessous si elle tient,
- * dessus sinon — bornée aux murs de la vue, et le caret la suit à
- * chaque dessin. L'habillage reste
- * celui d'Android Studio : le compte « i/n » qui rougit quand rien
- * ne correspond, les chevrons, la croix, et le remplacement replié
- * sous la recherche (le rabat le montre).
+ * conflit de focus avec l'IME) ; rien ne prend le focus, le clavier
+ * reste à l'éditeur, qui rend les verdicts des touches à la carte
+ * (KeyboardCard) — et quand le doigt vise un champ, l'éditeur y lève
+ * le clavier (le champ s'y voit actif : le doigt ne cherche pas
+ * ailleurs). La pose : AU CARET — dessous si elle tient, dessus
+ * sinon — bornée aux murs de la vue, et le caret la suit à chaque
+ * dessin. L'habillage reste celui d'Android Studio : le compte « i/n »
+ * qui rougit quand rien ne correspond, les chevrons, la croix, et le
+ * remplacement replié sous la recherche (le rabat le montre).
  *
  * <p>La recherche est incrémentale (amortie de 150 ms — les frappes
  * rapides n'envoient que la dernière) ; remplacer la correspondance
@@ -31,7 +32,23 @@ public final class SearchBar implements KeyboardCard {
     /** L'amortissement de la recherche incrémentale (ms). */
     private static final long SEARCH_DEBOUNCE_MS = 150L;
 
+    /** La hauteur d'une rangée de la carte (dp). */
+    private static final int ROW_HEIGHT_DP = 44;
+
+    /** La respiration intérieure de la carte (dp). */
+    private static final int PAD_DP = 8;
+
+    /** La largeur d'un glyphe d'action (dp). */
+    private static final int GLYPH_DP = 44;
+
+    /** La largeur plancher de la carte (dp). */
+    private static final int MIN_WIDTH_DP = 320;
+
+    /** La largeur plafond de la carte (dp). */
+    private static final int MAX_WIDTH_DP = 400;
+
     private final StringBuilder query = new StringBuilder();
+
     private final StringBuilder replacement = new StringBuilder();
 
     /** La rangée du remplacement, repliée au départ (le rabat la montre). */
@@ -42,6 +59,9 @@ public final class SearchBar implements KeyboardCard {
 
     /** Ce que la dernière composition a posé dans le champ actif (la composition remplace). */
     private int composedLength;
+
+    /** Le doigt vient-il de viser un champ ? (l'éditeur y lève le clavier). */
+    private boolean fieldTapped;
 
     private boolean shown;
 
@@ -67,22 +87,27 @@ public final class SearchBar implements KeyboardCard {
     private final Paint glyphPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint activePaint = new Paint();
 
-    public SearchBar() {
+    /**
+     * Une carte neuve, ses pinceaux propres.
+     *
+     * @param density la densité de l'écran (le dp en pixels)
+     */
+    public SearchBar(float density) {
         cardPaint.setColor(0xFFF3F3F3);
         borderPaint.setColor(0xFFB5B5B5);
         borderPaint.setStyle(Paint.Style.STROKE);
         borderPaint.setStrokeWidth(1.0f);
         textPaint.setColor(0xFF202124);
-        textPaint.setTextSize(14.0f);
+        textPaint.setTextSize(16.0f * density);
         hintPaint.setColor(0xFF80868B);
-        hintPaint.setTextSize(14.0f);
+        hintPaint.setTextSize(16.0f * density);
         counterPaint.setColor(0xFF5F6368);
-        counterPaint.setTextSize(12.0f);
+        counterPaint.setTextSize(13.0f * density);
         zeroCounterPaint.setColor(0xFFC62828);
-        zeroCounterPaint.setTextSize(12.0f);
+        zeroCounterPaint.setTextSize(13.0f * density);
         glyphPaint.setColor(0xFF5F6368);
         glyphPaint.setStyle(Paint.Style.STROKE);
-        glyphPaint.setStrokeWidth(1.6f);
+        glyphPaint.setStrokeWidth(1.6f * density);
         activePaint.setColor(0xFF1A73E8);
     }
 
@@ -111,6 +136,7 @@ public final class SearchBar implements KeyboardCard {
         replacement.setLength(0);
         replaceShown = false;
         activeReplacement = false;
+        fieldTapped = false;
         if (editor != null) {
             editor.removeCallbacks(searchSync);
         }
@@ -119,6 +145,18 @@ public final class SearchBar implements KeyboardCard {
     /** La carte vit-elle ? */
     public boolean isShown() {
         return shown;
+    }
+
+    /**
+     * Le doigt vient-il de viser un CHAMP de la carte ? (la requête,
+     * le remplacement — l'éditeur y lève le clavier logiciel après le
+     * toucher ; le drapeau se lit une fois, le toucher suivant le
+     * repose).
+     *
+     * @return vrai quand le dernier toucher visait un champ
+     */
+    public boolean keyboardWanted() {
+        return fieldTapped;
     }
 
     /**
@@ -134,9 +172,11 @@ public final class SearchBar implements KeyboardCard {
         ancreX = metrics.caretX();
         ancreY = metrics.caretY();
         float margin = dp(8);
-        float pad = dp(6);
-        float rowHeight = dp(34);
-        cardW = Math.min(metrics.viewWidth() - 2 * margin, dp(320));
+        float pad = dp(PAD_DP);
+        float rowHeight = dp(ROW_HEIGHT_DP);
+        cardW = Math.max(Math.min(metrics.viewWidth() - 2 * margin,
+                dp(MAX_WIDTH_DP)), Math.min(dp(MIN_WIDTH_DP),
+                        metrics.viewWidth() - 2 * margin));
         cardH = 2 * pad + rowHeight * (replaceShown ? 2 : 1);
         float gap = dp(4);
         float below = ancreY + metrics.lineHeight() + gap;
@@ -156,13 +196,13 @@ public final class SearchBar implements KeyboardCard {
      */
     public void draw(Canvas canvas, PopupMetrics metrics) {
         poser(metrics);
-        float radius = dp(10);
+        float radius = dp(12);
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, cardPaint);
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, borderPaint);
-        float pad = dp(6);
-        float rowHeight = dp(34);
+        float pad = dp(PAD_DP);
+        float rowHeight = dp(ROW_HEIGHT_DP);
         float row1Top = poseY + pad;
         float row2Top = row1Top + rowHeight;
         drawRow1(canvas, row1Top);
@@ -186,9 +226,9 @@ public final class SearchBar implements KeyboardCard {
                 || y < poseY || y >= poseY + cardH) {
             return false;
         }
-        float pad = dp(6);
-        float rowHeight = dp(34);
-        float glyphW = dp(36);
+        float pad = dp(PAD_DP);
+        float rowHeight = dp(ROW_HEIGHT_DP);
+        float glyphW = dp(GLYPH_DP);
         boolean inRow1 = y < poseY + pad + rowHeight;
         if (inRow1) {
             float right = poseX + cardW - dp(2);
@@ -209,8 +249,10 @@ public final class SearchBar implements KeyboardCard {
                 activeReplacement = replaceShown;
                 return true;
             }
-            // la rangée de la requête : le clavier délégué lui revient
+            // la rangée de la requête : le clavier délégué lui revient —
+            // l'éditeur y lève le clavier
             activeReplacement = false;
+            fieldTapped = true;
             return true;
         }
         if (replaceShown) {
@@ -225,6 +267,7 @@ public final class SearchBar implements KeyboardCard {
             }
             // la rangée du remplacement : le clavier délégué lui revient
             activeReplacement = true;
+            fieldTapped = true;
             return true;
         }
         return true;
@@ -415,13 +458,13 @@ public final class SearchBar implements KeyboardCard {
 
     /** La rangée de recherche : le rabat, la requête, le compte, les chevrons, la croix. */
     private void drawRow1(Canvas canvas, float rowTop) {
-        float glyphW = dp(36);
-        float rowHeight = dp(34);
+        float glyphW = dp(GLYPH_DP);
+        float rowHeight = dp(ROW_HEIGHT_DP);
         float baseline = rowTop + rowHeight * 0.7f;
         // le rabat : deux chevrons tête-bêche
         float toggleCx = poseX + dp(2) + glyphW / 2;
         float toggleCy = rowTop + rowHeight / 2;
-        float s = dp(5);
+        float s = dp(6);
         float k = s * 0.45f;
         float t = s * 0.55f;
         canvas.drawLine(toggleCx - t, toggleCy - k,
@@ -433,7 +476,7 @@ public final class SearchBar implements KeyboardCard {
         canvas.drawLine(toggleCx, toggleCy + k + t,
                 toggleCx + t, toggleCy + k, glyphPaint);
         // la requête (l'indication si le champ est vierge)
-        float textX = poseX + dp(2) + glyphW + dp(6);
+        float textX = poseX + dp(2) + glyphW + dp(8);
         float counterX = poseX + cardW - dp(2) - 3 * glyphW - dp(8);
         String label = coupe(activeReplacement || query.length() == 0
                 ? "chercher…" : query.toString(),
@@ -453,17 +496,17 @@ public final class SearchBar implements KeyboardCard {
         drawChevron(canvas, right - 3 * glyphW + glyphW / 2, toggleCy, false);
         // le champ actif se souligne — le clavier délégué s'y voit
         if (!activeReplacement) {
-            canvas.drawRect(textX, rowTop + rowHeight - dp(2),
+            canvas.drawRect(textX, rowTop + rowHeight - dp(3),
                     counterX - dp(8), rowTop + rowHeight, activePaint);
         }
     }
 
     /** La rangée du remplacement : le champ, remplacer, tout remplacer. */
     private void drawRow2(Canvas canvas, float rowTop) {
-        float glyphW = dp(36);
-        float rowHeight = dp(34);
+        float glyphW = dp(GLYPH_DP);
+        float rowHeight = dp(ROW_HEIGHT_DP);
         float baseline = rowTop + rowHeight * 0.7f;
-        float textX = poseX + dp(8);
+        float textX = poseX + dp(10);
         float actionsX = poseX + cardW - dp(2) - 2 * glyphW;
         String label = coupe(activeReplacement && replacement.length() > 0
                 ? replacement.toString() : "remplacer par…",
@@ -475,14 +518,14 @@ public final class SearchBar implements KeyboardCard {
         drawReplaceAll(canvas, right - glyphW + glyphW / 2, cy);
         drawReplace(canvas, right - 2 * glyphW + glyphW / 2, cy);
         if (activeReplacement) {
-            canvas.drawRect(textX, rowTop + rowHeight - dp(2),
+            canvas.drawRect(textX, rowTop + rowHeight - dp(3),
                     actionsX - dp(8), rowTop + rowHeight, activePaint);
         }
     }
 
     /** Un chevron vers le haut (haut) ou le bas (bas). */
     private void drawChevron(Canvas canvas, float cx, float cy, boolean up) {
-        float s = dp(5);
+        float s = dp(6);
         float k = s * 0.45f;
         if (up) {
             canvas.drawLine(cx - s, cy + k, cx, cy - k, glyphPaint);
@@ -495,14 +538,14 @@ public final class SearchBar implements KeyboardCard {
 
     /** La croix de fermeture. */
     private void drawCross(Canvas canvas, float cx, float cy) {
-        float s = dp(5);
+        float s = dp(6);
         canvas.drawLine(cx - s, cy - s, cx + s, cy + s, glyphPaint);
         canvas.drawLine(cx - s, cy + s, cx + s, cy - s, glyphPaint);
     }
 
     /** La flèche de remplacement : le texte file vers la barre. */
     private void drawReplace(Canvas canvas, float cx, float cy) {
-        float s = dp(5);
+        float s = dp(6);
         float k = s * 0.45f;
         canvas.drawLine(cx + s, cy - s, cx + s, cy + s, glyphPaint);
         canvas.drawLine(cx - s, cy, cx + s * 0.45f, cy, glyphPaint);
@@ -512,7 +555,7 @@ public final class SearchBar implements KeyboardCard {
 
     /** Le tout-remplacer : deux flèches vers la barre. */
     private void drawReplaceAll(Canvas canvas, float cx, float cy) {
-        float s = dp(5);
+        float s = dp(6);
         float k = s * 0.45f;
         canvas.drawLine(cx + s, cy - s, cx + s, cy + s, glyphPaint);
         for (int row = 0; row < 2; row++) {

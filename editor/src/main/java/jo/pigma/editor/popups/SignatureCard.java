@@ -22,13 +22,16 @@ import android.graphics.Paint;
 public final class SignatureCard {
 
     /** La hauteur de la rangée (dp). */
-    private static final int ROW_HEIGHT_DP = 34;
+    private static final int ROW_HEIGHT_DP = 40;
 
     /** La marge aux murs de la vue (dp). */
     private static final int MARGIN_DP = 8;
 
     /** L'écart entre la ligne du caret et la carte (dp). */
     private static final int GAP_DP = 2;
+
+    /** La largeur plancher de la carte (dp). */
+    private static final int MIN_WIDTH_DP = 240;
 
     /** La signature montrée (null : la carte est rangée). */
     private String label;
@@ -63,11 +66,11 @@ public final class SignatureCard {
         borderPaint.setStyle(Paint.Style.STROKE);
         borderPaint.setStrokeWidth(1.0f);
         textPaint.setColor(0xFF202124);
-        textPaint.setTextSize(13.0f * density);
+        textPaint.setTextSize(14.0f * density);
         accentPaint.setColor(0xFF1A73E8);
-        accentPaint.setTextSize(13.0f * density);
+        accentPaint.setTextSize(14.0f * density);
         mutedPaint.setColor(0xFF80868B);
-        mutedPaint.setTextSize(13.0f * density);
+        mutedPaint.setTextSize(14.0f * density);
     }
 
     /**
@@ -165,7 +168,8 @@ public final class SignatureCard {
     private void place(PopupMetrics metrics) {
         float margin = dp(MARGIN_DP);
         float gap = dp(GAP_DP);
-        cardW = Math.min(textPaint.measureText(label) + 2 * dp(12),
+        cardW = Math.min(Math.max(textPaint.measureText(label) + 2 * dp(12),
+                dp(MIN_WIDTH_DP)),
                 metrics.viewWidth() - 2 * margin);
         cardH = dp(ROW_HEIGHT_DP);
         float aboveBottom = metrics.caretY() - gap;

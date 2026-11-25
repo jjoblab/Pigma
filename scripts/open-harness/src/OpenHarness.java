@@ -7,6 +7,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -15,6 +16,8 @@ import jo.pigma.core.TextBuffer;
 import jo.pigma.editor.EditorView;
 import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.editor.popups.GotoBar;
+import jo.pigma.editor.popups.HistoryCard;
+import jo.pigma.editor.popups.LocalHistory;
 import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.editor.popups.SignatureCard;
 import jo.pigma.syntax.SyntaxDocument;
@@ -112,6 +115,7 @@ public final class OpenHarness {
         signatureCard();
         quickDoc();
         selectionBar();
+        popupsSecondGeneration();
         languageServer();
         copyMeasures();
 
@@ -1292,15 +1296,29 @@ public final class OpenHarness {
         frame();
         check("le « i » ouvre la documentation du mot sélectionné",
                 "graine".equals(editor.infoPopupTitle()));
-        // la puce « ⋯ » : les actions repliées en rangées
+        // la puce « ⋯ » : les étages d'actions repliées — la navigation,
+        // l'édition, le presse-papiers, l'historique (la sélection vit)
         tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
         frame();
         java.util.List<String> repliees = editor.overflowCard().labels();
-        check("le débordement porte les actions repliées",
-                repliees.size() == 3
-                        && "Couper".equals(repliees.get(0))
-                        && "Tout sélectionner".equals(repliees.get(1))
-                        && "Quitter la sélection".equals(repliees.get(2)));
+        java.util.List<String> etages = editor.overflowCard().sectionTitles();
+        check("le débordement porte ses étages titrés",
+                etages.size() == 4 && "Navigation".equals(etages.get(0))
+                        && "Édition".equals(etages.get(1))
+                        && "Presse-papiers".equals(etages.get(2))
+                        && "Historique".equals(etages.get(3)));
+        check("la navigation y vit (aller à la ligne, rechercher)",
+                repliees.contains("Aller à la ligne…")
+                        && repliees.contains("Rechercher…"));
+        check("l'édition y vit (commenter, casse, dupliquer, supprimer)",
+                repliees.contains("Commenter / décommenter")
+                        && repliees.contains("En majuscules")
+                        && repliees.contains("Dupliquer la ligne")
+                        && repliees.contains("Supprimer la ligne"));
+        check("le presse-papiers y vit (couper, tout sélectionner, quitter)",
+                repliees.contains("Couper")
+                        && repliees.contains("Tout sélectionner")
+                        && repliees.contains("Quitter la sélection"));
         // la puce referme la carte (le menu se rabat)
         tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
         frame();
@@ -1311,8 +1329,9 @@ public final class OpenHarness {
         tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
         frame();
         int avant = countOccurrences(editor.getBuffer().toString(), "graine");
+        int cutAt = repliees.indexOf("Couper");
         tap(editor.overflowCard().poseX() + 10.0f,
-                editor.overflowCard().rowCenterY(0));
+                editor.overflowCard().rowCenterY(cutAt));
         frame();
         CharSequence coupe = android.content.Context.harnessClipboard()
                 .getPrimaryClip().getItemAt(0).getText();
@@ -1349,8 +1368,9 @@ public final class OpenHarness {
         frame();
         tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
         frame();
+        int toutAt = repliees.indexOf("Tout sélectionner");
         tap(editor.overflowCard().poseX() + 10.0f,
-                editor.overflowCard().rowCenterY(1));
+                editor.overflowCard().rowCenterY(toutAt));
         frame();
         check("Tout sélectionner prend le document entier",
                 editor.hasSelection()
@@ -1359,8 +1379,9 @@ public final class OpenHarness {
         // Quitter la sélection, depuis le débordement
         tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
         frame();
+        int quitterAt = repliees.indexOf("Quitter la sélection");
         tap(editor.overflowCard().poseX() + 10.0f,
-                editor.overflowCard().rowCenterY(2));
+                editor.overflowCard().rowCenterY(quitterAt));
         frame();
         check("Quitter la sélection rend le curseur seul",
                 !editor.hasSelection() && !editor.selectionBar().isShown());
@@ -1395,6 +1416,202 @@ public final class OpenHarness {
         click("Annuler");
         check("le texte demeure intact à la fin",
                 countOccurrences(editor.getBuffer().toString(), "graine") == avant);
+    }
+
+    /**
+     * Les popups de seconde génération : le clavier se lève au champ
+     * visé, la complétion porte ses colonnes (icône de nature, détail
+     * de droite, pied de carte), les étages du débordement AGISSENT
+     * (casse, commentaire, duplication, suppression de ligne),
+     * l'hôte pose ses pastilles sur la barre, la loupe se range au
+     * lâcher (la barre y naît dans la même trame) et l'historique
+     * local d'une partie du code se lit et se restaure.
+     */
+    private static void popupsSecondGeneration() throws InterruptedException {
+        begin("popups de seconde génération : clavier, colonnes, étages, hôte, historique");
+        openLanguage("Java", 10_000L);
+        String original = editor.getBuffer().toString();
+        android.view.inputmethod.InputMethodManager ime =
+                (android.view.inputmethod.InputMethodManager) activity.getSystemService(
+                        android.content.Context.INPUT_METHOD_SERVICE);
+        // LE CLAVIER SE LÈVE À L'OUVERTURE : la carte naît clavier levé —
+        // le doigt qui cherche le champ n'a pas à lever autre chose
+        int before = ime.harnessShowCount();
+        click("Rechercher");
+        SearchBar bar = editor.searchBar();
+        check("la carte de recherche naît clavier levé",
+                ime.harnessShowCount() > before);
+        // le doigt sur le champ de requête : le clavier se montre encore
+        int shows = ime.harnessShowCount();
+        tap(bar.poseX() + bar.width() * 0.4f, bar.poseY() + bar.height() * 0.25f);
+        check("le champ visé lève le clavier (la carte ne prend jamais le focus)",
+                ime.harnessShowCount() > shows);
+        // la frappe route vers la carte : la recherche compte
+        connection.commitText("gr", 1);
+        View.harnessDrain(400L);
+        check("la frappe route vers la carte (la recherche compte)",
+                editor.searchMatchCount() > 0);
+        bar.close();
+        frame();
+        // l'aller-à suit la même règle
+        before = ime.harnessShowCount();
+        click("Aller à");
+        check("la carte d'aller-à naît clavier levé",
+                ime.harnessShowCount() > before);
+        editor.gotoBar().close();
+        frame();
+        // LA COMPLÉTION EN COLONNES : les candidats portent la nature
+        // (l'icône) et le détail de droite (la ligne de déclaration)
+        editor.caretTo(editor.getBuffer().length());
+        frame();
+        connection.commitText("to", 1);
+        frame();
+        CompletionCard card = editor.completionCard();
+        check("la carte de complétion vit au préfixe", card.isShown());
+        boolean detailed = false;
+        for (CompletionCard.Entry entry : card.entries()) {
+            if (!entry.detail().isEmpty()
+                    && entry.kind() != CompletionCard.KIND_UNKNOWN
+                    && entry.kind() != CompletionCard.KIND_WORD) {
+                detailed = true;
+            }
+        }
+        check("les candidats portent leurs colonnes (nature en icône, détail à droite)",
+                detailed);
+        check("la carte grand format dépasse le plancher de largeur",
+                card.width() >= 240.0f * DENSITY * 0.99f);
+        // le préfixe s'efface : le texte revient (une seule unité à défaire)
+        click("Annuler");
+        check("le texte revient après la complétion éprouvée",
+                editor.getBuffer().toString().equals(original));
+        // LES ÉTAGES AGISSENT : la casse de la sélection
+        doubleTapOfWord("graine");
+        frame();
+        tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
+        frame();
+        java.util.List<String> repliees = editor.overflowCard().labels();
+        int majAt = repliees.indexOf("En majuscules");
+        tap(editor.overflowCard().poseX() + 10.0f,
+                editor.overflowCard().rowCenterY(majAt));
+        frame();
+        check("la sélection passe en majuscules",
+                editor.getBuffer().toString().contains("GRAINE"));
+        click("Annuler");
+        check("l'annulation rend la casse d'avant",
+                editor.getBuffer().toString().equals(original));
+        // le commentaire de ligne se pose et se retire
+        doubleTapOfWord("SEUIL");
+        frame();
+        tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
+        frame();
+        int commentAt = repliees.indexOf("Commenter / décommenter");
+        tap(editor.overflowCard().poseX() + 10.0f,
+                editor.overflowCard().rowCenterY(commentAt));
+        frame();
+        check("la ligne se commente au préfixe du langage",
+                editor.getBuffer().toString().contains("// private static final double SEUIL"));
+        click("Annuler");
+        // la duplication et la suppression de ligne se tiennent la main
+        int lineCount = editor.getBuffer().getLineCount();
+        doubleTapOfWord("graine");
+        frame();
+        tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
+        frame();
+        int dupAt = repliees.indexOf("Dupliquer la ligne");
+        tap(editor.overflowCard().poseX() + 10.0f,
+                editor.overflowCard().rowCenterY(dupAt));
+        frame();
+        check("la ligne se duplique", editor.getBuffer().getLineCount() == lineCount + 1);
+        // la duplication range la sélection (le curseur descend sur la
+        // copie) : le mot se reprend, la suppression ôte la ligne
+        doubleTapOfWord("graine");
+        frame();
+        tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
+        frame();
+        int delAt = repliees.indexOf("Supprimer la ligne");
+        tap(editor.overflowCard().poseX() + 10.0f,
+                editor.overflowCard().rowCenterY(delAt));
+        frame();
+        check("la ligne dupliquée se supprime",
+                editor.getBuffer().getLineCount() == lineCount);
+        // la suppression et la duplication se défont : le texte revient
+        click("Annuler");
+        click("Annuler");
+        check("le texte revient intact", editor.getBuffer().toString().equals(original));
+        // L'HÔTE POSE SES PASTILLES : la barre de sélection s'ouvre à
+        // l'application porteuse (le presse-papiers se vide : la
+        // pastille Coller ne prend pas la place de celle de l'hôte)
+        android.content.Context.harnessClipboard().setPrimaryClip(null);
+        boolean[] ran = {false};
+        editor.addSelectionAction("Test", () -> ran[0] = true);
+        doubleTapOfWord("graine");
+        frame();
+        check("la pastille de l'hôte vit sur la barre",
+                editor.selectionBar().hasChip("Test"));
+        tap(editor.selectionBar().chipCenterX("Test"),
+                editor.selectionBar().centerY());
+        frame();
+        check("la pastille de l'hôte agit au toucher", ran[0]);
+        editor.clearSelectionActions();
+        doubleTapOfWord("graine");
+        frame();
+        check("les pastilles de l'hôte se retirent",
+                !editor.selectionBar().hasChip("Test"));
+        // LA LOUPE SE RANGE AU LÂCHER : la barre de sélection naît dans
+        // la même trame (l'appui long qui glisse étend la sélection)
+        tap(400.0f, 80.0f);
+        frame();
+        check("la sélection se range avant l'appui long", !editor.hasSelection());
+        float[] spot = spotOfWord("SEUIL");
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN, spot[0], spot[1]));
+        Thread.sleep(600L);
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_MOVE,
+                spot[0] + 40.0f, spot[1]));
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
+                spot[0] + 40.0f, spot[1]));
+        frame();
+        check("la loupe se range au lâcher, la barre de sélection y naît",
+                editor.selectionBar().isShown());
+        // L'HISTORIQUE LOCAL D'UNE PARTIE DU CODE : les traces de la
+        // ligne du SEUIL se lisent du dernier au premier, la
+        // restauration remet la ligne du passé
+        editor.caretTo(editor.getBuffer().toString().indexOf("SEUIL") + 5);
+        frame();
+        connection.commitText("2", 1);
+        frame();
+        check("une trace naît de la frappe",
+                editor.localHistory().size() >= 1);
+        // la ligne porte SEUIL2 : la sélection de la ligne ouvre
+        // l'historique de cette partie du code
+        doubleTapOfWord("SEUIL2");
+        frame();
+        tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
+        frame();
+        int histAt = repliees.indexOf("Historique de la sélection");
+        check("l'étage historique vit de la sélection", histAt >= 0);
+        tap(editor.overflowCard().poseX() + 10.0f,
+                editor.overflowCard().rowCenterY(histAt));
+        frame();
+        HistoryCard history = editor.historyCard();
+        check("la carte de l'historique local s'ouvre sur la plage",
+                history.isShown());
+        check("les traces de la plage se lisent", history.traceCount() >= 2);
+        // la trace d'AVANT (la ligne sans le « 2 ») se déplie au doigt,
+        // sa pastille restaure la ligne du passé
+        tap(history.poseX() + history.width() * 0.5f, history.traceCenterY(1));
+        frame();
+        check("la trace se déplie au doigt", history.expandedTrace() == 1);
+        tap(history.poseX() + 60.0f, history.restoreChipY(1));
+        frame();
+        check("la restauration remet la ligne du passé",
+                editor.getBuffer().toString().contains("SEUIL")
+                        && !editor.getBuffer().toString().contains("SEUIL2"));
+        check("la carte se range après la restauration", !history.isShown());
+        click("Annuler");
+        click("Annuler");
+        check("la double annulation rend la ligne d'avant",
+                editor.getBuffer().toString().equals(original));
+        detail("historique local : " + editor.localHistory().size() + " trace(s)");
     }
 
     /** Le serveur de langage : diagnostics, survol, débranchement. */

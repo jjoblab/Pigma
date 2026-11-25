@@ -3,44 +3,52 @@ package jo.pigma.editor.popups;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import jo.pigma.editor.EditorView;
 
 /**
  * La barre de sélection, DESSINÉE DANS LA VUE : les actions de la
  * sélection en pastilles — Copier, Coller (seulement quand le
  * presse-papiers porte du texte : l'action inutile ne se promène
- * jamais sur la pilule), Tout copier — puis un filet, l'icône « i »
- * (la documentation rapide du mot sélectionné) et la puce « ⋯ » de
- * débordement (les actions repliées y vivent). Elle se pose
- * AU-DESSUS de la sélection, centrée sur elle, bornée aux murs ; la
- * pose se recalcule à chaque dessin — la sélection bouge, la barre
- * suit.
+ * jamais sur la pilule), Tout copier, puis LES ACTIONS DE L'HÔTE
+ * (l'application porteuse pose les siennes : elles vivent en
+ * pastilles tant que la pilule tient, le trop débordant se replie à
+ * la carte de débordement) — puis un filet, l'icône « i » (la
+ * documentation rapide du mot sélectionné) et la puce « ⋯ » de
+ * débordement (les étages y vivent). Elle se pose AU-DESSUS de la
+ * sélection, centrée sur elle, bornée aux murs ; la pose se
+ * recalcule à chaque dessin — la sélection bouge, la barre suit.
  *
  * <p>La barre ne prend jamais le focus : la frappe remplace la
- * sélection (l'éditeur reçoit le clavier, la barche se range quand
- * la sélection meurt) ; le doigt sur une pastille l'exécute, le
- * reste de la barre consomme sans agir, hors d'elle le geste poursuit
- * sa vie vers l'éditeur.</p>
+ * sélection (l'éditeur reçoit le clavier, la barre se range quand la
+ * sélection meurt) ; le doigt sur une pastille l'exécute, le reste
+ * de la barre consomme sans agir, hors d'elle le geste poursuit sa
+ * vie vers l'éditeur.</p>
  */
 public final class SelectionBar {
 
     /** La hauteur du contenu de la pilule (dp). */
-    private static final int HEIGHT_DP = 28;
+    private static final int HEIGHT_DP = 34;
 
     /** La respiration horizontale d'un libellé (dp). */
-    private static final int PAD_X_DP = 10;
+    private static final int PAD_X_DP = 12;
 
     /** L'écart entre deux pastilles (dp). */
-    private static final int GAP_DP = 2;
+    private static final int GAP_DP = 3;
 
     /** Le budget du filet séparateur (dp). */
-    private static final int RULE_DP = 5;
+    private static final int RULE_DP = 6;
 
     /** La largeur d'une icône (dp). */
-    private static final int ICON_DP = 22;
+    private static final int ICON_DP = 28;
 
     /** La respiration verticale de la carte autour de la pilule (dp). */
     private static final int PAD_Y_DP = 3;
+
+    /** Le budget de largeur au-delà duquel l'hôte débordé se replie (dp). */
+    private static final int HOST_BUDGET_DP = 400;
 
     /** L'identifiant d'action de la pastille Copier. */
     private static final int ACT_COPY = 0;
@@ -51,6 +59,12 @@ public final class SelectionBar {
     /** L'identifiant d'action de la pastille Tout copier. */
     private static final int ACT_COPY_ALL = 2;
 
+    /** L'identifiant des pastilles de l'hôte (le libellé porte l'action). */
+    private static final int ACT_HOST = 3;
+
+    /** La base des identifiants de l'hôte au toucher (l'index s'y additionne). */
+    private static final int ACT_HOST_BASE = 10;
+
     /** L'identifiant de l'icône documentation au toucher. */
     private static final int ICON_DOCS = -2;
 
@@ -60,8 +74,24 @@ public final class SelectionBar {
     /** Le doigt tombé hors de toute zone. */
     private static final int NO_HIT = -1;
 
+    /**
+     * Une action de l'hôte : l'application porteuse pose les siennes
+     * sur la barre — son libellé et ce qu'elle fait.
+     *
+     * @param label  le libellé de la pastille, jamais vide
+     * @param action ce qu'elle fait, jamais null
+     */
+    public record HostAction(String label, Runnable action) {
+    }
+
     /** Les pastilles vivantes : leur libellé et leur action. */
     private final java.util.ArrayList<int[]> entries = new java.util.ArrayList<>();
+
+    /** Les actions de l'hôte posées à la trame courante. */
+    private List<HostAction> hostActions = List.of();
+
+    /** Les actions de l'hôte que la pilule ne pouvait pas porter. */
+    private List<HostAction> hostOverflow = List.of();
 
     /** Le presse-papiers porte-t-il du texte ? (la pastille Coller en vit) */
     private boolean canPaste;
@@ -83,6 +113,7 @@ public final class SelectionBar {
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint chipPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint chipHostPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint rulePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint glyphPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -98,8 +129,9 @@ public final class SelectionBar {
         borderPaint.setStyle(Paint.Style.STROKE);
         borderPaint.setStrokeWidth(1.0f);
         chipPaint.setColor(0x1F1A73E8);
+        chipHostPaint.setColor(0x1FE8710A);
         textPaint.setColor(0xFF202124);
-        textPaint.setTextSize(13.0f * density);
+        textPaint.setTextSize(14.0f * density);
         rulePaint.setColor(0xFFB5B5B5);
         glyphPaint.setColor(0xFF5F6368);
         glyphPaint.setStyle(Paint.Style.STROKE);
@@ -118,18 +150,24 @@ public final class SelectionBar {
 
     /**
      * Montre la barre — les pastilles se posent VIVES : la pastille
-     * Coller ne vit que lorsque le presse-papiers porte du texte.
+     * Coller ne vit que lorsque le presse-papiers porte du texte, les
+     * actions de l'hôte tant que la pilule tient (le trop se replie à
+     * la carte de débordement).
      *
      * @param pastePossible vrai quand un texte se colle
+     * @param hosts        les actions de l'hôte, jamais null (vide : aucune)
      */
-    public void show(boolean pastePossible) {
+    public void show(boolean pastePossible, List<HostAction> hosts) {
         canPaste = pastePossible;
+        hostActions = List.copyOf(hosts);
         shown = true;
     }
 
     /** Range la barre (la sélection est morte, ou un geste la tient). */
     public void hide() {
         shown = false;
+        hostActions = List.of();
+        hostOverflow = List.of();
     }
 
     /** La barre vit-elle ? */
@@ -146,7 +184,7 @@ public final class SelectionBar {
      */
     public boolean hasChip(String label) {
         for (int[] entry : entries) {
-            if (labelOf(entry[0]).equals(label)) {
+            if (labelOf(entry[0], entry.length > 2 ? entry[2] : -1).equals(label)) {
                 return true;
             }
         }
@@ -161,7 +199,8 @@ public final class SelectionBar {
      */
     public float chipCenterX(String label) {
         for (int at = 0; at < entries.size(); at++) {
-            if (labelOf(entries.get(at)[0]).equals(label)) {
+            int[] entry = entries.get(at);
+            if (labelOf(entry[0], entry.length > 2 ? entry[2] : -1).equals(label)) {
                 return chipCenterX(entries.get(at));
             }
         }
@@ -193,13 +232,26 @@ public final class SelectionBar {
         return iconStart() + dp(ICON_DP) + dp(ICON_DP) / 2.0f;
     }
 
-    /** Le début du groupe d'icônes (filet compris) — le même budget
-     * que le dessin : l'écart du dernier libellé, puis le filet. */
+    /**
+     * Les actions de l'hôte que la pilule ne pouvait pas porter — la
+     * carte de débordement les replie (l'éditeur y lit son étage).
+     *
+     * @return les actions débordées, jamais null
+     */
+    public List<HostAction> hostOverflowActions() {
+        return hostOverflow;
+    }
+
+    /**
+     * Le début du groupe d'icônes (filet compris) — le même budget
+     * que le dessin : l'écart du dernier libellé, puis le filet.
+     */
     private float iconStart() {
         float cursor = poseX;
         for (int[] entry : entries) {
             cursor += 2.0f * dp(PAD_X_DP)
-                    + textPaint.measureText(labelOf(entry[0])) + dp(GAP_DP);
+                    + textPaint.measureText(labelOf(entry[0],
+                            entry.length > 2 ? entry[2] : -1)) + dp(GAP_DP);
         }
         return cursor + dp(GAP_DP) + dp(RULE_DP);
     }
@@ -227,8 +279,8 @@ public final class SelectionBar {
     /**
      * Le doigt tombé sur la barre lui appartient : la pastille visée
      * s'exécute, l'icône documentation ouvre la documentation rapide
-     * du mot sélectionné, la puce de débordement ouvre les actions
-     * repliées ; le reste de la barre consomme sans agir. Hors de la
+     * du mot sélectionné, la puce de débordement ouvre les étages
+     * repliés ; le reste de la barre consomme sans agir. Hors de la
      * barre : faux — le geste poursuit sa vie vers l'éditeur.
      *
      * @param x l'abscisse du doigt (px, coordonnées de la vue)
@@ -242,6 +294,13 @@ public final class SelectionBar {
         }
         int hit = areaAt(x);
         if (hit != NO_HIT && editor != null) {
+            if (hit >= ACT_HOST_BASE) {
+                int hostIndex = hit - ACT_HOST_BASE;
+                if (hostIndex < hostActions.size()) {
+                    hostActions.get(hostIndex).action().run();
+                }
+                return true;
+            }
             switch (hit) {
                 case ACT_COPY:
                     editor.copySelection();
@@ -283,7 +342,7 @@ public final class SelectionBar {
         if (!shown) {
             return;
         }
-        buildEntries();
+        buildEntries(metrics);
         float margin = dp(8);
         float gap = dp(2);
         contentW = measuredWidth();
@@ -325,40 +384,63 @@ public final class SelectionBar {
 
     /**
      * Les pastilles vivantes : Copier, Coller (au presse-papiers
-     * près), Tout copier — l'action inutile ne se promène pas.
+     * près), Tout copier — puis celles de l'hôte tant que la pilule
+     * tient au budget, le trop se replie au débordement.
      */
-    private void buildEntries() {
+    private void buildEntries(PopupMetrics metrics) {
         entries.clear();
-        entries.add(new int[] {ACT_COPY, 0});
+        entries.add(new int[] {ACT_COPY, 0, -1});
         if (canPaste) {
-            entries.add(new int[] {ACT_PASTE, 0});
+            entries.add(new int[] {ACT_PASTE, 0, -1});
         }
-        entries.add(new int[] {ACT_COPY_ALL, 0});
+        entries.add(new int[] {ACT_COPY_ALL, 0, -1});
+        // le budget de l'hôte : quatre-vingts pour cent de la vue,
+        // plafonnés — la pilule reste dans l'écran
+        float budget = Math.min(dp(HOST_BUDGET_DP),
+                metrics.viewWidth() * 0.8f);
+        float spent = measuredWidth();
+        List<HostAction> overflowed = new ArrayList<>();
+        for (int at = 0; at < hostActions.size(); at++) {
+            HostAction action = hostActions.get(at);
+            float chipW = 2.0f * dp(PAD_X_DP)
+                    + textPaint.measureText(action.label()) + dp(GAP_DP);
+            if (spent + chipW <= budget) {
+                entries.add(new int[] {ACT_HOST, 0, at});
+                spent += chipW;
+            } else {
+                overflowed.add(action);
+            }
+        }
+        hostOverflow = List.copyOf(overflowed);
     }
 
-    /** Le libellé d'une action. */
-    private String labelOf(int action) {
+    /** Le libellé d'une action (celle de l'hôte porte son index). */
+    private String labelOf(int action, int hostIndex) {
         switch (action) {
             case ACT_COPY:
                 return "Copier";
             case ACT_PASTE:
                 return "Coller";
-            default:
+            case ACT_COPY_ALL:
                 return "Tout copier";
+            default:
+                return hostIndex >= 0 && hostIndex < hostActions.size()
+                        ? hostActions.get(hostIndex).label() : "";
         }
     }
 
     /** Une pastille : son libellé au centre de sa respiration. */
     private float drawChip(Canvas canvas, int[] entry, float left,
             float top, float baseline, float cy) {
-        float chipW = 2.0f * dp(PAD_X_DP)
-                + textPaint.measureText(labelOf(entry[0]));
+        int hostIndex = entry.length > 2 ? entry[2] : -1;
+        String label = labelOf(entry[0], hostIndex);
+        float labelW = textPaint.measureText(label);
+        float chipW = 2.0f * dp(PAD_X_DP) + labelW;
         canvas.drawRoundRect(left + dp(GAP_DP) / 2.0f, top + dp(2),
                 left + chipW - dp(GAP_DP) / 2.0f, top + dp(HEIGHT_DP) - dp(2),
-                dp(HEIGHT_DP) / 2.0f, dp(HEIGHT_DP) / 2.0f, chipPaint);
-        float labelW = textPaint.measureText(labelOf(entry[0]));
-        canvas.drawText(labelOf(entry[0]), left + (chipW - labelW) / 2.0f,
-                baseline, textPaint);
+                dp(HEIGHT_DP) / 2.0f, dp(HEIGHT_DP) / 2.0f,
+                entry[0] == ACT_HOST ? chipHostPaint : chipPaint);
+        canvas.drawText(label, left + (chipW - labelW) / 2.0f, baseline, textPaint);
         return left + chipW + dp(GAP_DP);
     }
 
@@ -366,12 +448,11 @@ public final class SelectionBar {
     private void drawDocsIcon(Canvas canvas, float left, float cy) {
         float cx = left + dp(ICON_DP) / 2.0f;
         glyphPaint.setStrokeWidth(1.1f * density);
-        canvas.drawCircle(cx, cy, 5.5f * density, glyphPaint);
+        canvas.drawCircle(cx, cy, 6.5f * density, glyphPaint);
         float letterSize = textPaint.getTextSize();
-        float letterW = textPaint.measureText("i");
-        textPaint.setTextSize(9.5f * density);
+        textPaint.setTextSize(11.0f * density);
         canvas.drawText("i", cx - textPaint.measureText("i") / 2.0f,
-                cy + letterW * 0.35f, textPaint);
+                cy + textPaint.measureText("i") * 0.35f, textPaint);
         textPaint.setTextSize(letterSize);
         glyphPaint.setStrokeWidth(1.4f * density);
     }
@@ -380,8 +461,8 @@ public final class SelectionBar {
     private void drawOverflowPuce(Canvas canvas, float left, float cy) {
         float cx = left + dp(ICON_DP) / 2.0f;
         for (int dot = 0; dot < 3; dot++) {
-            float dotY = cy + (dot - 1) * 3.0f * density;
-            canvas.drawCircle(cx, dotY, 1.2f * density, glyphPaint);
+            float dotY = cy + (dot - 1) * 3.4f * density;
+            canvas.drawCircle(cx, dotY, 1.5f * density, glyphPaint);
         }
     }
 
@@ -393,23 +474,27 @@ public final class SelectionBar {
         float width = 0.0f;
         for (int[] entry : entries) {
             width += 2.0f * dp(PAD_X_DP)
-                    + textPaint.measureText(labelOf(entry[0])) + dp(GAP_DP);
+                    + textPaint.measureText(labelOf(entry[0],
+                            entry.length > 2 ? entry[2] : -1)) + dp(GAP_DP);
         }
         return width + dp(RULE_DP) + 2.0f * dp(ICON_DP) + dp(GAP_DP);
     }
 
     /**
-     * L'aire touchée à l'abscisse : la pastille qui la porte, l'icône
-     * documentation ou la puce de débordement, -1 si le doigt tombe
-     * hors des zones.
+     * L'aire touchée à l'abscisse : la pastille qui la porte (celle
+     * de l'hôte y rend son index), l'icône documentation ou la puce
+     * de débordement, -1 si le doigt tombe hors des zones.
      */
     private int areaAt(float x) {
         float cursor = poseX;
         for (int[] entry : entries) {
+            int hostIndex = entry.length > 2 ? entry[2] : -1;
             float chipW = 2.0f * dp(PAD_X_DP)
-                    + textPaint.measureText(labelOf(entry[0]));
+                    + textPaint.measureText(labelOf(entry[0], hostIndex));
             if (x >= cursor && x < cursor + chipW + dp(GAP_DP)) {
-                return entry[0];
+                return entry[0] == ACT_HOST
+                        ? ACT_HOST_BASE + (entry.length > 2 ? entry[2] : 0)
+                        : entry[0];
             }
             cursor += chipW + dp(GAP_DP);
         }
@@ -421,7 +506,7 @@ public final class SelectionBar {
         if (x >= puceStart && x < puceStart + dp(ICON_DP)) {
             return ICON_OVERFLOW;
         }
-        return -1;
+        return NO_HIT;
     }
 
     /** L'abscisse du centre d'une pastille. */
@@ -429,7 +514,8 @@ public final class SelectionBar {
         float cursor = poseX;
         for (int[] other : entries) {
             float chipW = 2.0f * dp(PAD_X_DP)
-                    + textPaint.measureText(labelOf(other[0]));
+                    + textPaint.measureText(labelOf(other[0],
+                            other.length > 2 ? other[2] : -1));
             if (other == entry) {
                 return cursor + chipW / 2.0f;
             }

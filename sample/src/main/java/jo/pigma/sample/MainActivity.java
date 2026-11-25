@@ -366,12 +366,14 @@ public final class MainActivity extends Activity {
     }
 
     private void onUndoClicked(View button) {
-        editorView.getUndoStack().undo();
+        // le bouton passe par la vue : le geste porte son étiquette à
+        // l'historique local (annulation)
+        editorView.undo();
         updateStatus();
     }
 
     private void onRedoClicked(View button) {
-        editorView.getUndoStack().redo();
+        editorView.redo();
         updateStatus();
     }
 

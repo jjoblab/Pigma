@@ -36,6 +36,19 @@ public final class SymbolIndex {
     public record Symbol(String name, String nature, int offset, int line) {
     }
 
+    /**
+     * Un candidat détaillé de complétion : le nom, la nature (celle
+     * de la première déclaration qui le porte, ou « mot » pour un
+     * simple identifiant), la ligne de cette déclaration (-1 :
+     * aucune — un mot du texte).
+     *
+     * @param name   le nom, jamais vide
+     * @param nature la nature du candidat, jamais {@code null}
+     * @param line   la ligne de la déclaration, -1 pour aucun
+     */
+    public record Candidate(String name, String nature, int line) {
+    }
+
     private final List<Symbol> symbols;
 
     private final Map<String, int[]> words;
@@ -162,12 +175,33 @@ public final class SymbolIndex {
      */
     public List<String> query(String prefix, int limit) {
         List<String> candidates = new ArrayList<>();
+        for (Candidate entry : queryDetailed(prefix, limit)) {
+            candidates.add(entry.name());
+        }
+        return candidates;
+    }
+
+    /**
+     * Les candidats détaillés de complétion d'un préfixe : le même
+     * ordre que {@link #query(String, int)} (les déclarations qui le
+     * portent d'abord, puis les mots par fréquence décroissante), la
+     * nature et la ligne de déclaration en plus — les colonnes de la
+     * carte de complétion s'y nourrissent.
+     *
+     * @param prefix le préfixe, vide admis (alors les plus fréquents)
+     * @param limit  le nombre maximal de candidats
+     * @return les candidats détaillés, jamais {@code null}
+     */
+    public List<Candidate> queryDetailed(String prefix, int limit) {
+        List<Candidate> candidates = new ArrayList<>();
         for (Symbol symbol : symbols) {
             if (candidates.size() >= limit) {
                 break;
             }
-            if (symbol.name().startsWith(prefix) && !candidates.contains(symbol.name())) {
-                candidates.add(symbol.name());
+            if (symbol.name().startsWith(prefix)
+                    && !carries(candidates, symbol.name())) {
+                candidates.add(new Candidate(symbol.name(),
+                        symbol.nature(), symbol.line()));
             }
         }
         List<Map.Entry<String, int[]>> ranked = new ArrayList<>();
@@ -184,11 +218,21 @@ public final class SymbolIndex {
             if (candidates.size() >= limit) {
                 break;
             }
-            if (!candidates.contains(entry.getKey())) {
-                candidates.add(entry.getKey());
+            if (!carries(candidates, entry.getKey())) {
+                candidates.add(new Candidate(entry.getKey(), "mot", -1));
             }
         }
         return candidates;
+    }
+
+    /** La liste porte-t-elle déjà ce nom ? */
+    private static boolean carries(List<Candidate> candidates, String name) {
+        for (Candidate candidate : candidates) {
+            if (candidate.name().equals(name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** La fréquence d'un mot (l'index des vues du panneau s'en sert). */
