@@ -21,6 +21,16 @@ versionné `config/forbidden-refs.local`) et dans le secret de la CI le
 jour où elle existera ; le contrôle est `scripts/check-forbidden-refs`.
 Les noms eux-mêmes ne figurent pas dans ce document.
 
+La CI (`.github/workflows/check.yml`) exige le secret
+`PIGMA_FORBIDDEN_REFS` (mode exigeant : sans motif, la machine
+échoue au lieu d'un vert muet). Sa pose, une fois, par le
+propriétaire aux réglages du dépôt GitHub :
+Réglages → Secrets and variables → Actions → New repository secret ;
+nom `PIGMA_FORBIDDEN_REFS`, valeur : les deux motifs séparés par
+des points-virgules (la valeur locale de
+`config/forbidden-refs.local` ou de la variable d'environnement y
+recopie telle quelle).
+
 ## Candidats à examiner
 
 Liste non limitative, extraite du plan de mission — chaque ligne sera
