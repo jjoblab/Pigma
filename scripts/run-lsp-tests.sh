@@ -8,13 +8,24 @@ cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 
 GRADLE_HOME=/home/z/my-project/tools/gradle-home
-JUNIT="$GRADLE_HOME/caches/modules-2/files-2.1/junit/junit/4.13.2/8ac9e16d933b6fb43bc7f576336b8f4d7eb5ba12/junit-4.13.2.jar"
-HAMCREST="$GRADLE_HOME/caches/modules-2/files-2.1/org.hamcrest/hamcrest-core/1.3/42a25dc3219429f0e5d060061f71acb49bf010a0/hamcrest-core-1.3.jar"
-LSP4J="$GRADLE_HOME/caches/modules-2/files-2.1/org.eclipse.lsp4j/org.eclipse.lsp4j/1.0.0/414d75c051310033de34af07c0cec3705d6d0ab5/org.eclipse.lsp4j-1.0.0.jar"
-JSONRPC="$GRADLE_HOME/caches/modules-2/files-2.1/org.eclipse.lsp4j/org.eclipse.lsp4j.jsonrpc/1.0.0/11580adce31a287dda1ed6eb4fb8f76f1a2cc815/org.eclipse.lsp4j.jsonrpc-1.0.0.jar"
-GSON="$GRADLE_HOME/caches/modules-2/files-2.1/com.google.code.gson/gson/2.15.0/3c8f3903bd90f774de74f126be756bbc1408abcb/gson-2.15.0.jar"
-ARCHUNIT="$GRADLE_HOME/caches/modules-2/files-2.1/com.tngtech.archunit/archunit/1.3.0/4f4c504ec5369491d9d5c16afa6fc5261a5d81/archunit-1.3.0.jar"
-SLF4J="$GRADLE_HOME/caches/modules-2/files-2.1/org.slf4j/slf4j-api/2.0.12/48f109a2a6d8f446c794f3e3fa0d86df0cdfa312/slf4j-api-2.0.12.jar"
+# Les jars se cherchent dans le cache plutôt qu'un chemin en dur : le
+# réempoilage du cache change la somme du répertoire (la leçon de la
+# session 29), la version reste la clé.
+jar_du_cache() {
+    find "$GRADLE_HOME/caches/modules-2/files-2.1/$1" \
+        -name "$2" ! -name '*-sources*' ! -name '*-javadoc*' 2>/dev/null \
+        | sort | tail -1
+}
+JUNIT="$(jar_du_cache junit/junit junit-4.13.2.jar)"
+HAMCREST="$(jar_du_cache org.hamcrest/hamcrest-core hamcrest-core-1.3.jar)"
+LSP4J="$(jar_du_cache org.eclipse.lsp4j/org.eclipse.lsp4j org.eclipse.lsp4j-1.0.0.jar)"
+JSONRPC="$(jar_du_cache org.eclipse.lsp4j/org.eclipse.lsp4j.jsonrpc org.eclipse.lsp4j.jsonrpc-1.0.0.jar)"
+GSON="$(jar_du_cache com.google.code.gson/gson gson-2.15.0.jar)"
+ARCHUNIT="$(jar_du_cache com.tngtech.archunit/archunit archunit-1.3.0.jar)"
+SLF4J="$(jar_du_cache org.slf4j/slf4j-api slf4j-api-2.0.12.jar)"
+for j in "$JUNIT" "$HAMCREST" "$LSP4J" "$JSONRPC" "$GSON" "$ARCHUNIT" "$SLF4J"; do
+    [ -n "$j" ] || { echo "run-lsp-tests.sh : jar introuvable dans le cache Gradle ($GRADLE_HOME)" >&2; exit 2; }
+done
 if [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/javac" ]; then
     JAVAC="${JAVA_HOME}/bin/javac"; JAVA="${JAVA_HOME}/bin/java"
 else
