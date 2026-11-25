@@ -90,7 +90,7 @@ public final class MainActivity extends Activity {
      * La façade du serveur de langage : l'ÉCRAN ne câble plus rien —
      * la bibliothèque porte la synchronisation du document, les
      * fournisseurs (survol, complétion, signature, diagnostics) et
-     * leurs caches (l'étude de Sora editor y a mené, sa façade
+     * leurs caches (l'étude de l'éditeur de référence y a mené, sa façade
      * LspEditor). L'écran ne garde que ses boutons et son panneau.
      */
     private LspEditor lsp;
@@ -221,7 +221,7 @@ public final class MainActivity extends Activity {
         // branchement (au clic du bouton). Tout ce qui suit n'est plus
         // de l'écran : la synchronisation du document, le survol, la
         // complétion, la signature, les diagnostics à la carte — la
-        // bibliothèque le porte (la leçon de Sora editor, sa façade
+        // bibliothèque le porte (la leçon de l'éditeur de référence, sa façade
         // LspEditor)
         lsp = LspEditor.attach(editorView);
         lsp.setDiagnosticsListener(fresh -> runOnUiThread(() -> {
@@ -570,7 +570,7 @@ public final class MainActivity extends Activity {
 
     /**
      * La façade LSP du harnais : le scénario y règle ses fonctions
-     * (les coupes une à une — l'éprouve de l'étude de Sora editor).
+     * (les coupes une à une — l'éprouve de l'étude de l'éditeur de référence).
      *
      * @return la façade branchée à la vue, jamais null
      */

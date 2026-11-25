@@ -277,6 +277,26 @@ public final class QuickActionCard {
     }
 
     /**
+     * Déplace la fenêtre des rangées vers une rangée (la rangée
+     * demandée y devient visible — le doigt peut la viser). La
+     * fenêtre au-delà du plafond de rangées s'y sert : la carte
+     * défile, la rangée demandée y entre.
+     *
+     * @param index l'index de la rangée à montrer
+     */
+    public void showRow(int index) {
+        if (index < 0 || index >= entries.size()) {
+            return;
+        }
+        if (index < topRow) {
+            topRow = index;
+        } else if (index >= topRow + visibleRows) {
+            topRow = Math.min(index - visibleRows + 1,
+                    Math.max(0, entries.size() - visibleRows));
+        }
+    }
+
+    /**
      * Pose la carte sous la ligne ancrée (au-dessus sans la place,
      * jamais sur elle), le bord gauche borné aux murs ; la fenêtre
      * se resserre à ce que la vue tient, au plus

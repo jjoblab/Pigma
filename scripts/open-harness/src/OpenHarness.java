@@ -24,6 +24,9 @@ import jo.pigma.editor.popups.PopupStyle;
 import jo.pigma.editor.popups.QuickActionCard;
 import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.editor.popups.SignatureCard;
+import jo.pigma.lsp.LspFoldingRange;
+import jo.pigma.lsp.LspInlayHint;
+import jo.pigma.lsp.LspSemanticToken;
 import jo.pigma.syntax.SyntaxDocument;
 
 /**
@@ -124,6 +127,7 @@ public final class OpenHarness {
         languageServer();
         lspEditorFacade();
         lspProtocolFunctions();
+        lspDocumentCoverage();
         pinchZoom();
         copyMeasures();
 
@@ -1902,7 +1906,7 @@ public final class OpenHarness {
     /**
      * La façade du serveur de langage : l'hôte ne câble plus rien —
      * les RÉGLAGES de la façade y passent (les fonctions coupées une
-     * à une, la leçon de Sora editor). Le scénario du serveur
+     * à une, la leçon de l'éditeur de référence). Le scénario du serveur
      * précédent a déjà éprouvé le câblage complet par l'écran réel :
      * diagnostics, survol, complétion, signature, débranchement —
      * tout y vit dans la façade maintenant.
@@ -2006,8 +2010,8 @@ public final class OpenHarness {
     }
 
     /**
-     * Les fonctions étendues du protocole (la couverture de la
-     * référence — Sora editor) : les capacités se négocient, le
+     * Les fonctions étendues du protocole (la couverture de
+     * l'éditeur de référence) : les capacités se négocient, le
      * surlignage des occurrences suit le curseur (la fonction coupée
      * les range), l'ampoule porte l'aller-à la définition, les
      * références surlignent chaque usage, le renommage vit à la carte
@@ -2260,6 +2264,12 @@ public final class OpenHarness {
         }
         check("la correction du serveur vit à l'ampoule", fixRow >= 0);
         if (fixRow >= 0) {
+            // la rangée du correctif doit être visible au doigt : la
+            // fenêtre de la carte s'y déplace (les fonctions neuves du
+            // protocole en ont rempli la carte — le plafond de rangées
+            // vit)
+            editor.quickActionCard().showRow(fixRow);
+            frame();
             editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
                     editor.quickActionCard().poseX() + 40.0f,
                     editor.quickActionCard().rowCenterY(fixRow)));
@@ -2307,6 +2317,166 @@ public final class OpenHarness {
         // correctifs et le formatage ne l'avaient qu'épaissi) — le
         // journal des mesures garde sa taille (le relevé du rele-
         // vant y attend la bascule de thème)
+    }
+
+    /**
+     * Les fonctions du document (la couverture complétée) : les
+     * symboles (la table des matières à l'ampoule), les indices (le
+     * compte des usages au bout des déclarations), les plis du
+     * serveur (par-dessus ceux du lexer), les jetons sémantiques (la
+     * coloration du serveur). La pompe du document y suit la
+     * synchronisation — les quatre décrivent le document, pas le
+     * curseur ; le débranchement les range toutes.
+     */
+    private static void lspDocumentCoverage() throws Exception {
+        begin("fonctions du document : symboles, indices, plis du serveur, jetons sémantiques");
+        LspEditor facade = activity.harnessLsp();
+        click("LSP");
+        check("les diagnostics du serveur arrivent", awaitText("LSP :", 8000L));
+        // les quatre capacités du document se négocient (la réponse
+        // d'initialisation y tombe asynchrone)
+        for (int wait = 0; wait < 200 && !(facade.capabilities().documentSymbol()
+                && facade.capabilities().foldingRange()
+                && facade.capabilities().inlayHint()
+                && facade.capabilities().semanticTokens()); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(50L);
+        }
+        check("les capacités du document se négocient",
+                facade.capabilities().documentSymbol()
+                        && facade.capabilities().foldingRange()
+                        && facade.capabilities().inlayHint()
+                        && facade.capabilities().semanticTokens());
+        // la pompe du document y verse ses quatre avis (la connexion y
+        // démarre — les réponses arrivent asynchrones, la vue les tient)
+        for (int wait = 0; wait < 200 && (editor.inlayHints().isEmpty()
+                || editor.serverFoldRegions().isEmpty()
+                || editor.serverSemantics().isEmpty()); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            frame();
+        }
+        check("les indices du serveur se posent dans le texte",
+                !editor.inlayHints().isEmpty());
+        check("les plis du serveur se posent", !editor.serverFoldRegions().isEmpty());
+        check("les jetons sémantiques se posent", !editor.serverSemantics().isEmpty());
+
+        // la ligne de déclaration de « MAX » (la constante final) — la
+        // brique des éprouves qui suivent
+        TextBuffer text = editor.getBuffer();
+        int maxLine = -1;
+        for (int line = 0; line < text.getLineCount(); line++) {
+            if (text.getText(text.getLineStart(line), text.getLineEnd(line))
+                    .contains("final int MAX")) {
+                maxLine = line;
+                break;
+            }
+        }
+        check("la ligne de déclaration se trouve", maxLine >= 0);
+
+        // l'indice au bout de la déclaration : le compte des usages s'y
+        // lit (l'étiquette du protocole inlayHint — le texte n'en bouge
+        // pas, l'encre secondaire la dessine)
+        boolean hintOnDeclaration = false;
+        for (LspInlayHint hint : editor.inlayHints()) {
+            if (hint.position().line() == maxLine
+                    && hint.label().contains("usage")) {
+                hintOnDeclaration = true;
+            }
+        }
+        check("l'indice compte les usages de la déclaration", hintOnDeclaration);
+
+        // les jetons sémantiques : la déclaration de « MAX » y porte le
+        // genre « constant » et le modificateur « declaration » (le
+        // gras y vit), la méthode « total » y porte « function »
+        boolean maxDeclared = false;
+        boolean methodToken = false;
+        for (LspSemanticToken token : editor.serverSemantics()) {
+            if (token.range().start().line() == maxLine
+                    && "constant".equals(token.type())
+                    && token.modifiers().contains("declaration")) {
+                maxDeclared = true;
+            }
+            if ("function".equals(token.type())) {
+                methodToken = true;
+            }
+        }
+        check("le jeton de la déclaration porte son genre et son modificateur",
+                maxDeclared);
+        check("le jeton de la méthode porte « function »", methodToken);
+
+        // les plis du SERVEUR vivent par-dessus ceux du lexer : une
+        // région posée à la main (les lignes du commentaire de tête —
+        // le lexer n'y a pas d'ouvrant) se replie au toucher de la
+        // gouttière, la ligne cachée s'y compte
+        editor.setServerFoldRegions(java.util.List.of(
+                new LspFoldingRange(2, 4, null)));
+        editor.toggleFoldAt(2);
+        check("le pli du serveur replie sa région",
+                editor.hiddenLineCount() == 2);
+        editor.toggleFoldAt(2);
+        check("le pli du serveur se déplie", editor.hiddenLineCount() == 0);
+        editor.setServerFoldRegions(java.util.List.of());
+
+        // la table des matières à l'ampoule : l'entrée « Les symboles du
+        // document » y vit (la capacité se négocie), son choix ouvre la
+        // carte des symboles — chaque rangée porte le nom et sa ligne,
+        // le choix y fait sauter le curseur à la déclaration
+        editor.caretTo(text.getLineStart(maxLine));
+        frame();
+        check("la carte d'actions s'ouvre", editor.openQuickActionsAtLine(maxLine));
+        QuickActionCard.Entry symbolsEntry = null;
+        for (QuickActionCard.Entry action : editor.quickActionCard().entries()) {
+            if ("Les symboles du document".equals(action.label())) {
+                symbolsEntry = action;
+                break;
+            }
+        }
+        check("l'ampoule porte les symboles du document", symbolsEntry != null);
+        if (symbolsEntry != null) {
+            symbolsEntry.action().run();
+            frame();
+            java.util.List<QuickActionCard.Entry> rows =
+                    editor.quickActionCard().entries();
+            boolean maxRow = false;
+            boolean totalRow = false;
+            for (QuickActionCard.Entry row : rows) {
+                if (("MAX · ligne " + (maxLine + 1)).equals(row.label())) {
+                    maxRow = true;
+                }
+                if (row.label().startsWith("total · ligne ")) {
+                    totalRow = true;
+                }
+            }
+            check("la carte des symboles porte la constante", maxRow);
+            check("la carte des symboles porte la méthode", totalRow);
+            // le choix d'une rangée y fait sauter le curseur : « MAX »
+            // mène à sa déclaration
+            for (QuickActionCard.Entry row : rows) {
+                if (("MAX · ligne " + (maxLine + 1)).equals(row.label())) {
+                    row.action().run();
+                    frame();
+                    break;
+                }
+            }
+            check("le choix du symbole y saute le curseur",
+                    editor.caretLine() == maxLine);
+        }
+        // la carte se range (le choix réel la referme — l'éprouve y
+        // referme aussi : la carte ne survit pas au scénario, le
+        // geste du scénario suivant vit sa vie)
+        editor.quickActionCard().close();
+        frame();
+
+        // le débranchement range la couverture du document (les avis
+        // du serveur mort ne valent plus rien)
+        click("LSP ✔");
+        check("le débranchement range les indices du serveur",
+                editor.inlayHints().isEmpty());
+        check("le débranchement range les plis du serveur",
+                editor.serverFoldRegions().isEmpty());
+        check("le débranchement range les jetons sémantiques",
+                editor.serverSemantics().isEmpty());
     }
 
     /**

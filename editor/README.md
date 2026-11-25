@@ -7,9 +7,10 @@ hôte ne déclare que ce module** — il expose le cœur (`:core`), le
 moteur (`:syntax`), l'annotateur (`:analysis`) et le client LSP
 (`:lsp`) en `api`.
 
-## L'intégration minimale (la leçon de Sora editor)
+## L'intégration minimale (la leçon de l'éditeur de référence)
 
-L'étude du module `editor-lsp` de Sora editor a porté sa leçon : là-bas,
+L'étude du module d'intégration de l'éditeur de référence a porté sa
+leçon : là-bas,
 la façade `LspEditor` attache le serveur à la vue — l'hôte de la
 référence pose la vue, branche, écrit. Ici pareillement — l'hôte
 n'a qu'une poignée de lignes :
@@ -55,9 +56,9 @@ démonstration, pas de l'intégration.
 | `popups/` | les cartes dessinées dans la vue : recherche, aller-à, complétion, signature, info, sélection, débordement, historique, diagnostic, actions rapides, renommage |
 | `popups/PopupStyle` | le style PORTÉ PAR L'HÔTE : fond translucide, encres, corps des textes, hauteur des rangées, bornes de largeur, rayon des coins |
 | `gutter/` | la gouttière : numéros, marqueurs de diagnostic, l'ampoule des intentions |
-| `lsp/LspEditor` | la façade du serveur de langage (l'étude de Sora editor — voir le README de `:lsp`) |
+| `lsp/LspEditor` | la façade du serveur de langage (l'étude de l'éditeur de référence — voir le README de `:lsp`) : le protocole de navigation, d'édition et de document (symboles, indices, plis du serveur, jetons sémantiques) |
 | `input/` | le contrat d'entrée et la connexion IME (la frappe route vers le tampon) |
-| `folding/` | le modèle des plis |
+| `folding/` | le modèle des plis et ses bornes (celles du lexer, celles du serveur de langage composées) |
 | `selection/` | l'état et le rendu de la sélection (poignées comprises) |
 | `render/` | le cache des plans de rendu (partage par contenu, validité par identité) |
 

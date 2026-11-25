@@ -34,6 +34,10 @@ journal ; les méthodes y courent sur le fil de lecture de lsp4j.
 | `LspLocation` | une place pointée (l'aller-à la définition, les références) |
 | `LspTextEdit` | un remplacement de plage (la correction, le renommage, le formatage) |
 | `LspCodeAction` | une correction rapide (titre + remplacements du document) |
+| `LspDocumentSymbol` | un symbole du document (nom, genre, étendue, sélection — la table des matières) |
+| `LspFoldingRange` | une région repliable du serveur (l'en-tête, la fin) |
+| `LspInlayHint` | un indice posé dans le texte (position, étiquette — le texte n'en bouge pas) |
+| `LspSemanticToken` | un jeton sémantique (plage, genre, modificateurs — décodé de l'encodage relatif à la légende) |
 | `LspSignatureHelp` | l'aide aux paramètres (libellé, paramètre actif) |
 
 ## Les requêtes asynchrones
@@ -69,15 +73,16 @@ L'hôte ne câble pas la liaison lui-même — la façade
 l'initialisation, le document, les fournisseurs, les caches, les
 fonctions coupées une à une. Le module `:lsp` reste le CLIENT seul ;
 la façade vit dans `:editor` (le README de `:editor` détaille
-l'intégration minimale). C'est la leçon du module `editor-lsp` de
-Sora editor : là-bas aussi, la façade vit au-dessus du client et
+l'intégration minimale). C'est la leçon de l'éditeur de référence :
+là-bas aussi, la façade vit au-dessus du client et
 l'hôte n'y touche pas.
 
 ## Les tests
 
-`src/test/java` — 18 tests (la liaison par tubes et par processus,
+`src/test/java` — 22 tests (la liaison par tubes et par processus,
 les deltas incrémentaux, les requêtes, la négociation des capacités,
 l'aller-à, les références, les corrections, le renommage, le
-surlignage, le formatage, l'arrêt ; le serveur EmmyLua réel s'y
-éprouve par processus). `scripts/run-lsp-tests.sh` ou
-`./gradlew :lsp:test`.
+surlignage, le formatage, les symboles du document, les plis, les
+indices, les jetons sémantiques à la légende, l'arrêt ; le serveur
+EmmyLua réel s'y éprouve par processus). `scripts/run-lsp-tests.sh`
+ou `./gradlew :lsp:test`.

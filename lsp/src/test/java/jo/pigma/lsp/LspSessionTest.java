@@ -19,7 +19,19 @@ import org.eclipse.lsp4j.DefinitionParams;
 import org.eclipse.lsp4j.DocumentFormattingParams;
 import org.eclipse.lsp4j.DocumentHighlight;
 import org.eclipse.lsp4j.DocumentHighlightParams;
+import org.eclipse.lsp4j.DocumentSymbol;
+import org.eclipse.lsp4j.DocumentSymbolParams;
+import org.eclipse.lsp4j.FoldingRange;
+import org.eclipse.lsp4j.FoldingRangeRequestParams;
 import org.eclipse.lsp4j.FormattingOptions;
+import org.eclipse.lsp4j.InlayHint;
+import org.eclipse.lsp4j.InlayHintParams;
+import org.eclipse.lsp4j.SemanticTokens;
+import org.eclipse.lsp4j.SemanticTokensLegend;
+import org.eclipse.lsp4j.SemanticTokensParams;
+import org.eclipse.lsp4j.SemanticTokensWithRegistrationOptions;
+import org.eclipse.lsp4j.SymbolInformation;
+import org.eclipse.lsp4j.SymbolKind;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.InitializeParams;
@@ -106,6 +118,16 @@ public class LspSessionTest {
         /** Vrai : le renommage rend la carte par URI (l'ancienne forme), sinon les changements de documents. */
         volatile boolean renameByMap;
 
+        /** Vrai : les symboles du document rendent la forme à plat (l'information), sinon la forme riche. */
+        volatile boolean symbolByInfo;
+
+        /** La légende des jetons sémantiques du serveur d'essai. */
+        private static final List<String> TOKEN_TYPES =
+                List.of("keyword", "variable", "function", "constant");
+
+        /** Les modificateurs de la légende des jetons. */
+        private static final List<String> TOKEN_MODIFIERS = List.of("declaration");
+
         /** Le titre de la correction rapide rendue (null : aucune). */
         volatile String quickFixTitle = "Supprimer la parenthèse en trop";
 
@@ -129,6 +151,12 @@ public class LspSessionTest {
                 capabilities.setDocumentHighlightProvider(true);
                 capabilities.setDocumentFormattingProvider(true);
                 capabilities.setRenameProvider(true);
+                capabilities.setDocumentSymbolProvider(true);
+                capabilities.setFoldingRangeProvider(true);
+                capabilities.setInlayHintProvider(true);
+                capabilities.setSemanticTokensProvider(
+                        new SemanticTokensWithRegistrationOptions(
+                                new SemanticTokensLegend(TOKEN_TYPES, TOKEN_MODIFIERS)));
             }
             if (declaredSync != null) {
                 capabilities.setTextDocumentSync(declaredSync);
@@ -360,6 +388,55 @@ public class LspSessionTest {
             return CompletableFuture.completedFuture(edits);
         }
 
+        @Override
+        public CompletableFuture<List<Either<SymbolInformation, DocumentSymbol>>> documentSymbol(
+                DocumentSymbolParams params) {
+            if (symbolByInfo) {
+                // la forme à plat du protocole : l'information du
+                // symbole (la place y vaut la sélection)
+                SymbolInformation flat = new SymbolInformation("essai",
+                        SymbolKind.Method, new Location("file:///demo.java",
+                        new Range(new Position(2, 4), new Position(2, 9))));
+                return CompletableFuture.completedFuture(List.of(Either.forLeft(flat)));
+            }
+            DocumentSymbol method = new DocumentSymbol("essai", SymbolKind.Method,
+                    new Range(new Position(2, 0), new Position(4, 1)),
+                    new Range(new Position(2, 4), new Position(2, 9)));
+            DocumentSymbol field = new DocumentSymbol("MAX", SymbolKind.Field,
+                    new Range(new Position(0, 4), new Position(0, 18)),
+                    new Range(new Position(0, 10), new Position(0, 13)));
+            return CompletableFuture.completedFuture(List.of(
+                    Either.forRight(method), Either.forRight(field)));
+        }
+
+        @Override
+        public CompletableFuture<List<FoldingRange>> foldingRange(
+                FoldingRangeRequestParams params) {
+            // le pli du serveur d'essai : les lignes 2 à 4 se replient
+            return CompletableFuture.completedFuture(List.of(new FoldingRange(2, 4)));
+        }
+
+        @Override
+        public CompletableFuture<List<InlayHint>> inlayHint(InlayHintParams params) {
+            // l'indice du serveur d'essai : le compte des usages au
+            // bout de la ligne de déclaration
+            InlayHint hint = new InlayHint(new Position(0, 18),
+                    Either.forLeft("2 usage(s)"));
+            return CompletableFuture.completedFuture(List.of(hint));
+        }
+
+        @Override
+        public CompletableFuture<SemanticTokens> semanticTokensFull(
+                SemanticTokensParams params) {
+            // l'encodage relatif du protocole : « MAX » (3 caractères,
+            // constant, déclaration — le genre 3, le modificateur 1)
+            // à la ligne 0 colonne 10, « essai » (6 caractères,
+            // function — le genre 2) à la ligne 2 colonne 4
+            return CompletableFuture.completedFuture(new SemanticTokens(List.of(
+                    0, 10, 3, 3, 1,
+                    2, 4, 6, 2, 0)));
+        }
+
         private void publish() {
             int unbalanced = 0;
             int depth = 0;
@@ -555,7 +632,7 @@ public class LspSessionTest {
         }
     }
 
-    /** Les fonctions nouvelles de Sora editor : la négociation des capacités. */
+    /** Les fonctions nouvelles de l'éditeur de référence : la négociation des capacités. */
     @Test
     public void capabilitiesFollowTheDeclaration() throws Exception {
         TrialServer server = new TrialServer();
@@ -575,6 +652,10 @@ public class LspSessionTest {
         assertTrue("les corrections déclarées", capabilities.codeAction());
         assertTrue("le surlignage déclaré", capabilities.documentHighlight());
         assertTrue("le formatage déclaré", capabilities.formatting());
+        assertTrue("les symboles du document déclarés", capabilities.documentSymbol());
+        assertTrue("les plis du serveur déclarés", capabilities.foldingRange());
+        assertTrue("les indices déclarés", capabilities.inlayHint());
+        assertTrue("les jetons sémantiques déclarés", capabilities.semanticTokens());
         session.shutdown();
         LspSession silent = LspSession.beside(new TrialServer(), null);
         silent.initialize("pigma-test").get(5, TimeUnit.SECONDS);
@@ -704,6 +785,84 @@ public class LspSessionTest {
         assertEquals("les espaces de fin s'y coupent",
                 new LspPosition(1, 6), edits.get(0).range().start());
         assertEquals("le remplacement est vide", "", edits.get(0).newText());
+        session.shutdown();
+    }
+
+    /** Les symboles du document : la table des matières, les deux formes du protocole. */
+    @Test
+    public void documentSymbolAnswersTheOutline() throws Exception {
+        TrialServer server = new TrialServer();
+        LspSession session = LspSession.beside(server, null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        List<LspDocumentSymbol> symbols = session.documentSymbol("file:///demo.java")
+                .get(5, TimeUnit.SECONDS);
+        assertEquals("deux symboles rendus", 2, symbols.size());
+        assertEquals("la méthode première", "essai", symbols.get(0).name());
+        assertEquals("son genre suit (6 : méthode)", 6, symbols.get(0).kind());
+        assertEquals("la sélection du nom suit", 4,
+                symbols.get(0).selectionRange().start().character());
+        assertEquals("le champ second", "MAX", symbols.get(1).name());
+        assertEquals("le genre du champ suit (8 : champ)", 8, symbols.get(1).kind());
+        // la forme à plat du protocole (l'information) s'y adapte aussi
+        server.symbolByInfo = true;
+        List<LspDocumentSymbol> flat = session.documentSymbol("file:///demo.java")
+                .get(5, TimeUnit.SECONDS);
+        assertEquals("la forme à plat rend son symbole", 1, flat.size());
+        assertEquals("le nom suit", "essai", flat.get(0).name());
+        assertEquals("la place y vaut la sélection", 4,
+                flat.get(0).selectionRange().start().character());
+        session.shutdown();
+    }
+
+    /** Les plis du serveur : la plage de lignes repliable. */
+    @Test
+    public void foldingRangesAnswerTheBlocks() throws Exception {
+        LspSession session = LspSession.beside(new TrialServer(), null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        List<LspFoldingRange> folds = session.foldingRanges("file:///demo.java")
+                .get(5, TimeUnit.SECONDS);
+        assertEquals("un pli rendu", 1, folds.size());
+        assertEquals("l'en-tête du pli suit", 2, folds.get(0).startLine());
+        assertEquals("la fin du pli suit", 4, folds.get(0).endLine());
+        session.shutdown();
+    }
+
+    /** Les indices dans le texte : l'étiquette à la position donnée. */
+    @Test
+    public void inlayHintsAnswerTheLabels() throws Exception {
+        LspSession session = LspSession.beside(new TrialServer(), null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        List<LspInlayHint> hints = session.inlayHints("file:///demo.java",
+                new LspRange(new LspPosition(0, 0), new LspPosition(3, 0)))
+                .get(5, TimeUnit.SECONDS);
+        assertEquals("un indice rendu", 1, hints.size());
+        assertEquals("l'étiquette suit", "2 usage(s)", hints.get(0).label());
+        assertEquals("la position suit", 0, hints.get(0).position().line());
+        assertEquals("la colonne suit", 18, hints.get(0).position().character());
+        session.shutdown();
+    }
+
+    /** Les jetons sémantiques : l'encodage relatif se décode à la légende. */
+    @Test
+    public void semanticTokensDecodeAgainstTheLegend() throws Exception {
+        TrialServer server = new TrialServer();
+        server.declareAll = true;
+        LspSession session = LspSession.beside(server, null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        List<LspSemanticToken> tokens = session.semanticTokens("file:///demo.java")
+                .get(5, TimeUnit.SECONDS);
+        assertEquals("deux jetons rendus", 2, tokens.size());
+        assertEquals("le premier genre suit (la légende)",
+                "constant", tokens.get(0).type());
+        assertEquals("sa plage suit", 10, tokens.get(0).range().start().character());
+        assertEquals("sa longueur suit", 13, tokens.get(0).range().end().character());
+        assertEquals("son modificateur suit (la légende)",
+                List.of("declaration"), tokens.get(0).modifiers());
+        assertEquals("le second genre suit", "function", tokens.get(1).type());
+        assertEquals("sa ligne suit", 2, tokens.get(1).range().start().line());
+        assertEquals("sa colonne suit", 4, tokens.get(1).range().start().character());
+        assertTrue("aucun modificateur sur le second",
+                tokens.get(1).modifiers().isEmpty());
         session.shutdown();
     }
 }

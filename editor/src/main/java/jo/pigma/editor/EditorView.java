@@ -1,5 +1,6 @@
 package jo.pigma.editor;
 
+import jo.pigma.editor.folding.FoldBounds;
 import jo.pigma.editor.folding.FoldModel;
 import jo.pigma.editor.gutter.Gutter;
 import jo.pigma.editor.input.EditorContract;
@@ -24,7 +25,10 @@ import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.editor.popups.OverflowCard;
 import jo.pigma.editor.popups.SelectionBar;
 import jo.pigma.editor.popups.SignatureCard;
+import jo.pigma.lsp.LspFoldingRange;
+import jo.pigma.lsp.LspInlayHint;
 import jo.pigma.lsp.LspRange;
+import jo.pigma.lsp.LspSemanticToken;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -192,6 +196,32 @@ public final class EditorView extends View {
      * la teinte s'y distingue de la recherche).
      */
     private List<LspRange> serverHighlights = List.of();
+
+    /**
+     * Les régions repliables du serveur de langage (le protocole
+     * foldingRange) : les bornes composées s'y lisent par-dessus
+     * celles du lexer — la gouttière y porte leurs marqueurs.
+     */
+    private List<LspFoldingRange> serverFolds = List.of();
+
+    /**
+     * Les indices posés dans le texte par le serveur (le protocole
+     * inlayHint) : l'étiquette se dessine au bout du contenu de la
+     * ligne, l'encre secondaire — le texte n'en bouge pas.
+     */
+    private List<LspInlayHint> inlayHints = List.of();
+
+    /**
+     * Les jetons sémantiques du serveur (le protocole
+     * semanticTokens) : la couche du protocole au-dessus de la
+     * coloration locale — le jeton couvrant un span y porte sa
+     * couleur (le genre à la palette), la déclaration y porte le
+     * gras.
+     */
+    private List<LspSemanticToken> serverSemantics = List.of();
+
+    /** Les bornes des plis composées : le lexer d'abord, le serveur par-dessus. */
+    private final FoldComposite foldBounds = new FoldComposite();
 
     /** Le doigt est-il tombé sur une carte ouverte ? — le geste entier lui revient. */
     private boolean downOnCard;
@@ -457,6 +487,12 @@ public final class EditorView extends View {
      */
     private final Paint serverHighlightPaint = new Paint();
 
+    /**
+     * L'encre des indices du serveur (l'étiquette au bout de la ligne
+     * — le texte n'en bouge pas, l'encre secondaire la dessine).
+     */
+    private final Paint inlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
     /** Le souligné des diagnostics d'appariement. */
     private final Paint diagnosticPaint = new Paint();
 
@@ -541,6 +577,7 @@ public final class EditorView extends View {
         searchCurrentPaint.setColor(0x80FFC107);
         serverHighlightPaint.setStyle(Paint.Style.FILL);
         serverHighlightPaint.setColor(0x332979FF);
+        inlayPaint.setColor(0xFF8A8A93);
         infoPopup = new InfoPopup(dp(1));
         diagnosticPaint.setStyle(Paint.Style.STROKE);
         diagnosticPaint.setStrokeWidth(dp(2));
@@ -656,6 +693,7 @@ public final class EditorView extends View {
         }
         textPx = clamped;
         textPaint.setTextSize(clamped);
+        inlayPaint.setTextSize(clamped * 0.85f);
         fontMetrics = textPaint.getFontMetrics();
         charWidth = textPaint.measureText("M");
         lineHeight = (float) Math.ceil(fontMetrics.bottom - fontMetrics.top) + dp(2);
@@ -1063,6 +1101,27 @@ public final class EditorView extends View {
         }
         diagnosticCard.close();
         quickActionCard.open(line, actions);
+        invalidate();
+        return true;
+    }
+
+    /**
+     * Ouvre la carte d'actions rapides à des entrées posées (l'ampoule
+     * des symboles du document y ouvre sa liste — chaque rangée y est
+     * une action de navigation) ; la carte s'ancre à la ligne du
+     * curseur, les entrées vides n'ouvrent rien.
+     *
+     * @param entries les entrées à ouvrir, null ou vide : rien
+     * @return vrai quand la carte s'est ouverte
+     */
+    public boolean openQuickActions(List<QuickActionCard.Entry> entries) {
+        if (entries == null || entries.isEmpty()) {
+            return false;
+        }
+        int caret = Math.min(selection.caret(), buffer.length());
+        int line = buffer.lineOfOffset(caret);
+        diagnosticCard.close();
+        quickActionCard.open(line, entries);
         invalidate();
         return true;
     }
@@ -2694,6 +2753,7 @@ public final class EditorView extends View {
             if (end > start) {
                 drawTokens(canvas, line, start, baseline);
             }
+            drawInlayHint(canvas, line, baseline);
             if (composingStart >= 0) {
                 drawComposeUnderline(canvas, line, start, end, baseline);
             }
@@ -2907,6 +2967,104 @@ public final class EditorView extends View {
     }
 
     /**
+     * Les régions repliables du serveur de langage (le protocole
+     * foldingRange) : les bornes composées s'y posent — la gouttière
+     * y porte leurs marqueurs, le toucher y replie (par-dessus les
+     * plis du lexer). Null ou vide les range.
+     *
+     * @param ranges les régions repliables du serveur, null pour les
+     *               ranger
+     */
+    public void setServerFoldRegions(List<LspFoldingRange> ranges) {
+        serverFolds = ranges == null ? List.of() : List.copyOf(ranges);
+        rebuildFoldLayout();
+        invalidate();
+    }
+
+    /**
+     * Les régions repliables déclarées par le serveur.
+     *
+     * @return les régions, jamais null (vide : aucune)
+     */
+    public List<LspFoldingRange> serverFoldRegions() {
+        return serverFolds;
+    }
+
+    /**
+     * Les indices à poser dans le texte (le protocole inlayHint) :
+     * l'étiquette se dessine au bout du contenu de la ligne, l'encre
+     * secondaire — le texte n'en bouge pas. Null ou vide les range.
+     *
+     * @param hints les indices du serveur, null pour les ranger
+     */
+    public void setInlayHints(List<LspInlayHint> hints) {
+        inlayHints = hints == null ? List.of() : List.copyOf(hints);
+        invalidate();
+    }
+
+    /**
+     * Les indices posés dans le texte.
+     *
+     * @return les indices, jamais null (vide : aucun)
+     */
+    public List<LspInlayHint> inlayHints() {
+        return inlayHints;
+    }
+
+    /**
+     * Les jetons sémantiques du serveur (le protocole
+     * semanticTokens) : la couche du protocole au-dessus de la
+     * coloration locale — les plans de rendu se recuisent (c'est un
+     * re-rendu, jamais une retokenisation : les jetons du moteur ne
+     * bougent pas). Null ou vide les range.
+     *
+     * @param tokens les jetons du serveur, null pour les ranger
+     */
+    public void setServerSemantics(List<LspSemanticToken> tokens) {
+        serverSemantics = tokens == null ? List.of() : List.copyOf(tokens);
+        renderCache.invalidate();
+        invalidate();
+    }
+
+    /**
+     * Les jetons sémantiques posés par le serveur.
+     *
+     * @return les jetons, jamais null (vide : aucun)
+     */
+    public List<LspSemanticToken> serverSemantics() {
+        return serverSemantics;
+    }
+
+    /**
+     * L'indice du serveur sur une ligne (le protocole inlayHint) :
+     * l'étiquette se dessine au bout du contenu de la ligne, l'encre
+     * secondaire — le texte n'en bouge pas ; sans place à l'écran,
+     * l'indice se tait.
+     *
+     * @param canvas   le canevas de la vue
+     * @param line     la ligne visible courante
+     * @param baseline la ligne de base de la ligne
+     */
+    private void drawInlayHint(Canvas canvas, int line, float baseline) {
+        if (inlayHints.isEmpty()) {
+            return;
+        }
+        for (LspInlayHint hint : inlayHints) {
+            if (hint.position().line() != line) {
+                continue;
+            }
+            int start = buffer.getLineStart(line);
+            int end = buffer.getLineEnd(line);
+            int column = Math.max(0, Math.min(hint.position().character(), end - start));
+            float x = getPaddingLeft() + column * charWidth + dp(6);
+            if (x + inlayPaint.measureText(hint.label()) < getWidth() - getPaddingRight()) {
+                canvas.drawText(hint.label(), x, baseline, inlayPaint);
+            }
+            return;
+        }
+    }
+
+    /**
      * Les plages surlignées par le serveur (le harnais les lit).
      *
      * @return les plages en coordonnées LSP, jamais null
@@ -3015,7 +3173,7 @@ public final class EditorView extends View {
             if (isHidden(line)) {
                 continue;
             }
-            boolean opens = structure.foldStartsAt(line);
+            boolean opens = foldBounds.foldStartsAt(line);
             if (opens) {
                 drawFoldMarker(canvas, line, folds.isFolded(line));
             }
@@ -3135,7 +3293,7 @@ public final class EditorView extends View {
      * @param line indice de la ligne d'en-tête
      */
     public void toggleFoldAt(int line) {
-        if (structure == null || !structure.foldStartsAt(line)) {
+        if (!foldBounds.foldStartsAt(line)) {
             return;
         }
         if (folds.isFolded(line)) {
@@ -3144,7 +3302,7 @@ public final class EditorView extends View {
             folds.fold(line);
             // le curseur dans la région repliée : il remonte à la fin de
             // l'en-tête (juste après l'ouvrant, la paire s'y encadre)
-            int end = structure.foldEndLine(line);
+            int end = foldBounds.foldEndLine(line);
             int caretLine = buffer.lineOfOffset(Math.min(selection.caret(), buffer.length()));
             if (caretLine > line && caretLine <= end) {
                 selection.setCaret(buffer.getLineEnd(line));
@@ -3204,7 +3362,7 @@ public final class EditorView extends View {
         // la reconstruction peut annuler les plis (dernier ouvert) :
         // la garde se relit à chaque tour
         while (folds.isHidden(line)) {
-            int container = folds.headerHiding(line, structure);
+            int container = folds.headerHiding(line, foldBounds);
             if (container < 0) {
                 return;
             }
@@ -3220,7 +3378,47 @@ public final class EditorView extends View {
      */
     private void rebuildFoldLayout() {
         trackedLineCount = buffer.getLineCount();
-        folds.rebuild(structure, trackedLineCount);
+        folds.rebuild(foldBounds, trackedLineCount);
+    }
+
+    /**
+     * Les bornes des plis composées : l'ouvrant du LEXER d'abord (le
+     * pli local prime), la région du SERVEUR complète (le protocole
+     * foldingRange par-dessus).
+     */
+    private final class FoldComposite implements FoldBounds {
+
+        @Override
+        public boolean foldStartsAt(int line) {
+            if (structure != null && structure.foldStartsAt(line)) {
+                return true;
+            }
+            return serverFoldEnd(line) >= 0;
+        }
+
+        @Override
+        public int foldEndLine(int header) {
+            if (structure != null && structure.foldStartsAt(header)) {
+                return structure.foldEndLine(header);
+            }
+            return serverFoldEnd(header);
+        }
+
+        /**
+         * La fin de la région du serveur ouverte à cette ligne (-1 :
+         * aucune).
+         *
+         * @param header la ligne d'en-tête
+         * @return la dernière ligne couverte, -1 sans région
+         */
+        private int serverFoldEnd(int header) {
+            for (LspFoldingRange range : serverFolds) {
+                if (range.startLine() == header) {
+                    return range.endLine();
+                }
+            }
+            return -1;
+        }
     }
 
     /** La ligne est-elle cachée par un pli. */
@@ -3341,6 +3539,25 @@ public final class EditorView extends View {
                     if (note.covers(lineStart + start, lineStart + endColumn)) {
                         colors[at] = EditorThemes.semanticColor(theme, note.nature());
                         bolds[at] = (note.modifiers() & SemanticAnnotation.BOLD) != 0;
+                        break;
+                    }
+                }
+            }
+            // fusion L4 : le serveur prime sur l'atelier — le jeton qui
+            // couvre le span y porte sa couleur (le genre à la palette),
+            // la déclaration y porte le gras ; un genre sans nature
+            // dans la palette laisse la couleur d'avant (la chaîne
+            // ouverte ne casse jamais le rendu)
+            if (!serverSemantics.isEmpty()) {
+                for (LspSemanticToken served : serverSemantics) {
+                    if (served.range().start().line() == line
+                            && served.range().start().character() < endColumn
+                            && served.range().end().character() > start) {
+                        String nature = EditorThemes.serverTokenNature(served.type());
+                        if (nature != null) {
+                            colors[at] = EditorThemes.semanticColor(theme, nature);
+                            bolds[at] = served.modifiers().contains("declaration");
+                        }
                         break;
                     }
                 }

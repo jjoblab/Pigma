@@ -13,7 +13,10 @@ import java.util.TreeSet;
  * l'en-tête se replie sur lui) reste à la vue.
  *
  * <p>La reconstruction est une passe en O(lignes), aux changements de
- * plis et aux éditions — jamais par trame.</p>
+ * plis et aux éditions — jamais par trame. Les bornes s'y lisent à
+ * l'interface {@link FoldBounds} : le document de structure (le lexer
+ * local) ou les bornes composées (les plis du serveur de langage par-
+ * dessus — la vue les tient).</p>
  */
 public final class FoldModel {
 
@@ -59,13 +62,13 @@ public final class FoldModel {
      * interne s'ouvre le premier quand le curseur y arrive.
      *
      * @param line la ligne couverte
-     * @param structure le document de structure (les bornes des plis)
+     * @param bounds les bornes des plis (la structure, la composition)
      * @return l'indice de l'en-tête, -1 si aucun ne couvre
      */
-    public int headerHiding(int line, StructureDocument structure) {
+    public int headerHiding(int line, FoldBounds bounds) {
         int container = -1;
         for (int header : folded) {
-            if (header < line && line <= structure.foldEndLine(header)) {
+            if (header < line && line <= bounds.foldEndLine(header)) {
                 container = header;
             }
         }
@@ -102,12 +105,11 @@ public final class FoldModel {
     /**
      * Reconstruit les caches des plis courants.
      *
-     * @param structure  le document de structure (l'édition a pu y
-     *                   déplacer les bornes — les en-têtes morts
-     *                   s'ignorent)
+     * @param bounds     les bornes des plis (l'édition a pu y déplacer
+     *                   les bornes — les en-têtes morts s'ignorent)
      * @param lineCount  le nombre de lignes du document
      */
-    public void rebuild(StructureDocument structure, int lineCount) {
+    public void rebuild(FoldBounds bounds, int lineCount) {
         if (folded.isEmpty()) {
             hiddenByFold = null;
             visibleBefore = null;
@@ -117,10 +119,10 @@ public final class FoldModel {
         boolean[] hidden = new boolean[lineCount];
         for (int header : folded) {
             if (header < 0 || header >= lineCount
-                    || !structure.foldStartsAt(header)) {
+                    || bounds == null || !bounds.foldStartsAt(header)) {
                 continue; // l'édition a déplacé la structure : plus d'ouvrant
             }
-            int end = structure.foldEndLine(header);
+            int end = bounds.foldEndLine(header);
             for (int line = header + 1; line <= end && line < lineCount; line++) {
                 hidden[line] = true;
             }

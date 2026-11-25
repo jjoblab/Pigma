@@ -48,11 +48,30 @@ public final class EditorThemes {
 
     /** Natures sémantiques (L3) de la palette claire. */
     private static final Map<String, Integer> LIGHT_SEMANTIC = Map.of(
-            "type", 0xFF267F99, "méthode", 0xFF795E26, "champ", 0xFF001080);
+            "type", 0xFF267F99, "méthode", 0xFF795E26, "champ", 0xFF001080,
+            "constante", 0xFF875A7B);
 
     /** Natures sémantiques (L3) de la palette sombre. */
     private static final Map<String, Integer> DARK_SEMANTIC = Map.of(
-            "type", 0xFF4EC9B0, "méthode", 0xFFDCDCAA, "champ", 0xFF9CDCFE);
+            "type", 0xFF4EC9B0, "méthode", 0xFFDCDCAA, "champ", 0xFF9CDCFE,
+            "constante", 0xFFC586C0);
+
+    /** Le genre d'un jeton du serveur à sa nature de palette (la fusion L4). */
+    private static final Map<String, String> SERVER_TOKEN_NATURES = Map.ofEntries(
+            Map.entry("function", "méthode"),
+            Map.entry("method", "méthode"),
+            Map.entry("variable", "champ"),
+            Map.entry("property", "champ"),
+            Map.entry("parameter", "champ"),
+            Map.entry("field", "champ"),
+            Map.entry("constant", "constante"),
+            Map.entry("enumMember", "constante"),
+            Map.entry("class", "type"),
+            Map.entry("type", "type"),
+            Map.entry("interface", "type"),
+            Map.entry("struct", "type"),
+            Map.entry("enum", "type"),
+            Map.entry("namespace", "type"));
 
     /**
      * La couleur d'une nature sémantique (la fusion L3 au dessin s'en
@@ -69,6 +88,20 @@ public final class EditorThemes {
         Map<String, Integer> palette = theme == DARK ? DARK_SEMANTIC : LIGHT_SEMANTIC;
         Integer color = palette.get(nature);
         return color == null ? theme.defaultColor() : color;
+    }
+
+    /**
+     * La nature de palette d'un genre de jeton du serveur (la fusion
+     * L4 s'en sert) : « function » y vaut la méthode, « constant » la
+     * constante, « class » le type… ; un genre inconnu rend null —
+     * la couleur d'avant demeure (la chaîne ouverte ne casse jamais
+     * le rendu, le lexer garde son mot).
+     *
+     * @param type le genre du jeton (le nom de la légende du serveur)
+     * @return la nature de palette, null pour un genre inconnu
+     */
+    public static String serverTokenNature(String type) {
+        return type == null ? null : SERVER_TOKEN_NATURES.get(type);
     }
 
     private EditorThemes() {

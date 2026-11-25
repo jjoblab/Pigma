@@ -1,7 +1,11 @@
 package jo.pigma.sample;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 
@@ -24,6 +28,18 @@ import org.eclipse.lsp4j.DidSaveTextDocumentParams;
 import org.eclipse.lsp4j.DocumentFormattingParams;
 import org.eclipse.lsp4j.DocumentHighlight;
 import org.eclipse.lsp4j.DocumentHighlightParams;
+import org.eclipse.lsp4j.DocumentSymbol;
+import org.eclipse.lsp4j.DocumentSymbolParams;
+import org.eclipse.lsp4j.FoldingRange;
+import org.eclipse.lsp4j.FoldingRangeRequestParams;
+import org.eclipse.lsp4j.InlayHint;
+import org.eclipse.lsp4j.InlayHintParams;
+import org.eclipse.lsp4j.SemanticTokens;
+import org.eclipse.lsp4j.SemanticTokensLegend;
+import org.eclipse.lsp4j.SemanticTokensParams;
+import org.eclipse.lsp4j.SemanticTokensWithRegistrationOptions;
+import org.eclipse.lsp4j.SymbolInformation;
+import org.eclipse.lsp4j.SymbolKind;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
@@ -72,7 +88,12 @@ import org.eclipse.lsp4j.services.WorkspaceService;
  * renommage avec sa préparation, les corrections rapides, le
  * formatage) : le mot au curseur y est la brique — sa ligne de
  * déclaration s'y trouve, ses occurrences s'y comptent, ses espaces
- * de fin s'y coupent. Le reste de l'interface de service se tait —
+ * de fin s'y coupent. Les fonctions du DOCUMENT s'y suivent
+ * pareillement (la couverture complétée) : les symboles (la table des
+ * matières des déclarations), les plis (les blocs d'accolades), les
+ * indices (le compte des usages au bout des déclarations), les
+ * jetons sémantiques (chaque mot y porte son genre — la légende y
+ * dit leurs noms). Le reste de l'interface de service se tait —
  * lsp4j le remplit par défaut.
  */
 final class DemoLanguageServer implements LanguageServer, TextDocumentService,
@@ -93,6 +114,13 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
             {"for", "boucle d'itération bornée"},
             {"while", "boucle de condition"},
     };
+
+    /** La légende des jetons sémantiques (les genres que le serveur rend). */
+    private static final List<String> TOKEN_TYPES =
+            List.of("keyword", "variable", "function", "constant");
+
+    /** Les modificateurs de la légende (le bit de déclaration). */
+    private static final List<String> TOKEN_MODIFIERS = List.of("declaration");
 
     private final String uri;
 
@@ -129,6 +157,15 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
         capabilities.setRenameProvider(rename);
         capabilities.setCodeActionProvider(true);
         capabilities.setDocumentFormattingProvider(true);
+        // les fonctions du document s'y déclarent pareillement : les
+        // symboles, les plis, les indices, les jetons sémantiques (la
+        // légende y dit les noms des genres)
+        capabilities.setDocumentSymbolProvider(true);
+        capabilities.setFoldingRangeProvider(true);
+        capabilities.setInlayHintProvider(true);
+        capabilities.setSemanticTokensProvider(
+                new SemanticTokensWithRegistrationOptions(
+                        new SemanticTokensLegend(TOKEN_TYPES, TOKEN_MODIFIERS)));
         return CompletableFuture.completedFuture(new InitializeResult(capabilities));
     }
 
@@ -431,6 +468,195 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
             }
         }
         return CompletableFuture.completedFuture(edits);
+    }
+
+    @Override
+    public CompletableFuture<List<Either<SymbolInformation, DocumentSymbol>>> documentSymbol(
+            DocumentSymbolParams params) {
+        // la table des matières du document : chaque déclaration y
+        // rend son symbole — le genre (méthode, champ), la ligne
+        // entière pour l'étendue, le nom seul pour la sélection
+        List<Either<SymbolInformation, DocumentSymbol>> symbols = new ArrayList<>();
+        for (int[] declaration : declarations()) {
+            String name = text.substring(declaration[0], declaration[1]);
+            boolean method = declaration[2] == 1;
+            int line = positionOf(declaration[0]).getLine();
+            int[] bounds = lineBounds(line);
+            symbols.add(Either.forRight(new DocumentSymbol(name,
+                    method ? SymbolKind.Method : SymbolKind.Field,
+                    new Range(positionOf(bounds[0]), positionOf(bounds[1])),
+                    rangeOf(new int[]{declaration[0], declaration[1]}))));
+        }
+        return CompletableFuture.completedFuture(symbols);
+    }
+
+    @Override
+    public CompletableFuture<List<FoldingRange>> foldingRange(
+            FoldingRangeRequestParams params) {
+        // les plis du serveur de démonstration : les blocs
+        // d'accolades appariées — l'ouvrante porte l'en-tête, la
+        // fermante appariée porte la fin ; le pli ne vit que d'une
+        // ouvrante à une AUTRE ligne
+        List<FoldingRange> folds = new ArrayList<>();
+        Deque<Integer> opened = new ArrayDeque<>();
+        for (int at = 0; at < text.length(); at++) {
+            char c = text.charAt(at);
+            if (c == '{') {
+                opened.push(at);
+            } else if (c == '}' && !opened.isEmpty()) {
+                int open = opened.pop();
+                int openLine = positionOf(open).getLine();
+                int closeLine = positionOf(at).getLine();
+                if (closeLine > openLine) {
+                    folds.add(new FoldingRange(openLine, closeLine));
+                }
+            }
+        }
+        return CompletableFuture.completedFuture(folds);
+    }
+
+    @Override
+    public CompletableFuture<List<InlayHint>> inlayHint(InlayHintParams params) {
+        // l'indice du serveur de démonstration : le compte des usages
+        // au bout de chaque ligne de déclaration (la façon de
+        // l'atelier) — le texte n'en bouge pas, l'encre secondaire le
+        // dessine ; la plage interrogée y borne la réponse
+        List<InlayHint> hints = new ArrayList<>();
+        for (int[] declaration : declarations()) {
+            int line = positionOf(declaration[0]).getLine();
+            if (line < params.getRange().getStart().getLine()
+                    || line > params.getRange().getEnd().getLine()) {
+                continue; // hors de la plage interrogée
+            }
+            String word = text.substring(declaration[0], declaration[1]);
+            int usages = occurrencesOf(word).size() - 1;
+            int[] bounds = lineBounds(line);
+            hints.add(new InlayHint(
+                    new Position(line, bounds[1] - bounds[0]),
+                    Either.forLeft(usages + " usage(s)")));
+        }
+        return CompletableFuture.completedFuture(hints);
+    }
+
+    @Override
+    public CompletableFuture<SemanticTokens> semanticTokensFull(
+            SemanticTokensParams params) {
+        return CompletableFuture.completedFuture(new SemanticTokens(semanticData()));
+    }
+
+    /**
+     * Les entiers des jetons sémantiques (l'encodage relatif du
+     * protocole) : chaque mot du texte y porte son genre — le mot-clé
+     * de la table, la fonction déclarée, la constante déclarée, la
+     * variable autrement — l'occurrence qui DÉCLARE y porte le
+     * modificateur (le bit de la légende).
+     *
+     * @return les cinq entiers par jeton, dans l'ordre du texte
+     */
+    private List<Integer> semanticData() {
+        Map<Integer, Integer> kindAt = new HashMap<>();
+        Map<String, Integer> kindOfWord = new HashMap<>();
+        for (int[] declaration : declarations()) {
+            kindAt.put(declaration[0], declaration[2]);
+            kindOfWord.put(text.substring(declaration[0], declaration[1]),
+                    declaration[2]);
+        }
+        List<Integer> data = new ArrayList<>();
+        int tokenLine = 0;
+        int tokenChar = 0;
+        int at = 0;
+        while (at < text.length()) {
+            if (wordBreak(text.charAt(at))) {
+                at++;
+                continue;
+            }
+            int start = at;
+            while (at < text.length() && !wordBreak(text.charAt(at))) {
+                at++;
+            }
+            String word = text.substring(start, at);
+            if (Character.isDigit(word.charAt(0))) {
+                continue; // le littéral demeure au lexer (la couleur locale)
+            }
+            Position position = positionOf(start);
+            data.add(position.getLine() - tokenLine);
+            data.add(position.getLine() == tokenLine
+                    ? position.getCharacter() - tokenChar
+                    : position.getCharacter());
+            data.add(word.length());
+            data.add(tokenTypeOf(word, kindOfWord.get(word)));
+            data.add(kindAt.containsKey(start) ? 1 : 0);
+            tokenLine = position.getLine();
+            tokenChar = position.getCharacter();
+        }
+        return data;
+    }
+
+    /**
+     * Le genre d'un jeton à sa légende : le mot-clé de la table, la
+     * fonction (le mot dont la déclaration est une méthode), la
+     * constante (le mot dont la déclaration est un champ final), la
+     * variable autrement.
+     *
+     * @param word        le mot classé
+     * @param declaredKind le genre de sa déclaration, null sans déclaration
+     * @return l'indice du genre dans la légende
+     */
+    private static int tokenTypeOf(String word, Integer declaredKind) {
+        for (String[] keyword : KEYWORDS) {
+            if (keyword[0].equals(word)) {
+                return 0; // « keyword » de la légende
+            }
+        }
+        if (declaredKind != null) {
+            return declaredKind == 1 ? 2 : 3; // « function » ou « constant »
+        }
+        return 1; // « variable » de la légende
+    }
+
+    /**
+     * Les déclarations du texte, dans l'ordre : chaque mot qui y
+     * déclare — le nom de méthode (le mot suivi de parenthèses, la
+     * ligne finit au bloc ouvrant), le nom de champ final (le mot
+     * suivi du signe égal, la ligne porte « final ») — y rend ses
+     * bornes et son genre.
+     *
+     * @return les triplets [début, fin, genre] (1 : méthode, 0 : champ)
+     */
+    private List<int[]> declarations() {
+        List<int[]> found = new ArrayList<>();
+        int at = 0;
+        while (at < text.length()) {
+            if (wordBreak(text.charAt(at))) {
+                at++;
+                continue;
+            }
+            int start = at;
+            while (at < text.length() && !wordBreak(text.charAt(at))) {
+                at++;
+            }
+            int after = at;
+            while (after < text.length() && Character.isWhitespace(text.charAt(after))) {
+                after++;
+            }
+            if (after >= text.length()) {
+                continue;
+            }
+            char follows = text.charAt(after);
+            int lineStart = text.lastIndexOf('\n', start) + 1;
+            int lineEnd = text.indexOf('\n', start);
+            if (lineEnd < 0) {
+                lineEnd = text.length();
+            }
+            String line = text.substring(lineStart, lineEnd).trim();
+            if (follows == '(' && line.endsWith("{") && line.indexOf('(') >= 0
+                    && line.indexOf(')') >= 0) {
+                found.add(new int[]{start, at, 1});
+            } else if (follows == '=' && line.contains("final") && line.endsWith(";")) {
+                found.add(new int[]{start, at, 0});
+            }
+        }
+        return found;
     }
 
     /**

@@ -19,16 +19,20 @@ import jo.pigma.editor.selection.SelectionState;
 import jo.pigma.lsp.LspCapabilities;
 import jo.pigma.lsp.LspCodeAction;
 import jo.pigma.lsp.LspDiagnostic;
+import jo.pigma.lsp.LspDocumentSymbol;
+import jo.pigma.lsp.LspFoldingRange;
+import jo.pigma.lsp.LspInlayHint;
 import jo.pigma.lsp.LspLocation;
 import jo.pigma.lsp.LspPosition;
 import jo.pigma.lsp.LspRange;
+import jo.pigma.lsp.LspSemanticToken;
 import jo.pigma.lsp.LspSession;
 import jo.pigma.lsp.LspTextEdit;
 
 /**
  * La façade du serveur de langage : l'hôte n'a plus RIEN à câbler.
- * L'étude de la référence (le module {@code editor-lsp} de Sora
- * editor) y a porté sa leçon — là-bas, {@code LspEditor} attache le
+ * L'étude de l'éditeur de référence (son module d'intégration) y a
+ * porté sa leçon — là-bas, une façade pareille attache le
  * serveur à la vue, porte la synchronisation du document, les
  * fournisseurs et leurs caches ; l'hôte de la référence pose la vue,
  * branche, écrit. Ici pareillement : {@link #attach(EditorView)}
@@ -53,7 +57,7 @@ import jo.pigma.lsp.LspTextEdit;
  * Une liaison neuve se branche à la même vue sans frais.</p>
  *
  * <p>LES FONCTIONS DU PROTOCOLE y vivent aussi (la leçon de la
- * référence — la façade de Sora editor y porte le renommage,
+ * référence — sa façade y porte le renommage,
  * l'aller-à, les références, le formatage) : l'ampoule de la
  * gouttière les porte APRÈS les intentions de l'hôte ({@link #attach}
  * y pose le fournisseur du serveur — l'hôte n'a RIEN à câbler), le
@@ -184,6 +188,18 @@ public final class LspEditor {
     /** Le report du changement de document vers le serveur (la synchronisation intégrale s'amortit). */
     private final Runnable documentSync = this::pushDocumentToServer;
 
+    /**
+     * La génération de la pompe du document (le document change : les
+     * réponses en vol des quatre fonctions du document se périment).
+     */
+    private final AtomicLong documentViewsGeneration = new AtomicLong();
+
+    /**
+     * Les symboles du dernier avis du serveur (la table des matières
+     * du document — l'ampoule la porte à sa carte).
+     */
+    private volatile List<LspDocumentSymbol> symbols = List.of();
+
     /** L'écouteur du tampon : chaque édition reprogramme l'envoi du document. */
     private final TextListener textListener = new TextListener() {
         @Override
@@ -273,6 +289,10 @@ public final class LspEditor {
             view.post(() -> {
                 view.setServerHighlights(List.of());
                 scheduleHighlightSync();
+                // la pompe du document y démarre : les symboles, les
+                // indices, les plis, les jetons sémantiques décrivent
+                // le document — pas le curseur
+                refreshDocumentViews();
             });
         });
         liaison.didOpen(uri, view.getBuffer().toString(), languageId);
@@ -312,6 +332,13 @@ public final class LspEditor {
         view.setDiagnosticProvider(null);
         view.setServerQuickActionProvider(null);
         view.setServerHighlights(List.of());
+        // la couverture du document se range pareillement : les
+        // indices, les plis, les jetons sémantiques du serveur mort
+        // ne valent plus rien
+        documentViewsGeneration.incrementAndGet();
+        view.setInlayHints(List.of());
+        view.setServerFoldRegions(List.of());
+        view.setServerSemantics(List.of());
         resetProviders();
         capabilities = LspCapabilities.NONE;
         session.shutdown();
@@ -611,6 +638,10 @@ public final class LspEditor {
         if (capabilities.formatting()) {
             actions.add(new QuickActionCard.Entry(
                     "Formater le document", this::formatDocument));
+        }
+        if (capabilities.documentSymbol()) {
+            actions.add(new QuickActionCard.Entry(
+                    "Les symboles du document", this::showSymbolsCard));
         }
         if (capabilities.codeAction()) {
             actions.addAll(codeActionsAt(line));
@@ -972,6 +1003,10 @@ public final class LspEditor {
             // demande amortie en repose des fraîches quand le serveur sait
             view.setServerHighlights(List.of());
             scheduleHighlightSync();
+            // la pompe du document suit la synchronisation : les
+            // symboles, les indices, les plis, les jetons sémantiques
+            // décrivent le document d'APRÈS
+            refreshDocumentViews();
             view.post(view::invalidate);
         }
     }
@@ -996,5 +1031,93 @@ public final class LspEditor {
         // plages du protocole vivent dans le document d'avant)
         codeActionsLine = -1;
         codeActionsCache.clear();
+        // les symboles d'avant ne valent plus non plus (la pompe du
+        // document reposera les frais)
+        documentViewsGeneration.incrementAndGet();
+        symbols = List.of();
+    }
+
+    /**
+     * La pompe du document : les quatre fonctions du document — les
+     * symboles (la table des matières), les indices (l'étiquette au
+     * bout des lignes), les plis (les régions repliables), les jetons
+     * sémantiques (la coloration du serveur) — se redemandent à
+     * chaque synchronisation (elles décrivent le document, pas le
+     * curseur) ; la génération avance, les réponses d'avant se
+     * périment à l'arrivée.
+     */
+    private void refreshDocumentViews() {
+        if (session == null || uri == null) {
+            return;
+        }
+        final long generation = documentViewsGeneration.incrementAndGet();
+        if (capabilities.documentSymbol()) {
+            session.documentSymbol(uri).whenComplete((answer, failure) ->
+                    view.post(() -> {
+                        if (generation == documentViewsGeneration.get()) {
+                            symbols = answer == null ? List.of() : answer;
+                            view.post(view::invalidate);
+                        }
+                    }));
+        }
+        if (capabilities.inlayHint()) {
+            session.inlayHints(uri, wholeDocumentRange()).whenComplete((answer, failure) ->
+                    view.post(() -> {
+                        if (generation == documentViewsGeneration.get()) {
+                            view.setInlayHints(answer);
+                        }
+                    }));
+        }
+        if (capabilities.foldingRange()) {
+            session.foldingRanges(uri).whenComplete((answer, failure) ->
+                    view.post(() -> {
+                        if (generation == documentViewsGeneration.get()) {
+                            view.setServerFoldRegions(answer);
+                        }
+                    }));
+        }
+        if (capabilities.semanticTokens()) {
+            session.semanticTokens(uri).whenComplete((answer, failure) ->
+                    view.post(() -> {
+                        if (generation == documentViewsGeneration.get()) {
+                            view.setServerSemantics(answer);
+                        }
+                    }));
+        }
+    }
+
+    /**
+     * La plage du document entier (la question des indices — le
+     * protocole y interroge une plage, la façade y pose tout).
+     *
+     * @return la plage du document entier
+     */
+    private LspRange wholeDocumentRange() {
+        TextBuffer buffer = view.getBuffer();
+        return new LspRange(
+                LspPosition.ofOffset(buffer, 0),
+                LspPosition.ofOffset(buffer, buffer.length()));
+    }
+
+    /**
+     * La carte des symboles du document : l'ampoule y ouvre la table
+     * des matières — chaque rangée porte le nom et sa ligne, le
+     * choix y fait sauter le curseur à la sélection du symbole (la
+     * façon du panneau de structure de l'atelier).
+     */
+    private void showSymbolsCard() {
+        if (symbols.isEmpty()) {
+            sayAtCaret("aucun symbole (le serveur n'a rien dit)");
+            return;
+        }
+        List<QuickActionCard.Entry> rows = new ArrayList<>();
+        for (LspDocumentSymbol symbol : symbols) {
+            rows.add(new QuickActionCard.Entry(
+                    symbol.name() + " · ligne "
+                            + (symbol.selectionRange().start().line() + 1),
+                    () -> view.caretTo(offsetOf(view.getBuffer(),
+                            symbol.selectionRange().start()))));
+        }
+        view.openQuickActions(rows);
     }
 }

@@ -31,7 +31,12 @@ import org.eclipse.lsp4j.DefinitionParams;
 import org.eclipse.lsp4j.DocumentFormattingParams;
 import org.eclipse.lsp4j.DocumentHighlight;
 import org.eclipse.lsp4j.DocumentHighlightParams;
+import org.eclipse.lsp4j.DocumentSymbolParams;
+import org.eclipse.lsp4j.FoldingRange;
+import org.eclipse.lsp4j.FoldingRangeRequestParams;
 import org.eclipse.lsp4j.FormattingOptions;
+import org.eclipse.lsp4j.InlayHint;
+import org.eclipse.lsp4j.InlayHintParams;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
@@ -53,9 +58,14 @@ import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.ReferenceContext;
 import org.eclipse.lsp4j.ReferenceParams;
 import org.eclipse.lsp4j.RenameParams;
+import org.eclipse.lsp4j.SemanticTokens;
+import org.eclipse.lsp4j.SemanticTokensLegend;
+import org.eclipse.lsp4j.SemanticTokensParams;
+import org.eclipse.lsp4j.SemanticTokensWithRegistrationOptions;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.ShowMessageRequestParams;
 import org.eclipse.lsp4j.SignatureHelpParams;
+import org.eclipse.lsp4j.SymbolInformation;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TextDocumentItem;
@@ -135,6 +145,16 @@ public final class LspSession {
      * l'initialisation l'a rempli — NONE avant).
      */
     private volatile LspCapabilities capabilities = LspCapabilities.NONE;
+
+    /**
+     * La légende des jetons sémantiques du serveur (les genres et les
+     * modificateurs, dans l'ordre des indices de la réponse) — la
+     * négociation de l'initialisation la remplit.
+     */
+    private volatile List<String> semanticTokenTypes = List.of();
+
+    /** Les modificateurs de la légende des jetons sémantiques. */
+    private volatile List<String> semanticTokenModifiers = List.of();
 
     /**
      * L'ombre du dernier texte synchronisé par document : la base du
@@ -253,9 +273,34 @@ public final class LspSession {
         return launcher.getRemoteProxy().initialize(params).thenApply(result -> {
             incrementalSync = declaresIncrementalSync(result);
             capabilities = LspCapabilities.fromResult(result);
+            captureSemanticLegend(result);
             launcher.getRemoteProxy().initialized(new InitializedParams());
             return result;
         });
+    }
+
+    /**
+     * La légende des jetons sémantiques de la réponse (les indices de
+     * la réponse s'y traduisent en noms — le décodage s'y nourrit).
+     *
+     * @param result la réponse d'initialisation
+     */
+    private void captureSemanticLegend(InitializeResult result) {
+        if (result == null || result.getCapabilities() == null) {
+            return;
+        }
+        SemanticTokensWithRegistrationOptions provider =
+                result.getCapabilities().getSemanticTokensProvider();
+        if (provider == null || provider.getLegend() == null) {
+            return;
+        }
+        SemanticTokensLegend legend = provider.getLegend();
+        if (legend.getTokenTypes() != null) {
+            semanticTokenTypes = List.copyOf(legend.getTokenTypes());
+        }
+        if (legend.getTokenModifiers() != null) {
+            semanticTokenModifiers = List.copyOf(legend.getTokenModifiers());
+        }
     }
 
     /**
@@ -670,6 +715,77 @@ public final class LspSession {
                 new FormattingOptions(tabSize, insertSpaces));
         return launcher.getRemoteProxy().getTextDocumentService()
                 .formatting(params).thenApply(LspSession::textEditsOf);
+    }
+
+    /**
+     * Demande les symboles du document ({@code textDocument/
+     * documentSymbol}) : la table des matières du document — les deux
+     * formes du protocole y rentrent (le symbole riche ou
+     * l'information à plat).
+     *
+     * @param uri le document interrogé
+     * @return le futur des symboles, jamais null (vide : aucun, ou le
+     *         serveur ne sait pas)
+     */
+    public CompletableFuture<List<LspDocumentSymbol>> documentSymbol(String uri) {
+        DocumentSymbolParams params = new DocumentSymbolParams(
+                new TextDocumentIdentifier(uri));
+        return launcher.getRemoteProxy().getTextDocumentService()
+                .documentSymbol(params).thenApply(LspDocumentSymbol::fromAnswer);
+    }
+
+    /**
+     * Demande les plis du document ({@code textDocument/
+     * foldingRange}) : le serveur y dit quelles plages de lignes se
+     * replient — le lexer en tient déjà localement, le serveur en
+     * porte d'autres (les siens).
+     *
+     * @param uri le document interrogé
+     * @return le futur des plis, jamais null (vide : aucun)
+     */
+    public CompletableFuture<List<LspFoldingRange>> foldingRanges(String uri) {
+        FoldingRangeRequestParams params = new FoldingRangeRequestParams(
+                new TextDocumentIdentifier(uri));
+        return launcher.getRemoteProxy().getTextDocumentService()
+                .foldingRange(params).thenApply(LspFoldingRange::fromLsp);
+    }
+
+    /**
+     * Demande les indices à poser dans le texte ({@code textDocument/
+     * inlayHint}) sur une plage donnée (le document entier à
+     * l'ordinaire) : le serveur y rend les étiquettes à dessiner dans
+     * la ligne — le texte n'en bouge pas.
+     *
+     * @param uri   le document interrogé
+     * @param range la plage interrogée (le document entier)
+     * @return le futur des indices, jamais null (vide : aucun)
+     */
+    public CompletableFuture<List<LspInlayHint>> inlayHints(String uri, LspRange range) {
+        InlayHintParams params = new InlayHintParams(
+                new TextDocumentIdentifier(uri), range.toLsp());
+        return launcher.getRemoteProxy().getTextDocumentService()
+                .inlayHint(params).thenApply(LspInlayHint::fromLsp);
+    }
+
+    /**
+     * Demande les jetons sémantiques du document ({@code textDocument/
+     * semanticTokens/full}) : l'encodage relatif s'y décode à la
+     * légende de la négociation (les indices y deviennent des noms —
+     * « variable », « function »…).
+     *
+     * @param uri le document interrogé
+     * @return le futur des jetons, jamais null (vide : aucun, ou le
+     *         serveur ne sait pas)
+     */
+    public CompletableFuture<List<LspSemanticToken>> semanticTokens(String uri) {
+        SemanticTokensParams params = new SemanticTokensParams(
+                new TextDocumentIdentifier(uri));
+        return launcher.getRemoteProxy().getTextDocumentService()
+                .semanticTokensFull(params).thenApply(answer -> {
+                    List<Integer> data = answer == null ? null : answer.getData();
+                    return LspSemanticToken.decode(data, semanticTokenTypes,
+                            semanticTokenModifiers);
+                });
     }
 
     /**
