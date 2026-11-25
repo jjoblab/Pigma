@@ -2,6 +2,8 @@ package jo.pigma.editor;
 
 import jo.pigma.editor.folding.FoldBounds;
 import jo.pigma.editor.folding.FoldModel;
+import jo.pigma.editor.folding.StructureGuides;
+import jo.pigma.editor.folding.StructureGuides.Guide;
 import jo.pigma.editor.gutter.Gutter;
 import jo.pigma.editor.input.EditorContract;
 import jo.pigma.editor.input.EditorInputConnection;
@@ -109,6 +111,13 @@ public final class EditorView extends View {
 
     /** Colonnes par niveau d'indentation (les guides de L2). */
     private static final int GUIDE_COLUMNS = 4;
+
+    /**
+     * L'ombre de structure des guides (l'alpha porte la discrétion —
+     * le guide aligne, il ne lit pas : l'encre du texte reste seule
+     * à parler).
+     */
+    private static final int GUIDE_SHADOW_COLOR = 0x2B808080;
 
     /** Plans partagés par contenu, au-delà le plus ancien s'évince. */
     private static final int SHARED_PLANS = 256;
@@ -590,7 +599,7 @@ public final class EditorView extends View {
         bracketPaint.setStrokeWidth(dp(1) * 1.5f);
         bracketPaint.setColor(CARET_COLOR);
         guidePaint.setStrokeWidth(dp(1));
-        guidePaint.setColor(0x33808080);
+        guidePaint.setColor(GUIDE_SHADOW_COLOR);
         scopePaint.setStyle(Paint.Style.FILL);
         scopePaint.setColor(0x0D2962FF);
         handlePaint.setStyle(Paint.Style.FILL);
@@ -623,6 +632,8 @@ public final class EditorView extends View {
         diagnosticCard = new DiagnosticCard(dp(1));
         quickActionCard = new QuickActionCard(dp(1));
         gutter = new Gutter(dp(1));
+        // le panneau de la gouttière part à la teinte du fond courant
+        gutter.setPanelColor(themeBackground);
         inputContract = createInputContract();
         trackedLineCount = buffer.getLineCount();
         buffer.addListener(modelListener);
@@ -653,6 +664,17 @@ public final class EditorView extends View {
      */
     public float getTextSizeSp() {
         return textPx / getResources().getDisplayMetrics().scaledDensity;
+    }
+
+    /**
+     * Le facteur de zoom de la gouttière (le harnais le lit) : le
+     * corps des numéros suit le pincement — facteur 1 au corps de
+     * repos de 14 sp.
+     *
+     * @return le facteur de zoom courant de la gouttière
+     */
+    public float gutterTextZoom() {
+        return gutter.textZoom();
     }
 
     /**
@@ -723,6 +745,12 @@ public final class EditorView extends View {
         textPx = clamped;
         textPaint.setTextSize(clamped);
         inlayPaint.setTextSize(clamped * 0.85f);
+        // la gouttière suit le zoom : les numéros s'agrandissent au
+        // pincement comme le corps (le facteur porte le corps courant
+        // sur le corps de repos de 14 sp)
+        if (gutter != null) {
+            gutter.setTextZoom(clamped / (14.0f * scaledDensity));
+        }
         fontMetrics = textPaint.getFontMetrics();
         charWidth = textPaint.measureText("M");
         lineHeight = (float) Math.ceil(fontMetrics.bottom - fontMetrics.top) + dp(2);
@@ -1490,7 +1518,17 @@ public final class EditorView extends View {
         int luminance = ((newBackground >>> 16) & 0xFF) * 30
                 + ((newBackground >>> 8) & 0xFF) * 59
                 + (newBackground & 0xFF) * 11;
-        gutter.setTextColor(luminance >= 12800 ? 0xFF8A8A8E : 0xFF8E8E93);
+        boolean dark = luminance < 12800;
+        gutter.setTextColor(dark ? 0xFF8E8E93 : 0xFF8A8A8E);
+        // le panneau de la gouttière se teinte au fond du thème (la
+        // translucence y vit — le texte se lit dessous)
+        gutter.setPanelColor(newBackground);
+        // les popups suivent le thème : les encres claires d'un style
+        // d'hôte posé sur un fond clair deviendraient illisibles au
+        // fond sombre — le style se RECALE (le fond des cartes prend
+        // le fond du thème, translucide ; les encres s'inversent) en
+        // gardant les tailles et la forme que l'hôte y a posées
+        setPopupStyle(restylePopupForTheme(popupStyle, newBackground, dark));
         theme = newTheme;
         themeBackground = newBackground;
         // les plans portent des couleurs résolues : re-rendu, jamais
@@ -1500,6 +1538,45 @@ public final class EditorView extends View {
         loupeLine = null;
         loupeLineIndex = -1;
         invalidate();
+    }
+
+    /**
+     * Le style des popups recalé au fond du thème : le fond des
+     * cartes en prend la teinte (translucide — la vue se lit dessous),
+     * les encres s'inversent au fond sombre, l'accent s'y calme ; les
+     * tailles, hauteurs et la forme restent celles de l'hôte (le
+     * style ne porte que des couleurs ici).
+     *
+     * @param base       le style courant (celui de l'hôte ou le recalé)
+     * @param background le fond du thème posé
+     * @param dark       vrai quand le fond est sombre
+     * @return le style recalé, jamais null
+     */
+    private static PopupStyle restylePopupForTheme(PopupStyle base,
+            int background, boolean dark) {
+        // le fond des cartes : la teinte du thème, translucide à 91
+        // pour cent (l'opacité par défaut des cartes)
+        int cardBackground = (background & 0x00FFFFFF) | 0xE8000000;
+        int cardBorder = dark ? 0xC83A3A40 : 0xC8B5B5B5;
+        PopupStyle.Builder builder = PopupStyle.builder()
+                .backgroundArgb(cardBackground)
+                .borderArgb(cardBorder)
+                .textArgb(dark ? 0xFFE8EAED : 0xFF202124)
+                .hintArgb(dark ? 0xFF9AA0A6 : 0xFF80868B)
+                .secondaryArgb(dark ? 0xFFBDC1C6 : 0xFF5F6368)
+                .accentArgb(dark ? 0xFF8AB4F8 : 0xFF1A73E8)
+                .errorArgb(dark ? 0xFFF28B82 : 0xFFD93025)
+                .warningArgb(dark ? 0xFFFDD663 : 0xFFF9AB00)
+                .lightbulbArgb(dark ? 0xFFFDD663 : 0xFFF5C518);
+        return builder
+                .textSizeSp(base.textSizeSp())
+                .secondarySizeSp(base.secondarySizeSp())
+                .rowHeightDp(base.rowHeightDp())
+                .headerHeightDp(base.headerHeightDp())
+                .minCardWidthDp(base.minCardWidthDp())
+                .maxCardWidthDp(base.maxCardWidthDp())
+                .cornerRadiusDp(base.cornerRadiusDp())
+                .build();
     }
 
     /**
@@ -3243,6 +3320,11 @@ public final class EditorView extends View {
      */
     private void drawGutter(Canvas canvas, int first, int last, int count) {
         float markerCx = dp(12);
+        // le panneau d'abord : le fond translucide et l'ombre
+        // d'élévation (la gouttière flotte au-dessus du texte — les
+        // numéros et marqueurs s'y dessinent dessus)
+        gutter.drawPanel(canvas, 0.0f, getHeight(),
+                getPaddingLeft() - dp(8));
         int caretLine = caretLine();
         for (int line = first; line <= last && line < count; line++) {
             if (isHidden(line)) {
@@ -3289,9 +3371,14 @@ public final class EditorView extends View {
 
     /**
      * Dessine la structure de L2 par-dessus les plans : les guides
-     * d'indentation (un trait par niveau de profondeur, la chaîne
-     * d'appariement — pas les espaces), le marqueur de pli dans la
-     * gouttière, et le surlignage de la paire du curseur.
+     * VERTICAUX DES BLOCS (un trait par accolade appariée — à la
+     * colonne de l'ouvrante, de la ligne après l'ouvrante à la ligne
+     * avant la fermante : le fil relie les accolades), le marqueur
+     * de pli dans la gouttière, et le surlignage de la paire du
+     * curseur. La PORTÉE ACTIVE s'y met en évidence : le guide du
+     * bloc qui contient le caret (et celui de l'accolade appariée
+     * qu'il touche) se trace à l'encre du curseur, un peu plus
+     * épais — les autres restent une ombre de structure.
      */
     private void drawStructure(Canvas canvas, int first, int last, int count) {
         for (int line = first; line <= last && line < count; line++) {
@@ -3302,24 +3389,8 @@ public final class EditorView extends View {
             if (opens) {
                 drawFoldMarker(canvas, line, folds.isFolded(line));
             }
-            // le niveau ne guide que s'il couvre TOUTE la ligne : le fil
-            // s'arrête UNE LIGNE AVANT le fermant, et ne commence
-            // qu'APRÈS la ligne de l'ouvrant
-            int depthIn = line == 0 ? 0 : structure.structureOf(line - 1).depthOut();
-            int guides = Math.min(depthIn, structure.structureOf(line).depthOut());
-            if (guides <= 0) {
-                continue;
-            }
-            float baseline = lineBaseline(line);
-            float top = baseline + fontMetrics.top;
-            float bottom = baseline + fontMetrics.bottom;
-            float left = getPaddingLeft();
-            for (int level = 1; level <= guides; level++) {
-                // un guide par bande de 4 colonnes, centré sur la bande
-                float x = left + (GUIDE_COLUMNS * level - 2) * charWidth;
-                canvas.drawLine(x, top, x, bottom, guidePaint);
-            }
         }
+        drawBlockGuides(canvas, first, last, count);
         if (bracketPair == null) {
             return;
         }
@@ -3327,6 +3398,74 @@ public final class EditorView extends View {
                 bracketPair.fromColumn());
         highlightPairEnd(canvas, first, last, bracketPair.toLine(),
                 bracketPair.toColumn());
+    }
+
+    /**
+     * Les guides verticaux des blocs : la table des guides se bâtit
+     * sur la fenêtre visible élargie (collée à la révision courante —
+     * une table périmée ne s'y trace jamais), chaque guide se tire
+     * de la ligne SOUS l'ouvrante à la ligne SUR la fermante, les
+     * lignes cachées par un pli ne l'élargissent pas. Le guide de la
+     * portée active (le bloc du caret) s'illumine à l'encre du
+     * curseur.
+     */
+    private void drawBlockGuides(Canvas canvas, int first, int last,
+            int count) {
+        if (structure == null) {
+            return;
+        }
+        StructureGuides table = StructureGuides.of(buffer, syntax, structure,
+                first, Math.min(last, count - 1));
+        if (table.size() == 0) {
+            return;
+        }
+        int caretLine = caretLine();
+        int caretColumn = selection.caret() - buffer.getLineStart(caretLine);
+        int[] active = table.activeGuides(caretLine, caretColumn);
+        float left = getPaddingLeft();
+        float windowTop = getPaddingTop() - scrollY;
+        float windowBottom = windowTop + visibleLineCount() * lineHeight;
+        float accentWidth = Math.max(2.0f, charWidth * 0.11f);
+        float shadowWidth = Math.max(1.0f, charWidth * 0.06f);
+        guidePaint.setStrokeWidth(shadowWidth);
+        guidePaint.setColor(GUIDE_SHADOW_COLOR);
+        for (int at = 0; at < table.size(); at++) {
+            Guide guide = table.guide(at);
+            // les lignes cachées par un pli ne guident pas : la
+            // hauteur visible de l'ouvrant décide du départ
+            int fromVisible = visibleIndexOf(guide.openingLine());
+            int toVisible = visibleIndexOf(guide.closingLine());
+            float top = getPaddingTop() + (fromVisible + 1) * lineHeight
+                    - scrollY;
+            float bottom = getPaddingTop() + toVisible * lineHeight - scrollY;
+            top = Math.max(top, windowTop);
+            bottom = Math.min(bottom, windowBottom);
+            if (bottom <= top) {
+                continue;
+            }
+            float x = left + guide.column() * charWidth;
+            if (contains(active, at)) {
+                guidePaint.setStrokeWidth(accentWidth);
+                guidePaint.setColor(CARET_COLOR);
+            } else {
+                guidePaint.setStrokeWidth(shadowWidth);
+                guidePaint.setColor(GUIDE_SHADOW_COLOR);
+            }
+            canvas.drawLine(x, top, x, bottom, guidePaint);
+        }
+        // les réglages d'ombre reviennent (le pinceau se partage)
+        guidePaint.setStrokeWidth(shadowWidth);
+        guidePaint.setColor(GUIDE_SHADOW_COLOR);
+    }
+
+    /** Le tableau contient-il la valeur. */
+    private static boolean contains(int[] table, int value) {
+        for (int item : table) {
+            if (item == value) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -3613,14 +3752,16 @@ public final class EditorView extends View {
      * Dessine la ligne depuis son plan de rendu : le plan se valide par
      * identité d'entrée (aucune lecture de texte sur le chemin rapide),
      * se partage par contenu (les lignes identiques ne cuisent qu'une
-     * fois) et porte les couleurs résolues.
+     * fois — l'étiquette de fusion y entre : deux lignes de même texte
+     * aux couches sémantiques différentes ne partagent pas un plan) et
+     * porte les couleurs résolues.
      */
     private void drawTokens(Canvas canvas, int line, int start, float baseline) {
         long engineBegin = System.nanoTime();
         SyntaxDocument.LineTokens entry = syntax.lineTokens(line);
         lastFrameEngineNanos += System.nanoTime() - engineBegin;
         int lineEnd = buffer.getLineEnd(line);
-        LinePlan plan = renderCache.frame(line, entry,
+        LinePlan plan = renderCache.frame(line, entry, fusionLabel(line),
                 () -> buffer.getText(start, lineEnd), this::bakeLine);
         String[] texts = plan.texts();
         int[] colors = plan.colors();
@@ -3635,6 +3776,36 @@ public final class EditorView extends View {
             canvas.drawText(texts[at], left + xs[at], baseline, textPaint);
         }
         textPaint.setFakeBoldText(false);
+    }
+
+    /**
+     * L'étiquette de fusion d'une ligne : ce que les couches au-dessus
+     * du lexer (L3 les annotations, L4 les jetons du serveur) y disent
+     * — la clé de partage du cache s'en scelle. Deux lignes de même
+     * texte ne partagent un plan QUE si leurs couches y disent la
+     * même chose (la ligne sans jeton serveur garde la couleur du
+     * lexer, sa jumelle couverte prend la sienne). L'étiquette se
+     * bâtit sans allocation courante : un entier mixte (le compte des
+     * annotations, l'empreinte des jetons du serveur de la ligne).
+     *
+     * @param line l'indice de la ligne
+     * @return l'étiquette, la chaîne vide sans aucune couche
+     */
+    private String fusionLabel(int line) {
+        boolean served = false;
+        if (!serverSemantics.isEmpty()) {
+            for (LspSemanticToken token : serverSemantics) {
+                if (token.range().start().line() == line) {
+                    served = true;
+                    break;
+                }
+            }
+        }
+        int notes = semantic == null ? 0 : semantic.annotationsAt(line).size();
+        if (!served && notes == 0) {
+            return "";
+        }
+        return (served ? "s" : "-") + notes;
     }
 
     /**
@@ -3705,8 +3876,12 @@ public final class EditorView extends View {
             // couvre le span y porte sa couleur (le genre à la palette),
             // la déclaration y porte le gras ; un genre sans nature
             // dans la palette laisse la couleur d'avant (la chaîne
-            // ouverte ne casse jamais le rendu)
-            if (!serverSemantics.isEmpty()) {
+            // ouverte ne casse jamais le rendu). La règle de L3 y vit
+            // aussi : SEUL un neutre se recolore — le serveur de démo
+            // dit un jeton par mot du texte brut, les mots des
+            // commentaires et des chaînes n'y changent pas la couleur
+            // locale (la fusion ne casse pas la coloration)
+            if (scope == null && !serverSemantics.isEmpty()) {
                 for (LspSemanticToken served : serverSemantics) {
                     if (served.range().start().line() == line
                             && served.range().start().character() < endColumn

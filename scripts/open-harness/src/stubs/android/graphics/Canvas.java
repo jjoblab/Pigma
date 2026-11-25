@@ -155,6 +155,16 @@ public final class Canvas {
     }
 
     /**
+     * Peint un rectangle (les bornes en objet réutilisé).
+     *
+     * @param rect  le rectangle
+     * @param paint pinceau
+     */
+    public void drawRect(RectF rect, Paint paint) {
+        drawRect(rect.left, rect.top, rect.right, rect.bottom, paint);
+    }
+
+    /**
      * Peint un cercle (une poignée de sélection par exemple).
      *
      * @param cx      abscisse du centre

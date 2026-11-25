@@ -3,6 +3,7 @@ package jo.pigma.editor.gutter;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.RectF;
 
 import jo.pigma.editor.popups.PopupStyle;
 
@@ -17,10 +18,23 @@ import jo.pigma.editor.popups.PopupStyle;
  * baseline de la ligne, les bords du champ des numéros et de la
  * colonne des marqueurs.
  *
+ * <p>La gouttière porte son ÉCRAN à elle : le fond translucide du
+ * thème (l'alpha porte la translucence — le texte s'y lit dessous)
+ * et le filet de bord qui la sépare du corps, une petite ombre
+ * portée au bord droit (l'élévation du panneau flottant — la
+ * gouttière flotte au-dessus du texte, comme une carte). Le panneau
+ * se peint AVANT les numéros, à la trame, sur toute la hauteur de
+ * la fenêtre visible.</p>
+ *
  * <p>Au-delà de quatre chiffres le numéro se tronque honnêtement (les
  * trois derniers, précédés d'une ellipse) : la gouttière ne s'élargit
  * pas avec le document, la mise en page ne reflow pas au millième
  * numéro.</p>
+ *
+ * <p>Le corps des numéros SUIT LE ZOOM : le pincement qui agrandit le
+ * texte y agrandit la gouttière pareillement (le facteur du corps
+ * courant sur le corps de repos — la gouttière reste à l'échelle de
+ * la lecture, pas de l'écran).</p>
  */
 public final class Gutter {
 
@@ -41,16 +55,43 @@ public final class Gutter {
     /** Le côté d'un marqueur (dp). */
     private static final int MARKER_SIDE_DP = 18;
 
+    /** Le corps de repos des numéros (dp). */
+    private static final float NUMBER_SIZE_DP = 12.0f;
+
+    /** L'alpha du panneau de la gouttière (60 pour cent). */
+    private static final float PANEL_ALPHA = 0.60f;
+
+    /** La largeur de l'ombre d'élévation au bord droit (dp). */
+    private static final int SHADOW_WIDTH_DP = 6;
+
+    /** Les marches de l'ombre (le dégradé de l'élévation). */
+    private static final int SHADOW_STEPS = 4;
+
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private final Paint markerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private final Paint markerGlyph = new Paint(Paint.ANTI_ALIAS_FLAG);
 
+    /** Le panneau : le fond translucide de la gouttière. */
+    private final Paint panelPaint = new Paint();
+
+    /** Le filet du bord droit du panneau. */
+    private final Paint panelBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** L'ombre d'élévation, une marche par trait. */
+    private final Paint shadowPaint = new Paint();
+
+    /** Le rectangle du panneau, réutilisé à la trame (aucune allocation). */
+    private final RectF panelRect = new RectF();
+
     /** Le style des popups porte les teintes des marqueurs. */
     private PopupStyle style = PopupStyle.defaults();
 
     private float density = 1.0f;
+
+    /** Le facteur de zoom courant (1 : le corps de repos). */
+    private float zoom = 1.0f;
 
     /**
      * Une gouttière neuve, son pinceau propre.
@@ -64,6 +105,11 @@ public final class Gutter {
         markerGlyph.setStyle(Paint.Style.STROKE);
         markerGlyph.setStrokeWidth(1.6f * density);
         markerGlyph.setColor(0xFFFFFFFF);
+        panelPaint.setStyle(Paint.Style.FILL);
+        panelBorder.setStyle(Paint.Style.STROKE);
+        panelBorder.setStrokeWidth(1.0f * density);
+        panelBorder.setColor(0x1F000000);
+        shadowPaint.setStyle(Paint.Style.FILL);
         applyStyle();
     }
 
@@ -75,6 +121,40 @@ public final class Gutter {
      */
     public void setTextColor(int color) {
         paint.setColor(color);
+    }
+
+    /**
+     * Le zoom du corps de l'éditeur : le corps des numéros le suit
+     * (le pincement agrandit le texte, la gouttière y reste à
+     * l'échelle de la lecture — facteur 1 au corps de repos).
+     *
+     * @param factor le facteur de zoom (le corps courant sur le
+     *               corps de repos, jamais négatif)
+     */
+    public void setTextZoom(float factor) {
+        zoom = Math.max(0.5f, factor);
+        paint.setTextSize(NUMBER_SIZE_DP * density * zoom);
+    }
+
+    /**
+     * Le facteur de zoom courant de la gouttière (le harnais le lit).
+     *
+     * @return le facteur (1 : le corps de repos)
+     */
+    public float textZoom() {
+        return zoom;
+    }
+
+    /**
+     * La teinte du panneau de la gouttière : le fond du thème y
+     * devient translucide (l'alpha porte la translucence — le texte
+     * se lit dessous, la gouttière flotte au-dessus du corps).
+     *
+     * @param background le fond du thème courant (ARGB opaque)
+     */
+    public void setPanelColor(int background) {
+        panelPaint.setColor((background & 0x00FFFFFF)
+                | ((int) (PANEL_ALPHA * 255.0f) << 24));
     }
 
     /**
@@ -92,6 +172,35 @@ public final class Gutter {
     private void applyStyle() {
         markerPaint.setStyle(Paint.Style.FILL);
         markerGlyph.setColor(0xFFFFFFFF);
+    }
+
+    /**
+     * Dessine le panneau de la gouttière : le fond translucide, le
+     * filet du bord droit, et l'ombre d'élévation qui le détache du
+     * corps (la gouttière flotte au-dessus du texte — une carte à
+     * gauche de la fenêtre).
+     *
+     * @param canvas le canevas de la trame
+     * @param top    le bord haut de la fenêtre (px écran)
+     * @param bottom le bord bas de la fenêtre (px écran)
+     * @param right  le bord droit du panneau (px écran)
+     */
+    public void drawPanel(Canvas canvas, float top, float bottom,
+            float right) {
+        float left = 0.0f;
+        panelRect.set(left, top, right, bottom);
+        canvas.drawRect(panelRect, panelPaint);
+        // l'élévation : l'ombre se pose en marches décroissantes au
+        // bord droit (un dégradé honnête, sans canevas hors écran)
+        float step = dp(SHADOW_WIDTH_DP) / SHADOW_STEPS;
+        for (int at = 0; at < SHADOW_STEPS; at++) {
+            float edge = right + step * at;
+            int alpha = (int) (36.0f * (SHADOW_STEPS - at) / SHADOW_STEPS);
+            shadowPaint.setColor((alpha << 24) | 0x00000000);
+            canvas.drawRect(edge, top, edge + step, bottom, shadowPaint);
+        }
+        // le filet du bord : la ligne qui sépare la gouttière du corps
+        canvas.drawLine(right, top, right, bottom, panelBorder);
     }
 
     /**

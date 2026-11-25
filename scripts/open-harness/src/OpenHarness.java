@@ -140,6 +140,7 @@ public final class OpenHarness {
         pinchZoom();
         screenRestyle();
         gutterBreakpoints();
+        blockGuides();
         serverPositionsHostile();
         connectionCycle();
         crashJournalCapture();
@@ -185,24 +186,52 @@ public final class OpenHarness {
     private static void themeToggle() {
         begin("thème : bascule sombre sans retokenisation");
         long tokens = editor.getSyntaxDocument().tokenCount();
+        int lightInk = editor.popupStyle().textArgb();
+        int lightCard = editor.popupStyle().backgroundArgb();
         click("Sombre");
         frame();
         check("les jetons ne changent pas à la bascule",
                 editor.getSyntaxDocument().tokenCount() == tokens);
+        // les popups suivent le thème : le fond des cartes prend la
+        // teinte sombre du thème, les encres s'inversent (le style
+        // de l'hôte posé au départ se RECALE, il ne se remplace pas)
+        int darkInk = editor.popupStyle().textArgb();
+        int darkCard = editor.popupStyle().backgroundArgb();
+        check("l'encre des cartes s'inverse au fond sombre",
+                darkInk != lightInk && (darkInk >>> 24) == 0xFF);
+        check("le fond des cartes prend la teinte sombre du thème",
+                darkCard != lightCard
+                        && (darkCard >>> 24) > 0x80);
+        check("la teinte du fond sombre vit dans la carte",
+                (darkCard & 0x00FFFFFF) == (jo.pigma.editor.EditorThemes.DARK_BACKGROUND
+                        & 0x00FFFFFF));
+        // les tailles de l'hôte restent les siennes (le recalage ne
+        // touche qu'aux couleurs)
         click("Clair");
         frame();
         check("les jetons ne changent pas au retour",
                 editor.getSyntaxDocument().tokenCount() == tokens);
+        check("l'encre claire revient au fond clair",
+                editor.popupStyle().textArgb() == lightInk);
         // les quatre palettes de plus y passent : aucune ne
-        // retokenise (le rendu seul se recouvre)
+        // retokenise (le rendu seul se recouvre), chacune recale ses
+        // cartes à sa teinte
         click("Solaire");
         frame();
         check("le thème solaire ne retokenise pas",
                 editor.getSyntaxDocument().tokenCount() == tokens);
+        check("les cartes suivent le solaire (papier chaud)",
+                (editor.popupStyle().backgroundArgb() & 0x00FFFFFF)
+                        == (jo.pigma.editor.EditorThemes.SOLAR_BACKGROUND
+                                & 0x00FFFFFF));
         click("Forêt");
         frame();
         check("le thème forêt ne retokenise pas",
                 editor.getSyntaxDocument().tokenCount() == tokens);
+        check("les cartes suivent la forêt (vert profond)",
+                (editor.popupStyle().backgroundArgb() & 0x00FFFFFF)
+                        == (jo.pigma.editor.EditorThemes.FOREST_BACKGROUND
+                                & 0x00FFFFFF));
         click("Océan");
         frame();
         check("le thème océan ne retokenise pas",
@@ -2724,6 +2753,8 @@ public final class OpenHarness {
         float initial = editor.getTextSizeSp();
         float initialChar = editor.charWidth();
         check("le corps initial se lit en sp", Math.abs(initial - 14.0f) < 0.05f);
+        check("la gouttière part au corps de repos (facteur 1)",
+                Math.abs(editor.gutterTextZoom() - 1.0f) < 0.05f);
         int caret = editor.getCaretOffset();
         // l'écart double : le corps double (la chasse suit)
         pinch(VIEW_WIDTH / 2.0f, VIEW_HEIGHT / 2.0f, 120.0f, 240.0f);
@@ -2731,6 +2762,8 @@ public final class OpenHarness {
         check("l'écart agrandit le corps",
                 editor.getTextSizeSp() > initial + 6.0f);
         check("la chasse suit le corps", editor.charWidth() > initialChar * 1.8f);
+        check("les numéros de la gouttière s'agrandissent au pincement",
+                editor.gutterTextZoom() > 1.8f);
         check("le curseur n'a pas sauté au doigt levé",
                 editor.getCaretOffset() == caret);
         // le rapprochement : le corps revient
@@ -2738,6 +2771,8 @@ public final class OpenHarness {
         frame();
         check("le rapprochement rend le corps",
                 Math.abs(editor.getTextSizeSp() - initial) < 1.0f);
+        check("le rapprochement rend le facteur de la gouttière",
+                Math.abs(editor.gutterTextZoom() - 1.0f) < 0.1f);
         // les bornes de l'hôte : le corps s'y cale
         editor.setZoomBoundsSp(10.0f, 20.0f);
         check("les bornes se posent",
@@ -2835,6 +2870,89 @@ public final class OpenHarness {
         check("le point posé s'y lit", editor.breakpoints().contains(1));
         editor.toggleBreakpoint(1);
         frame();
+    }
+
+    /**
+     * Les guides verticaux des blocs (le fil des accolades) : un
+     * guide par accolade appariée — à la colonne de l'ouvrante, de
+     * la ligne sous l'ouvrante à la ligne sur la fermante. Le fil
+     * de la PORTÉE ACTIVE s'illumine (le bloc du caret et ses
+     * parents), celui des jumelles aussi (le caret sur l'ouvrante
+     * ou la fermante du bloc). L'API publique y lit la table (le
+     * harnais éprouve la géométrie SANS l'écran : la table se
+     * dérive du document, le dessin la trace).
+     */
+    private static void blockGuides() {
+        begin("guides de blocs : le fil des accolades, la portée active");
+        openLanguage("Java", 10_000L);
+        jo.pigma.core.TextBuffer text = editor.getBuffer();
+        jo.pigma.editor.folding.StructureGuides table =
+                jo.pigma.editor.folding.StructureGuides.of(text,
+                        editor.getSyntaxDocument(), structureOf(editor),
+                        0, text.getLineCount() - 1);
+        check("la table porte les trois blocs de la démo",
+                table.size() == 3);
+        // le bloc de la méthode (total) : l'accolade ouvrante à sa
+        // colonne, la fermante à sa ligne — le trait relie les deux
+        boolean methodGuide = false;
+        for (int at = 0; at < table.size(); at++) {
+            jo.pigma.editor.folding.StructureGuides.Guide guide = table.guide(at);
+            // le guide de la méthode : le trait à l'INDENTATION de sa
+            // ligne (4 colonnes), le glyphe ouvrant au-delà
+            if (guide.openingLine() == guide.closingLine() - 5
+                    && guide.column() == 4 && guide.openingColumn() > 20) {
+                methodGuide = true;
+            }
+        }
+        check("le guide de la méthode vit à l'indentation de sa ligne",
+                methodGuide);
+        // les guides ne vivent QUE entre les lignes de la paire : un
+        // guide ne couvre jamais l'ouvrante ni la fermante
+        boolean insideOnly = true;
+        for (int at = 0; at < table.size(); at++) {
+            jo.pigma.editor.folding.StructureGuides.Guide guide = table.guide(at);
+            if (guide.closingLine() <= guide.openingLine()) {
+                insideOnly = false;
+            }
+        }
+        check("un guide couvre des lignes DISTINCTES (jamais l'ouvrante)",
+                insideOnly);
+        // la portée active : le caret au corps de la méthode (AU-DELÀ
+        // du trait de son bloc) — son guide et celui de la classe
+        // s'illuminent (les parents)
+        editor.caretTo(text.getLineStart(14) + 8);
+        frame();
+        int[] active = table.activeGuides(14, 8);
+        check("la portée active illumine le bloc du caret et ses parents",
+                active.length >= 2);
+        detail("guides actifs au corps de la méthode : " + active.length);
+        // les jumelles : le caret SUR la fermante illumine son bloc
+        int methodClosing = -1;
+        for (int at = 0; at < table.size(); at++) {
+            jo.pigma.editor.folding.StructureGuides.Guide guide = table.guide(at);
+            if (guide.openingColumn() > 20 && guide.openingLine() > 0) {
+                methodClosing = guide.closingLine();
+            }
+        }
+        int[] twin = table.activeGuides(methodClosing, 4);
+        check("le caret sur la fermante illumine le bloc jumeau",
+                twin.length >= 1);
+        // la ligne sans bloc ne guide pas : la table au-dessus d'un
+        // document d'une seule ligne ne porte rien
+        editor.setLanguage(jo.pigma.syntax.Languages.JAVA, "int seul = 1;\n");
+        frame();
+        jo.pigma.editor.folding.StructureGuides flat =
+                jo.pigma.editor.folding.StructureGuides.of(editor.getBuffer(),
+                        editor.getSyntaxDocument(), structureOf(editor),
+                        0, 0);
+        check("un document sans bloc ne porte aucun guide", flat.size() == 0);
+        // retour au document de démo (le scénario suivant part propre)
+        openLanguage("Java", 10_000L);
+    }
+
+    /** Le document de structure de l'éditeur (le harnais le lit). */
+    private static jo.pigma.syntax.StructureDocument structureOf(EditorView view) {
+        return view.getStructureDocument();
     }
 
     private static void screenRestyle() {

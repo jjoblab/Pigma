@@ -56,9 +56,9 @@ public class RenderCacheTest {
         RenderCache<String> cache = new RenderCache<>(8);
         Object stamp = new Object();
         Lazy content = new Lazy("val x = 1");
-        String first = cache.frame(0, stamp, content, baker);
+        String first = cache.frame(0, stamp, "", content, baker);
         int servedAfterFirst = content.served;
-        String second = cache.frame(0, stamp, content, baker);
+        String second = cache.frame(0, stamp, "", content, baker);
         assertSame(first, second);
         assertEquals("une seule cuisson", 1, baked);
         assertEquals("le chemin rapide ne resert pas le texte",
@@ -73,8 +73,8 @@ public class RenderCacheTest {
     @Test
     public void sameContentDifferentStampSharesPlan() {
         RenderCache<String> cache = new RenderCache<>(8);
-        String first = cache.frame(0, new Object(), new Lazy("}"), baker);
-        String second = cache.frame(0, new Object(), new Lazy("}"), baker);
+        String first = cache.frame(0, new Object(), "", new Lazy("}"), baker);
+        String second = cache.frame(0, new Object(), "", new Lazy("}"), baker);
         assertSame("deux piles égales... deux lignes égales, même plan", first, second);
         assertEquals(1, baked);
         assertEquals(1, cache.keyHits());
@@ -86,10 +86,34 @@ public class RenderCacheTest {
     @Test
     public void identicalLinesShareOneBake() {
         RenderCache<String> cache = new RenderCache<>(8);
-        String line3 = cache.frame(3, new Object(), new Lazy("    }"), baker);
-        String line7 = cache.frame(7, new Object(), new Lazy("    }"), baker);
+        String line3 = cache.frame(3, new Object(), "", new Lazy("    }"), baker);
+        String line7 = cache.frame(7, new Object(), "", new Lazy("    }"), baker);
         assertSame(line3, line7);
         assertEquals(1, baked);
+    }
+
+    /**
+     * Deux lignes identiques aux couches de fusion DIFFÉRENTES ne
+     * partagent pas : la ligne couverte par un jeton du serveur (ou
+     * une annotation sémantique) garde sa couleur propre — sa jumelle
+     * sans couverture garde celle du lexer. La clé de partage porte
+     * l'étiquette de fusion.
+     */
+    @Test
+    public void sameContentDifferentFusionBakesApart() {
+        RenderCache<String> cache = new RenderCache<>(8);
+        String plain = cache.frame(3, new Object(), "",
+                new Lazy("return total;"), baker);
+        String served = cache.frame(7, new Object(), "s0",
+                new Lazy("return total;"), baker);
+        assertNotSame("l'étiquette de fusion sépare les jumelles", plain, served);
+        assertEquals("chaque couche cuisson sienne", 2, baked);
+        // la même étiquette au même contenu reprend le plan (le
+        // partage vit toujours au sein d'une même couche)
+        String servedAgain = cache.frame(9, new Object(), "s0",
+                new Lazy("return total;"), baker);
+        assertSame(served, servedAgain);
+        assertEquals(2, baked);
     }
 
     /**
@@ -100,9 +124,9 @@ public class RenderCacheTest {
     public void invalidateForcesRebake() {
         RenderCache<String> cache = new RenderCache<>(8);
         Object stamp = new Object();
-        cache.frame(0, stamp, new Lazy("}"), baker);
+        cache.frame(0, stamp, "", new Lazy("}"), baker);
         cache.invalidate();
-        String after = cache.frame(0, stamp, new Lazy("}"), baker);
+        String after = cache.frame(0, stamp, "", new Lazy("}"), baker);
         assertEquals("l'invalidation recuit", 2, baked);
         assertTrue("le plan est une cuisson neuve", after.startsWith("plan<"));
     }
@@ -114,11 +138,11 @@ public class RenderCacheTest {
     @Test
     public void sharedBoundEvictsOldest() {
         RenderCache<String> cache = new RenderCache<>(2);
-        cache.frame(0, new Object(), new Lazy("a"), baker);
-        cache.frame(1, new Object(), new Lazy("b"), baker);
-        cache.frame(2, new Object(), new Lazy("c"), baker);
+        cache.frame(0, new Object(), "", new Lazy("a"), baker);
+        cache.frame(1, new Object(), "", new Lazy("b"), baker);
+        cache.frame(2, new Object(), "", new Lazy("c"), baker);
         assertEquals(3, baked);
-        cache.frame(3, new Object(), new Lazy("a"), baker);
+        cache.frame(3, new Object(), "", new Lazy("a"), baker);
         assertEquals("« a » évincé, il recuit", 4, baked);
     }
 
@@ -130,8 +154,8 @@ public class RenderCacheTest {
     @Test
     public void lineShiftCannotServeAStalePlan() {
         RenderCache<String> cache = new RenderCache<>(8);
-        String before = cache.frame(5, new Object(), new Lazy("x"), baker);
-        String after = cache.frame(5, new Object(), new Lazy("y"), baker);
+        String before = cache.frame(5, new Object(), "", new Lazy("x"), baker);
+        String after = cache.frame(5, new Object(), "", new Lazy("y"), baker);
         assertNotSame(before, after);
         assertEquals(2, baked);
     }
@@ -143,7 +167,7 @@ public class RenderCacheTest {
     @Test
     public void slotsGrowWithTheDocument() {
         RenderCache<String> cache = new RenderCache<>(8);
-        String plan = cache.frame(500, new Object(), new Lazy("loin"), baker);
+        String plan = cache.frame(500, new Object(), "", new Lazy("loin"), baker);
         assertEquals("plan<loin>", plan);
         assertEquals(1, baked);
     }
@@ -157,12 +181,12 @@ public class RenderCacheTest {
     public void throwingSupplierProvesTheLazyContract() {
         RenderCache<String> cache = new RenderCache<>(8);
         Object stamp = new Object();
-        cache.frame(0, stamp, new Lazy("texte"), baker);
+        cache.frame(0, stamp, "", new Lazy("texte"), baker);
         Supplier<CharSequence> bomb = () -> {
             throw new IllegalStateException("le chemin rapide ne lit pas le texte");
         };
         int bakesBefore = baked;
-        String fast = cache.frame(0, stamp, bomb, baker);
+        String fast = cache.frame(0, stamp, "", bomb, baker);
         assertEquals("aucune cuisson sur le chemin rapide", bakesBefore, baked);
         assertTrue(fast.startsWith("plan<"));
     }
