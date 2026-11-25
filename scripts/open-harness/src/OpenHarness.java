@@ -15,6 +15,8 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.android.material.tabs.TabLayout;
+
 import jo.pigma.core.TextBuffer;
 import jo.pigma.editor.EditorView;
 import jo.pigma.editor.lsp.LspEditor;
@@ -2562,20 +2564,23 @@ public final class OpenHarness {
      */
     private static void screenRestyle() {
         begin("refonte de l'écran : onglets, drawer, feuille basse");
-        TabRow tabs = activity.harnessTabRow();
-        DrawerPane drawer = activity.harnessDrawer();
-        BottomSheet sheet = activity.harnessBottomSheet();
+        TabLayout tabs = activity.harnessTabLayout();
+        androidx.drawerlayout.widget.DrawerLayout drawer =
+                activity.harnessDrawer();
+        com.google.android.material.bottomsheet.BottomSheetBehavior<?> sheet =
+                activity.harnessSheetBehavior();
         check("la barre d'onglets vit à l'écran",
-                tabs != null && tabs.tabCount() == 6);
+                tabs != null && tabs.getTabCount() == 6);
         check("l'onglet Java est le choix courant",
-                tabs.selectedTab() == 0 && "Java".contentEquals(tabs.tabLabel(0)));
+                activity.selectedTabIndex() == 0
+                        && "Java".contentEquals(tabs.getTabAt(0).getText()));
         // le choix d'onglet ouvre le document correspondant : le XML
         // y change le langage et le texte du tampon
-        tabs.selectTab(1);
+        activity.harnessSelectTab(1);
         frame();
         View.harnessDrain(1_000L);
         check("l'onglet XML ouvre le document XML",
-                tabs.selectedTab() == 1
+                activity.selectedTabIndex() == 1
                         && editor.getBuffer().length() > 0
                         && editor.getBuffer().toString().startsWith("<?xml"));
         // les options redondantes ne vivent plus : ni bouton de
@@ -2590,41 +2595,43 @@ public final class OpenHarness {
                 findButton(activity.harnessRootView(), "Tout sélectionner") == null);
         check("le bouton de copie du texte n'existe plus (la barre la porte)",
                 findButton(activity.harnessRootView(), "Copier texte") == null);
-        // le drawer : fermé au départ, le bouton du menu l'ouvre, le
-        // menu porte le thème et les hors normes
-        check("le drawer part fermé", !drawer.isDrawerOpen());
-        Button menuOpener = findButton(activity.harnessRootView(), "☰");
-        check("la poignée du menu vit à la barre (le hamburger)",
-                menuOpener != null);
-        if (menuOpener != null) {
-            menuOpener.performClick();
-        }
-        check("la poignée du menu l'ouvre", drawer.isDrawerOpen());
+        // le drawer : fermé au départ, la barre du menu l'ouvre (le
+        // tiroir du cadre y répond), le menu porte le thème et les
+        // hors normes
+        check("le drawer part fermé",
+                !drawer.isDrawerOpen(activity.harnessDrawerMenu()));
+        activity.harnessOpenDrawer();
+        check("la barre du menu ouvre le drawer",
+                drawer.isDrawerOpen(activity.harnessDrawerMenu()));
         check("le menu du drawer porte les boutons du menu",
                 findButton(activity.harnessRootView(), "Clair") != null
                         && findButton(activity.harnessRootView(), "50k ⨯") != null);
-        drawer.setDrawerOpen(false);
-        check("le drawer se referme", !drawer.isDrawerOpen());
+        drawer.closeDrawer(activity.harnessDrawerMenu());
+        check("le drawer se referme",
+                !drawer.isDrawerOpen(activity.harnessDrawerMenu()));
         // la feuille basse : part demi-pliée (les mesures se lisent de
-        // plain-pied), les états montent et descendent d'un cran, les
+        // plain-pied), les états du cadre montent et descendent, les
         // mesures y vivent toujours
         check("la feuille part demi-pliée (les mesures lisibles)",
-                sheet.sheetState() == BottomSheet.State.HALF_EXPANDED);
+                sheet.getState()
+                        == com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_HALF_EXPANDED);
         check("les mesures vivent à la feuille",
                 textOf("coloration :") != null);
-        sheet.setSheetState(BottomSheet.State.EXPANDED);
+        sheet.setState(com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED);
         check("la feuille monte à l'ouvert",
-                sheet.sheetState() == BottomSheet.State.EXPANDED);
-        sheet.setSheetState(BottomSheet.State.COLLAPSED);
-        check("la feuille se referme (la poignée seule dépasse)",
-                sheet.sheetState() == BottomSheet.State.COLLAPSED);
-        sheet.setSheetState(BottomSheet.State.HALF_EXPANDED);
+                sheet.getState()
+                        == com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED);
+        sheet.setState(com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_COLLAPSED);
+        check("la feuille se referme (la hauteur d'aperçu seule dépasse)",
+                sheet.getState()
+                        == com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_COLLAPSED);
+        sheet.setState(com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_HALF_EXPANDED);
         // la bascule de thème du menu : le journal la porte encore au
         // relevé final (la feuille ouverte la montre)
         click("Sombre");
         click("Clair");
         // le retour à l'onglet Java : le document de démo y revient
-        tabs.selectTab(0);
+        activity.harnessSelectTab(0);
         frame();
         View.harnessDrain(1_000L);
         check("l'onglet Java revient au document de démo",
@@ -2682,10 +2689,10 @@ public final class OpenHarness {
         String[] onglets = {"Java", "XML", "JSON", "Kotlin", "Lua", "SQL"};
         for (int at = 0; at < onglets.length; at++) {
             if (label.contentEquals(onglets[at])) {
-                if (activity.harnessTabRow().selectedTab() == at) {
+                if (activity.selectedTabIndex() == at) {
                     activity.harnessReopenCurrent();
                 } else {
-                    activity.harnessTabRow().selectTab(at);
+                    activity.harnessSelectTab(at);
                 }
                 break;
             }

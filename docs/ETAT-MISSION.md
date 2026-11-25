@@ -18,6 +18,23 @@ download/.**
 
 ## Session 35 — la refonte du module :sample (2026-11-25)
 
+0. **Les vrais conteneurs du cadre** : plus AUCUN ViewGroup maison
+   à l'écran — TabRow, DrawerPane et BottomSheet partent, remplacés
+   par les widgets réels de la bibliothèque Material (1.12.0) :
+   MaterialToolbar + TabLayout dans l'AppBarLayout au sommet,
+   DrawerLayout d'androidx.drawerlayout pour le menu (le voile, le
+   geste et la largeur viennent du cadre), CoordinatorLayout
+   d'androidx.coordinatorlayout avec BottomSheetBehavior pour la
+   feuille (états EXPANDED/HALF_EXPANDED/COLLAPSED du cadre, la
+   feuille part demi-pliée à hauteur d'aperçu). La mesure et la
+   disposition deviennent celles du cadre : l'écran blanc ne peut
+   plus se reproduire. Le harnais gagne les stubs des classes du
+   cadre utilisées (même surface, vraies signatures — vérifiées au
+   javap contre l'AAR réel), le scénario 39 y éprouve les vraies
+   API (getSelectedTabPosition, getTabAt, isDrawerOpen, setState).
+   La compile du sample se fait contre l'AAR réel, 39/39 verts,
+   politique OK, l'APK rebâti (11,5 Mo) livré.
+
 0. **Le correctif de l'appareil (e12b36e)** : l'écran restait blanc
    sur téléphone — DrawerPane et BottomSheet portaient des onLayout
    VIDES (le harnais dimensionne la vue qu'il éprouve ; sur appareil,

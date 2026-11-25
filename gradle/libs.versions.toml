@@ -3,6 +3,10 @@
 [versions]
 agp = "8.7.3"
 archunit = "1.3.0"
+# La bibliothèque Material : les vrais conteneurs de l'écran du sample
+# (TabLayout, DrawerLayout, CoordinatorLayout, BottomSheetBehavior) y
+# vivent — la mesure et la disposition deviennent celles du cadre.
+material = "1.12.0"
 checkstyle = "10.18.2"
 java = "17"
 junit = "4.13.2"
@@ -13,6 +17,7 @@ targetSdk = "35"
 
 [libraries]
 archunit = { module = "com.tngtech.archunit:archunit", version.ref = "archunit" }
+material = { module = "com.google.android.material:material", version.ref = "material" }
 junit = { module = "junit:junit", version.ref = "junit" }
 # Le client de serveur de langage : lsp4j porte le protocole et le
 # JSON-RPC, gson en dépend (transitif, la version y est un intervalle

@@ -43,4 +43,9 @@ dependencies {
     // LspEditor câble le serveur à la vue à la place de l'hôte — le
     // cas courant de l'architecture : une seule dépendance, tout vit)
     implementation(project(":editor"))
+    // les vrais conteneurs de l'écran : TabLayout (les onglets),
+    // DrawerLayout (le menu), CoordinatorLayout et BottomSheetBehavior
+    // (la feuille basse) — aucune géométrie maison, le cadre porte
+    // la mesure et la disposition.
+    implementation(libs.material)
 }

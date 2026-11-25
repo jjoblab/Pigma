@@ -7,11 +7,15 @@ import android.content.Context;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import com.google.android.material.bottomsheet.BottomSheetBehavior;
+import com.google.android.material.tabs.TabLayout;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -68,10 +72,12 @@ public final class MainActivity extends Activity {
     private EditorView editorView;
     private TextView statusView;
     private TextView diagnosticsView;
-    private TabRow tabRow;
-    private DrawerPane drawerPane;
-    private BottomSheet bottomSheet;
-    private Button menuButton;
+    private TabLayout tabLayout;
+    private com.google.android.material.appbar.AppBarLayout appBar;
+    private com.google.android.material.appbar.MaterialToolbar toolbar;
+    private androidx.drawerlayout.widget.DrawerLayout drawerLayout;
+    private LinearLayout drawerMenu;
+    private BottomSheetBehavior<LinearLayout> sheetBehavior;
     private Button undoButton;
     private Button redoButton;
     private Button copyButton;
@@ -157,12 +163,6 @@ public final class MainActivity extends Activity {
         diagnosticsView = new TextView(this);
         diagnosticsView.setTypeface(Typeface.MONOSPACE);
         diagnosticsView.setTextSize(11.0f);
-        tabRow = new TabRow(this);
-        drawerPane = new DrawerPane(this);
-        bottomSheet = new BottomSheet(this);
-        menuButton = new Button(this);
-        menuButton.setText("☰");
-        menuButton.setOnClickListener(view -> drawerPane.setDrawerOpen(!drawerPane.isDrawerOpen()));
         undoButton = new Button(this);
         redoButton = new Button(this);
         undoButton.setText("Annuler");
@@ -178,9 +178,6 @@ public final class MainActivity extends Activity {
         lspLuaButton = new Button(this);
         lspLuaButton.setText("LSP Lua");
         lspLuaButton.setOnClickListener(this::onLspLuaClicked);
-
-        tabRow.setTabs(List.of(TAB_LABELS));
-        tabRow.setTabListener(this::onTabSelected);
 
         setContentView(buildLayout());
         editorView.getBuffer().addListener(statusListener);
@@ -226,13 +223,27 @@ public final class MainActivity extends Activity {
      *
      * @param index l'indice de l'onglet choisi
      */
-    private void onTabSelected(int index) {
+    private void onDocumentTabSelected(int index) {
         openDocument(TAB_LABELS[index]);
     }
 
     /** Ouvre le document de l'onglet courant (le harnais y repasse). */
     void harnessReopenCurrent() {
-        openDocument(TAB_LABELS[java.lang.Math.max(0, tabRow.selectedTab())]);
+        openDocument(TAB_LABELS[java.lang.Math.max(0, selectedTabIndex())]);
+    }
+
+    /** L'indice de l'onglet choisi (0 à la première ouverture). */
+    int selectedTabIndex() {
+        int selected = tabLayout.getSelectedTabPosition();
+        return selected < 0 ? 0 : selected;
+    }
+
+    /** Choisit l'onglet d'indice donné (le harnais y passe). */
+    void harnessSelectTab(int index) {
+        TabLayout.Tab tab = tabLayout.getTabAt(index);
+        if (tab != null) {
+            tab.select();
+        }
     }
 
     /**
@@ -294,24 +305,55 @@ public final class MainActivity extends Activity {
     }
 
     /**
-     * La mise en page refondue : le panneau à drawer porte le contenu
-     * (la barre d'onglets, l'éditeur plein écran) ; la feuille basse
-     * porte les mesures et le journal ; le menu coulissant vit dans le
-     * drawer.
+     * La mise en page des vrais conteneurs du cadre : l'app-bar
+     * (Toolbar + TabLayout) au sommet du contenu, l'éditeur plein
+     * écran dessous, la feuille basse (BottomSheetBehavior du
+     * CoordinatorLayout) par-dessus, le menu coulissant dans le
+     * DrawerLayout — la mesure et la disposition y sont celles du
+     * cadre, aucune géométrie maison.
      *
      * @return la racine du contenu
      */
     private View buildLayout() {
-        // le contenu : la barre du menu au sommet, les onglets
-        // au-dessous, l'éditeur dessous
+        // l'app-bar : la barre du menu (l'icône d'ouverture du
+        // drawer y vit, la navigation y répond) au-dessus des onglets
+        toolbar = new com.google.android.material.appbar.MaterialToolbar(this);
+        toolbar.setTitle("Pigma");
+        toolbar.inflateMenu(0);
+        toolbar.setNavigationIcon(0);
+        toolbar.setNavigationOnClickListener(view ->
+                openCloseDrawer());
+        tabLayout = new TabLayout(this);
+        for (String label : TAB_LABELS) {
+            tabLayout.addTab(tabLayout.newTab().setText(label));
+        }
+        tabLayout.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
+            @Override
+            public void onTabSelected(TabLayout.Tab tab) {
+                onDocumentTabSelected(tab.getPosition());
+            }
+
+            @Override
+            public void onTabUnselected(TabLayout.Tab tab) {
+            }
+
+            @Override
+            public void onTabReselected(TabLayout.Tab tab) {
+                onDocumentTabSelected(tab.getPosition());
+            }
+        });
+        appBar = new com.google.android.material.appbar.AppBarLayout(this);
+        appBar.addView(toolbar, new com.google.android.material.appbar.AppBarLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        appBar.addView(tabLayout, new com.google.android.material.appbar.AppBarLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        // le contenu : l'app-bar au sommet, l'éditeur plein écran
+        // dessous, le statut au bas
         LinearLayout contentColumn = new LinearLayout(this);
         contentColumn.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams menuParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        contentColumn.addView(menuButton, menuParams);
-        LinearLayout.LayoutParams tabParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, tabRow.preferredHeightPx());
-        contentColumn.addView(tabRow, tabParams);
+        contentColumn.addView(appBar, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams editorParams =
                 new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f);
         contentColumn.addView(editorView, editorParams);
@@ -331,7 +373,22 @@ public final class MainActivity extends Activity {
         measuresParams.setMargins(dp(16), dp(12), margin, 0);
         sheetColumn.addView(diagnosticsView, measuresParams);
         sheetColumn.addView(row(margin, copyButton));
-        bottomSheet.setSheetContent(sheetColumn);
+
+        // le coordinateur porte le contenu et la feuille : le
+        // comportement de feuille s'y attache au panneau, la feuille
+        // vit par-dessus l'éditeur
+        com.google.android.material.bottomsheet.BottomSheetBehavior<LinearLayout> behavior =
+                new com.google.android.material.bottomsheet.BottomSheetBehavior<>();
+        androidx.coordinatorlayout.widget.CoordinatorLayout coordinator =
+                new androidx.coordinatorlayout.widget.CoordinatorLayout(this);
+        coordinator.addView(contentColumn, new androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT));
+        sheetBehavior = behavior;
+        coordinator.addView(sheetColumn, new androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        sheetBehavior.setPeekHeight(dp(120));
+        sheetBehavior.setState(com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_HALF_EXPANDED);
+        sheetBehavior.setSkipCollapsed(false);
 
         // le menu coulissant : thème, hors normes, serveurs de langage
         LinearLayout menuColumn = new LinearLayout(this);
@@ -346,17 +403,34 @@ public final class MainActivity extends Activity {
         menuColumn.addView(row(margin, undoButton, redoButton));
         menuColumn.addView(row(margin, lspButton, lspLuaButton));
 
-        drawerPane.setPanes(contentColumn, menuColumn);
-        // la feuille basse vit PAR-DESSUS le contenu (l'ordre des
-        // enfants suit le z-order : contenu, feuille, menu — le menu
-        // reste au-dessus de tout)
-        drawerPane.addOverlay(bottomSheet);
-        drawerPane.setHandle(menuButton);
-        // la feuille part demi-pliée : les mesures se lisent de
-        // plain-pied à l'ouverture de l'application (le replié ne
-        // montre que la poignée)
-        bottomSheet.setSheetState(BottomSheet.State.HALF_EXPANDED);
-        return drawerPane;
+        // le drawer : le contenu et la feuille dessous, le menu par-
+        // dessus depuis la gauche (le cadre porte le voile, le geste
+        // et la largeur)
+        drawerLayout = new androidx.drawerlayout.widget.DrawerLayout(this);
+        drawerMenu = menuColumn;
+        androidx.drawerlayout.widget.DrawerLayout.LayoutParams contentParams =
+                new androidx.drawerlayout.widget.DrawerLayout.LayoutParams(
+                        androidx.drawerlayout.widget.DrawerLayout.LayoutParams.MATCH_PARENT,
+                        androidx.drawerlayout.widget.DrawerLayout.LayoutParams.MATCH_PARENT);
+        drawerLayout.addView(coordinator, contentParams);
+        androidx.drawerlayout.widget.DrawerLayout.LayoutParams menuParams =
+                new androidx.drawerlayout.widget.DrawerLayout.LayoutParams(
+                        dp(280),
+                        androidx.drawerlayout.widget.DrawerLayout.LayoutParams.MATCH_PARENT,
+                        Gravity.LEFT);
+        drawerLayout.addView(menuColumn, menuParams);
+        return drawerLayout;
+    }
+
+    /**
+     * Le drawer s'ouvre ou se referme (la barre du menu y mène).
+     */
+    private void openCloseDrawer() {
+        if (drawerLayout.isDrawerOpen(drawerMenu)) {
+            drawerLayout.closeDrawer(drawerMenu);
+        } else {
+            drawerLayout.openDrawer(drawerMenu);
+        }
     }
 
     private LinearLayout row(int margin, Button... buttons) {
@@ -602,8 +676,8 @@ public final class MainActivity extends Activity {
      *
      * @return la barre d'onglets, jamais null
      */
-    TabRow harnessTabRow() {
-        return tabRow;
+    TabLayout harnessTabLayout() {
+        return tabLayout;
     }
 
     /**
@@ -612,18 +686,33 @@ public final class MainActivity extends Activity {
      *
      * @return le panneau à drawer, jamais null
      */
-    DrawerPane harnessDrawer() {
-        return drawerPane;
+    androidx.drawerlayout.widget.DrawerLayout harnessDrawer() {
+        return drawerLayout;
+    }
+
+    /** Le drawer s'ouvre par le harnais (le clic de navigation y mène). */
+    void harnessOpenDrawer() {
+        openCloseDrawer();
+    }
+
+    /**
+     * Le menu coulissant du drawer (le scénario y cherche ses
+     * boutons).
+     *
+     * @return le panneau du menu, jamais null
+     */
+    LinearLayout harnessDrawerMenu() {
+        return drawerMenu;
     }
 
     /**
      * La feuille basse du harnais : le scénario de la refonte y lit
      * l'état et le tire.
      *
-     * @return la feuille basse, jamais null
+     * @return le comportement de la feuille, jamais null
      */
-    BottomSheet harnessBottomSheet() {
-        return bottomSheet;
+    BottomSheetBehavior<LinearLayout> harnessSheetBehavior() {
+        return sheetBehavior;
     }
 
     /**
