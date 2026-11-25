@@ -71,6 +71,23 @@ public class Activity extends Context {
                 "pigma-harness-cache");
     }
 
+    /**
+     * Le répertoire du stockage interne (un répertoire temporaire du
+     * bac, distinct du cache : le journal des crashs y vit, il
+     * survit à la sortie).
+     *
+     * @return le répertoire, jamais null
+     */
+    public File getFilesDir() {
+        return new File(System.getProperty("java.io.tmpdir", "/tmp"),
+                "pigma-harness-files");
+    }
+
+    /** Le répertoire du stockage interne (l'accès du harnais). */
+    public File harnessFilesDir() {
+        return getFilesDir();
+    }
+
     /** La racine du contenu posé (null si aucune). */
     public View harnessRootView() {
         return root;
@@ -79,5 +96,22 @@ public class Activity extends Context {
     /** Déclenche la création (l'état sauvegardé est nul). */
     public void harnessCreate() {
         onCreate(null);
+    }
+
+    /**
+     * La sauvegarde d'état (l'écran la surcharge, le harnais y
+     * passe un paquet neuf).
+     *
+     * @param outState le paquet à remplir, jamais null
+     */
+    protected void onSaveInstanceState(android.os.Bundle outState) {
+    }
+
+    /**
+     * La restauration d'état (l'écran la surcharge).
+     *
+     * @param savedInstanceState l'état sauvé, null à la création pure
+     */
+    protected void onRestoreInstanceState(android.os.Bundle savedInstanceState) {
     }
 }

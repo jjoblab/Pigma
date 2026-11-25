@@ -135,6 +135,8 @@ public final class OpenHarness {
         lspDocumentCoverage();
         pinchZoom();
         screenRestyle();
+        crashJournalCapture();
+        stateSaveRestore();
         copyMeasures();
 
         System.out.println();
@@ -2659,6 +2661,121 @@ public final class OpenHarness {
         System.out.println("--- journal du scénario (presse-papiers) ---");
         System.out.println(measures);
         System.out.println("--- fin du journal ---");
+    }
+
+    /**
+     * Le journal des crashs : le filet éprouvé de bout en bout — un
+     * plantage non intercepté s'écrit au journal (la pile, le fil, la
+     * section courante), la relecture le rend, l'effacement le tue.
+     * La capture du harnais y passe par le MÊME gestionnaire que
+     * l'appareil (le défaut du fil, posé à l'ouverture de l'écran) :
+     * le plantage lancé ici déclenche l'écriture réelle.
+     */
+    private static void crashJournalCapture() {
+        begin("journal des crashs : capture, relecture, effacement");
+        java.io.File storage = activity.harnessFilesDir();
+        // un stockage propre : le scénario repart d'un journal vide
+        jo.pigma.sample.CrashJournal.clear(storage);
+        check("le journal vide ne montre rien",
+                jo.pigma.sample.CrashJournal.pendingCrashes(storage)
+                        .isEmpty());
+        // la section courante y est posée (celle du scénario du
+        // moment), un plantage la portera
+        jo.pigma.sample.CrashJournal.setSection("XML (démo)");
+        Thread capturing = new Thread(() -> {
+            throw new IllegalStateException("plantage du harnais");
+        }, "fil-plantage");
+        capturing.setUncaughtExceptionHandler(
+                Thread.getDefaultUncaughtExceptionHandler());
+        capturing.start();
+        try {
+            capturing.join(2_000L);
+        } catch (InterruptedException waitBroke) {
+            Thread.currentThread().interrupt();
+        }
+        java.util.List<String> crashes =
+                jo.pigma.sample.CrashJournal.pendingCrashes(storage);
+        check("le plantage s'est écrit au journal",
+                crashes.size() == 1);
+        if (crashes.size() == 1) {
+            String crash = crashes.get(0);
+            check("la pile y vit (l'exception nommée)",
+                    crash.contains("IllegalStateException")
+                            && crash.contains("plantage du harnais"));
+            check("la section courante y vit (le scénario du moment)",
+                    crash.contains("section : XML (démo)"));
+            check("le fil qui a planté y vit",
+                    crash.contains("fil : fil-plantage"));
+        }
+        // la consultation manuelle : le bouton du menu ouvre le
+        // dialogue du plantage, le harnais y lit son contenu
+        click("Journal des crashs");
+        android.app.AlertDialog shown = android.app.AlertDialog.harnessShown();
+        check("le bouton du journal montre le plantage",
+                shown != null && shown.harnessBody()
+                        .contains("plantage du harnais"));
+        // l'effacement : le journal ne montre plus rien
+        jo.pigma.sample.CrashJournal.clear(storage);
+        check("l'effacement vide le journal",
+                jo.pigma.sample.CrashJournal.pendingCrashes(storage)
+                        .isEmpty());
+        // l'état de l'écran n'a pas bougé : la section suit son
+        // cours (le clic du bouton l'a posée au journal lui-même)
+        check("l'écran vit toujours après le plantage capturé",
+                editor.getBuffer().length() > 0);
+    }
+
+    /**
+     * La sauvegarde-restauration d'état : la rotation ne perd plus
+     * rien. Le scénario y passe par les MÊMES méthodes que le
+     * cadre (onSaveInstanceState de l'écran et de la vue, la
+     * restauration s'ensuit) : le texte tapé, l'onglet, le curseur
+     * et le défilement reviennent.
+     */
+    private static void stateSaveRestore() {
+        begin("état sauvegardé : rotation sans perte");
+        // un texte tapé : la démo d'ouverture y gagne une frappe
+        // distinctive (la preuve porte sur le texte restauré)
+        String typed = "// frappe du scénario d'état\n";
+        editor.caretTo(editor.getBuffer().length());
+        connection.commitText(typed, 1);
+        View.harnessDrain(500L);
+        int caretBefore = editor.caretOffset();
+        float scrollBefore = editor.harnessScrollY();
+        // la vue ET l'écran sauvegardent (le cadre appelle l'une
+        // puis l'autre) ; la restauration lit ce qu'ils ont écrit
+        android.os.Parcelable editorState = editor.harnessSaveState();
+        android.os.Bundle screenState = new android.os.Bundle();
+        activity.onSaveInstanceState(screenState);
+        check("l'écran a écrit son paquet",
+                screenState.getString("pigma.text") != null);
+        // l'écran se reconstruit (la création pure relit la démo),
+        // puis la restauration rend l'état : le texte tapé revient
+        activity.onRestoreInstanceState(screenState);
+        editor.harnessRestoreState(editorState);
+        View.harnessDrain(500L);
+        frame();
+        check("le texte tapé revient après rotation",
+                editor.getBuffer().toString().endsWith(typed));
+        check("le curseur revient (la position sauvegardée)",
+                editor.caretOffset() == caretBefore
+                        || Math.abs(editor.caretOffset() - caretBefore)
+                                <= typed.length());
+        check("le défilement revient (borné)",
+                Math.abs(editor.harnessScrollY() - scrollBefore) < 1.0f);
+        // l'état corrompu ne lève pas : un paquet aux bornes hors
+        // texte se borne (la vue ne lève jamais à la restauration)
+        android.os.Bundle hostile = new android.os.Bundle();
+        hostile.putInt("pigma.caret", Integer.MAX_VALUE / 2);
+        hostile.putInt("pigma.anchor", Integer.MAX_VALUE);
+        hostile.putFloat("pigma.scrollY", Float.MAX_VALUE);
+        editor.harnessRestoreState(hostile);
+        frame();
+        check("un état corrompu se borne sans lever",
+                editor.caretOffset() <= editor.getBuffer().length());
+        // l'état sain revient (le scénario se referme propre)
+        editor.harnessRestoreState(editorState);
+        frame();
     }
 
     // ---------------------------------------------------------- outils

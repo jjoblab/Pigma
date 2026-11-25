@@ -9,7 +9,9 @@ l'ordre :
      par ligne ; lignes vides et commentaires ignorés).
 
 Sans motif disponible, le contrôle ne peut rien examiner : il réussit en
-affichant un avertissement — à distinguer d'un vrai vert. Le contenu des
+affichant un avertissement — à distinguer d'un vrai vert. La CI pose
+PIGMA_FORBIDDEN_REFS_REQUIRED=1 : sans motif, le contrôle y ÉCHOUE (un
+secret manquant se voit au lieu d'un vert muet). Le contenu des
 fichiers n'est jamais recopié dans la sortie : ni le motif ni la ligne
 concernée ne s'affichent.
 """
@@ -53,6 +55,11 @@ def versioned_files():
 def main():
     patterns = load_patterns()
     if not patterns:
+        if os.environ.get("PIGMA_FORBIDDEN_REFS_REQUIRED", "").strip() == "1":
+            print("check-forbidden-refs : aucun motif fourni "
+                  "(PIGMA_FORBIDDEN_REFS ou config/forbidden-refs.local) "
+                  "et la CI l'exige — échec.")
+            return 1
         print("check-forbidden-refs : aucun motif fourni "
               "(PIGMA_FORBIDDEN_REFS ou config/forbidden-refs.local) ; "
               "contrôle sans effet.")

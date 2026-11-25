@@ -316,6 +316,42 @@ public class View {
     protected void onDetachedFromWindow() {
     }
 
+    /** La description d'accessibilité posée (null : aucune). */
+    private CharSequence contentDescription;
+
+    /**
+     * Pose la description d'accessibilité (le lecteur d'écran y
+     * lit la vue).
+     *
+     * @param description la description, null pour l'ôter
+     */
+    public void setContentDescription(CharSequence description) {
+        contentDescription = description;
+    }
+
+    /** La description d'accessibilité posée (null : aucune). */
+    public CharSequence getContentDescription() {
+        return contentDescription;
+    }
+
+    /**
+     * La sauvegarde d'état (les vues filles surchargent, le
+     * harnais y exerce la sauvegarde-restauration).
+     *
+     * @return l'état sauvé, jamais null
+     */
+    protected android.os.Parcelable onSaveInstanceState() {
+        return null;
+    }
+
+    /**
+     * La restauration d'état (les vues filles surchargent).
+     *
+     * @param state l'état sauvé, null à la création pure
+     */
+    protected void onRestoreInstanceState(android.os.Parcelable state) {
+    }
+
     /**
      * La connexion de saisie (les vues éditables surchargent).
      *

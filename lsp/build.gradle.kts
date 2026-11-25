@@ -12,5 +12,9 @@ dependencies {
     api(project(":core"))
     api(libs.lsp4j)
     api(libs.lsp4j.jsonrpc)
+    // gson ÉPINGLÉ : lsp4j le veut en intervalle, le chiffre exact
+    // l'y fixe (un build repris reprend sa Gson — le rapport
+    // d'analyse y voyait une version non figée)
+    api(libs.gson)
     testImplementation(libs.archunit)
 }

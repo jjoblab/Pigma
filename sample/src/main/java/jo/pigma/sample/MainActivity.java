@@ -69,6 +69,59 @@ public final class MainActivity extends Activity {
     private static final String[] TAB_LABELS =
             {"Java", "XML", "JSON", "Kotlin", "Lua", "SQL"};
 
+    /** L'onglet choisi et son texte : l'état sauvegardé s'y pose. */
+    private static final String STATE_TAB = "pigma.tab";
+    private static final String STATE_TEXT = "pigma.text";
+
+    @Override
+    protected void onSaveInstanceState(android.os.Bundle outState) {
+        super.onSaveInstanceState(outState);
+        // l'onglet et le texte : la rotation ne perd plus le
+        // document à l'écran (le scénario suit à la réouverture)
+        outState.putInt(STATE_TAB, selectedTabIndex());
+        outState.putString(STATE_TEXT, editorView.getBuffer().toString());
+    }
+
+    /**
+     * La restauration : l'onglet et le texte reviennent (l'écran
+     * se reconstruit sinon au document de démonstration par défaut,
+     * un comportement valide — le retour d'état prime).
+     *
+     * @param savedInstanceState l'état sauvé, null à la création pure
+     */
+    @Override
+    protected void onRestoreInstanceState(android.os.Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
+        if (savedInstanceState == null) {
+            return;
+        }
+        int tab = savedInstanceState.getInt(STATE_TAB, 0);
+        String text = savedInstanceState.getString(STATE_TEXT);
+        if (text != null) {
+            // le texte revient comme un contenu posé (pas une
+            // édition à défaire : l'histoire repart vide)
+            editorView.setLanguage(languageOf(TAB_LABELS[tab]), text);
+            editorView.getUndoStack().clear();
+            currentScenario = TAB_LABELS[tab] + " (démo)";
+            CrashJournal.setSection(currentScenario);
+            loggedFirstColoration = false;
+            updateStatus();
+            watchDiagnostics();
+        }
+    }
+
+    /**
+     * L'accessibilité de base : l'éditeur dessiné au canevas est
+     * invisible au lecteur d'écran sans description — la vue y
+     * pose la sienne (le rôle, le contenu, le curseur), les
+     * boutons portent leur libellé (le cadre les y lit déjà).
+     */
+    private void setupAccessibility() {
+        editorView.setContentDescription("Éditeur de code Pigma");
+        toolbar.setNavigationContentDescription("Ouvrir le menu");
+        statusView.setContentDescription("Statut de l'éditeur");
+    }
+
     private EditorView editorView;
     private TextView statusView;
     private TextView diagnosticsView;
@@ -158,6 +211,12 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // le filet des crashs d'ABORD : un plantage pendant la
+        // construction de l'écran s'écrit au journal (la pile, le
+        // fil, la section « ouverture ») avant la fermeture —
+        // l'installation ne lève jamais, la section courante suit
+        CrashJournal.install(getFilesDir());
+        CrashJournal.setSection("ouverture");
         editorView = new EditorView(this);
         statusView = new TextView(this);
         diagnosticsView = new TextView(this);
@@ -180,6 +239,9 @@ public final class MainActivity extends Activity {
         lspLuaButton.setOnClickListener(this::onLspLuaClicked);
 
         setContentView(buildLayout());
+        // l'accessibilité de base : l'éditeur dessiné au canevas y
+        // gagne sa description (le lecteur d'écran le lit)
+        setupAccessibility();
         editorView.getBuffer().addListener(statusListener);
         // la vue de bibliothèque démarre vide : l'hôte charge son
         // contenu — ici la démo Java (le chargement n'est pas une
@@ -215,6 +277,63 @@ public final class MainActivity extends Activity {
         // la première coloration est paresseuse (au premier dessin) et
         // le remplissage avance par tranches : la feuille suit
         editorView.post(this::watchDiagnostics);
+        // les plantages d'avant (un force close s'est écrit au
+        // journal) s'annoncent à la réouverture : l'utilisateur les
+        // voit, les copie, les efface — le diagnostic part avec eux
+        showPendingCrashes();
+    }
+
+    /**
+     * Les plantages non consommés s'affichent : une boîte de
+     * dialogue par plantage du journal (la pile complète, la
+     * section où il est arrivé). L'utilisateur copie le texte (le
+     * diagnostic en a besoin) ou l'efface ; les plantages affichés
+     * sont consommés — la prochaine ouverture ne les remontre pas.
+     */
+    private void showPendingCrashes() {
+        java.util.List<String> crashes =
+                CrashJournal.pendingCrashes(getFilesDir());
+        if (crashes.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < crashes.size(); i++) {
+            String crash = crashes.get(i);
+            String body = crash + "\n(section : "
+                    + sectionOfCrash(crash) + ")";
+            android.app.AlertDialog.Builder dialog =
+                    new android.app.AlertDialog.Builder(this);
+            dialog.setTitle("Plantage " + (i + 1) + " sur "
+                    + crashes.size() + " — copiez-le, il dit la cause");
+            // le message du dialogue : le plantage au complet, la
+            // sélection y reste possible (copier au long-pression)
+            android.widget.TextView crashView = new android.widget.TextView(this);
+            crashView.setTypeface(Typeface.MONOSPACE);
+            crashView.setTextSize(11.0f);
+            crashView.setText(body);
+            crashView.setPadding(dp(12), dp(8), dp(12), dp(8));
+            dialog.setView(crashView);
+            dialog.setPositiveButton("Effacer", (which, whichButton) ->
+                    CrashJournal.clear(getFilesDir()));
+            dialog.setNeutralButton("Garder", (which, whichButton) -> {
+            });
+            dialog.show();
+        }
+    }
+
+    /**
+     * La section d'un plantage écrit : la ligne « section : … » du
+     * journal s'y lit (le champ va avec la pile).
+     *
+     * @param crash l'entrée du journal
+     * @return la section citée, « ? » si absente
+     */
+    private static String sectionOfCrash(String crash) {
+        for (String line : crash.split("\n")) {
+            if (line.startsWith("section : ")) {
+                return line.substring("section : ".length());
+            }
+        }
+        return "?";
     }
 
     /**
@@ -254,6 +373,7 @@ public final class MainActivity extends Activity {
     private void openDocument(String name) {
         editorView.setLanguage(languageOf(name), textOf(name));
         currentScenario = name + " (démo)";
+        CrashJournal.setSection(currentScenario);
         loggedFirstColoration = false;
         updateStatus();
         watchDiagnostics();
@@ -412,6 +532,7 @@ public final class MainActivity extends Activity {
                 hugeCycleButton()));
         menuColumn.addView(row(margin, undoButton, redoButton));
         menuColumn.addView(row(margin, lspButton, lspLuaButton));
+        menuColumn.addView(row(margin, journalButton()));
 
         // le drawer : le contenu et la feuille dessous, le menu par-
         // dessus depuis la gauche (le cadre porte le voile, le geste
@@ -454,7 +575,55 @@ public final class MainActivity extends Activity {
         return row;
     }
 
+    /**
+     * Le bouton du journal des crashs : les plantages capturés s'y
+     * relisent à la demande (la pile au complet, la section où
+     * chacun est arrivé) et s'effacent d'un clic — la consultation
+     * manuelle complète l'annonce automatique à la réouverture.
+     *
+     * @return le bouton, posé au menu
+     */
+    private Button journalButton() {
+        Button button = new Button(this);
+        button.setText("Journal des crashs");
+        button.setOnClickListener(view -> {
+            java.util.List<String> crashes =
+                    CrashJournal.pendingCrashes(getFilesDir());
+            CrashJournal.setSection("journal des crashs");
+            if (crashes.isEmpty()) {
+                Toast.makeText(this, "aucun plantage au journal — "
+                        + "la section courante est « "
+                        + CrashJournal.currentSection() + " »",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            StringBuilder body = new StringBuilder();
+            for (String crash : crashes) {
+                body.append(crash.trim()).append("\n\n");
+            }
+            android.app.AlertDialog.Builder dialog =
+                    new android.app.AlertDialog.Builder(this);
+            dialog.setTitle(crashes.size() + " plantage(s) capturé(s)");
+            android.widget.TextView crashView = new android.widget.TextView(this);
+            crashView.setTypeface(Typeface.MONOSPACE);
+            crashView.setTextSize(11.0f);
+            crashView.setText(body.toString().trim());
+            crashView.setPadding(dp(12), dp(8), dp(12), dp(8));
+            dialog.setView(crashView);
+            dialog.setPositiveButton("Effacer", (which, whichButton) -> {
+                CrashJournal.clear(getFilesDir());
+                Toast.makeText(this, "journal effacé", Toast.LENGTH_SHORT)
+                        .show();
+            });
+            dialog.setNeutralButton("Garder", (which, whichButton) -> {
+            });
+            dialog.show();
+        });
+        return button;
+    }
+
     private Button languageButton(String label, LanguageSyntax language, String text) {
+
         Button button = new Button(this);
         button.setText(label);
         button.setOnClickListener(view -> {
@@ -462,6 +631,7 @@ public final class MainActivity extends Activity {
             currentScenario = "Gros".equals(label) ? "gros fichier Java"
                     : "50k l.".equals(label) ? "fichier 52 000 lignes"
                     : label + " (démo)";
+            CrashJournal.setSection(currentScenario);
             loggedFirstColoration = false;
             updateStatus();
             watchDiagnostics();
@@ -490,6 +660,7 @@ public final class MainActivity extends Activity {
             hugeCycleAt++;
             editorView.setLanguage(languageOf(key), DemoTexts.hugeFile(key));
             currentScenario = "fichier 52 000 lignes (" + key + ")";
+            CrashJournal.setSection("fichier 52 000 lignes (" + key + ")");
             loggedFirstColoration = false;
             updateStatus();
             watchDiagnostics();
@@ -578,6 +749,7 @@ public final class MainActivity extends Activity {
             return;
         }
         lspLabel = "serveur de démo";
+        CrashJournal.setSection("LSP démo (branché)");
         lspButton.setText("LSP ✔");
         updateDiagnostics();
     }
@@ -604,6 +776,7 @@ public final class MainActivity extends Activity {
         editorView.setLanguage(Languages.LUA, DemoTexts.LUA);
         editorView.getUndoStack().clear();
         currentScenario = "Lua (démo)";
+        CrashJournal.setSection("LSP Lua (branchement)");
         loggedFirstColoration = false;
         updateStatus();
         watchDiagnostics();
@@ -651,6 +824,7 @@ public final class MainActivity extends Activity {
         }
         lsp.connectProcess(server, document.toURI().toString(), "lua");
         lspLabel = "EmmyLua hors processus";
+        CrashJournal.setSection("LSP Lua (branché)");
         lspLuaButton.setText("LSP Lua ✔");
         updateDiagnostics();
     }
@@ -664,6 +838,7 @@ public final class MainActivity extends Activity {
     private void detachLsp() {
         lsp.disconnect();
         lspLabel = null;
+        CrashJournal.setSection(currentScenario);
         lspButton.setText("LSP");
         lspLuaButton.setText("LSP Lua");
         updateDiagnostics();

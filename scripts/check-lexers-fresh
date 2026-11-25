@@ -12,8 +12,10 @@ ensemble.
 Sans JFlex disponible (variable JFLEX_CP, ou TOOLS pointant un
 répertoire avec jflex.jar et son cup), le contrôle s'ignore en le
 disant : le build sur téléphone ne doit pas échouer pour un outil de
-génération absent. Passer la sortie en argument permet de garder le
-détail silencieux des fichiers comparés.
+génération absent. La CI pose PIGMA_LEXERS_FRESH_REQUIRED=1 : JFlex
+absent y ÉCHOUE (la machine de build ne peut pas s'ignorer). Passer
+la sortie en argument permet de garder le détail silencieux des
+fichiers comparés.
 """
 
 import os
@@ -71,6 +73,10 @@ def main():
         print("check-lexers-fresh : ÉCHEC aucune description de lexeur trouvée")
         return 1
     if command is None:
+        if os.environ.get("PIGMA_LEXERS_FRESH_REQUIRED", "").strip() == "1":
+            print("check-lexers-fresh : ÉCHEC JFlex introuvable (définir "
+                  "JFLEX_CP ou TOOLS) et la CI l'exige")
+            return 1
         print("check-lexers-fresh : IGNORÉ (JFlex introuvable : définir JFLEX_CP "
               "ou TOOLS pour l'activer)")
         return 0

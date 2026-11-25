@@ -40,6 +40,18 @@ val checkLexersFresh = tasks.register("checkLexersFresh", Exec::class) {
     commandLine("python3", rootProject.file("scripts/check-lexers-fresh").absolutePath)
 }
 
+// Harnais d'ouverture : les 40 scénarios du module éditeur au
+// check racine (la preuve du dépôt, branchée au build — le rapport
+// d'analyse demandait ce branchement ; les jars LSP du cache
+// Gradle y sont requis, un ./gradlew check préalable les y dépose).
+val checkOpenHarness = tasks.register("checkOpenHarness", Exec::class) {
+    group = "verification"
+    description = "Déroule les scénarios du harnais d'ouverture (stubs Android)."
+    workingDir = rootDir
+    environment("JAVA_HOME", System.getProperty("java.home"))
+    commandLine("bash", rootProject.file("scripts/open-harness/run.sh").absolutePath)
+}
+
 // Captures du catalogue de versions : l'accesseur n'existe que pour le
 // script racine, pas dans subprojects.
 val checkstyleVersion = libs.versions.checkstyle.get()
@@ -94,8 +106,8 @@ subprojects {
 // tout le dépôt sans viser un module en particulier.
 tasks.register("check") {
     group = "verification"
-    description = "Toutes les vérifications : tests, style, politique, références interdites, lexeurs."
-    dependsOn(checkCodePolicy, checkForbiddenRefs, checkLexersFresh)
+    description = "Toutes les vérifications : tests, style, politique, références interdites, lexeurs, harnais."
+    dependsOn(checkCodePolicy, checkForbiddenRefs, checkLexersFresh, checkOpenHarness)
     dependsOn(subprojects.map { "${it.path}:check" })
 }
 

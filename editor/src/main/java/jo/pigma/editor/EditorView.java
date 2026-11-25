@@ -4925,6 +4925,47 @@ public final class EditorView extends View {
     }
 
     /**
+     * Le curseur (le harnais y lit la position sauvegardée et
+     * restaurée du scénario d'état).
+     *
+     * @return l'offset du curseur, en unités de code UTF-16
+     */
+    public int caretOffset() {
+        return selection.caret();
+    }
+
+    /**
+     * Le défilement vertical (le harnais y lit la position
+     * sauvegardée et restaurée du scénario d'état).
+     *
+     * @return le défilement, en pixels
+     */
+    public float harnessScrollY() {
+        return scrollY;
+    }
+
+    /**
+     * La sauvegarde d'état (le harnais y appelle celle du cadre :
+     * les méthodes du cadre sont protégées, la vue y expose la
+     * sienne à son harnais).
+     *
+     * @return l'état sauvé, jamais null
+     */
+    public android.os.Parcelable harnessSaveState() {
+        return onSaveInstanceState();
+    }
+
+    /**
+     * La restauration d'état (le harnais y appelle celle du
+     * cadre).
+     *
+     * @param state l'état sauvé par {@link #harnessSaveState()}
+     */
+    public void harnessRestoreState(android.os.Parcelable state) {
+        onRestoreInstanceState(state);
+    }
+
+    /**
      * Première ligne visible (indice — les plis cachent des lignes).
      * Publique : le harnais y lit le défilement au bord du traîné.
      *
@@ -4982,6 +5023,65 @@ public final class EditorView extends View {
         // annulation douce : la tranche en cours finit, le fil s'arrête
         backgroundFill.stop();
         super.onDetachedFromWindow();
+    }
+
+    /**
+     * La sauvegarde d'état : la rotation ou la mort du processus ne
+     * perd plus le texte, la sélection, le défilement. La vue y
+     * écrit ce qu'elle porte (le curseur, l'ancre, le
+     * défilement) — le texte vit dans le tampon, l'hôte le
+     * sauvegarde de son côté (l'écran de démonstration y pose le
+     * sien).
+     *
+     * @return l'état sauvé, jamais null
+     */
+    @Override
+    protected android.os.Parcelable onSaveInstanceState() {
+        android.os.Bundle state = new android.os.Bundle();
+        state.putInt("pigma.caret", selection.caret());
+        state.putInt("pigma.anchor", selection.anchor());
+        state.putFloat("pigma.scrollY", scrollY);
+        return state;
+    }
+
+    /**
+     * La restauration d'état : ce que {@link #onSaveInstanceState()}
+     * a écrit se relit — le curseur, l'ancre, le défilement
+     * reviennent (les bornes s'y parent : un texte changé entre
+     * les deux appels ne doit pas lever).
+     *
+     * @param state l'état sauvé, null à la création pure
+     */
+    @Override
+    protected void onRestoreInstanceState(android.os.Parcelable state) {
+        super.onRestoreInstanceState(state);
+        if (!(state instanceof android.os.Bundle)) {
+            return;
+        }
+        android.os.Bundle saved = (android.os.Bundle) state;
+        int length = buffer.length();
+        int caret = clamp(saved.getInt("pigma.caret", 0), 0, length);
+        int anchor = saved.getInt("pigma.anchor", -1);
+        if (anchor > length) {
+            anchor = -1;
+        }
+        selection.setCaret(caret);
+        selection.setAnchor(anchor);
+        scrollY = clampToRange(saved.getFloat("pigma.scrollY", 0.0f),
+                0.0f, maxScroll());
+        invalidate();
+    }
+
+    /**
+     * Bornage d'un entier.
+     *
+     * @param value    la valeur
+     * @param low      la borne basse
+     * @param high     la borne haute
+     * @return la valeur bornée
+     */
+    private static int clamp(int value, int low, int high) {
+        return Math.max(low, Math.min(high, value));
     }
 
     /**

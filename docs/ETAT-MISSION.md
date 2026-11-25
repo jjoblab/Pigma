@@ -16,6 +16,52 @@ aller-à, signature, sélection, copie du texte). Le harnais
 39/39 verts, l'APK reconstruit (6,99 Mo, signé debug) et livré dans
 download/.**
 
+## Session 37 — le journal des crashs, les chantiers 5 à 8 du rapport (2026-11-25)
+
+0. **Le journal des crashs** (demande du propriétaire) : un
+   plantage sur appareil s'écrit désormais AVANT la fermeture —
+   CrashJournal installe le gestionnaire d'exceptions non
+   interceptées en tête d'écran, la pile complète, le fil, la
+   section courante et l'appareil s'y consignent (8 plantages
+   gardés, le fichier tourne). La section suit l'écran à chaque
+   changement (onglet, gros fichier, LSP branché/débranché,
+   journal). À la réouverture, les plantages non consommés
+   s'affichent (boîte de dialogue, copie possible) ; le bouton
+   « Journal des crashs » du menu les relit et les efface.
+   Le scénario du harnais y éprouve la capture de bout en bout
+   (un plantage lancé sur le vrai gestionnaire, la relecture,
+   l'effacement) — l'utilisateur garde la pile pour l'analyse.
+
+0. **Chantier 5 du rapport** : LICENSE (MIT) posé ; NOTICE
+   complété — le binaire EmmyLua embarqué y est consigné (origine
+   l'analyseur Rust, licence MIT vérifiée au dépôt, empreintes
+   SHA-256 des deux architectures) ; les cinq scripts de migration
+   à usage unique déménagent vers scripts/archive/.
+
+0. **Chantier 6 du rapport** : la CI GitHub Actions (.github/
+   workflows/check.yml — JDK 17, SDK Android, JFlex téléchargé aux
+   versions épinglées) déroule ./gradlew check au complet. Le
+   harnais d'ouverture s'y branche (tâche checkOpenHarness) ;
+   les contrôles maison y deviennent exigeants : sans motif de
+   références interdites (secret PIGMA_FORBIDDEN_REFS) ou sans
+   JFlex, la machine de build échoue au lieu de s'ignorer.
+
+0. **Chantier 7 du rapport** : la sauvegarde d'état — la rotation
+   ne perd plus rien. EditorView écrit son paquet (curseur, ancre,
+   défilement), l'écran le sien (onglet, texte) ; la restauration
+   borne tout (un état corrompu ne lève jamais). Le scénario
+   d'état du harnais (n° 41) prouve le retour du texte tapé, du
+   curseur et du défilement, puis l'innocuité d'un état hostile.
+   L'accessibilité de base : l'éditeur, la barre et le statut
+   portent leur description de contenu.
+
+0. **Chantier 8 du rapport (partie)** : Gson 2.15.0 épinglé au
+   catalogue (l'intervalle de lsp4j ne décide plus seul), la
+   dépendance explicite au module :lsp l'y fixe.
+
+41/41 scénarios verts au harnais, tests des cinq modules verts,
+politique de langue OK (149 fichiers), APK rebâti (8,2 Mo).
+
 ## Session 36 — le force close d'ouverture et les priorités du rapport (2026-11-25)
 
 0. **Le force close à l'ouverture** : l'écran portait des vues de

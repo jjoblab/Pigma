@@ -1,0 +1,54 @@
+name: check
+
+# La vérification continue du dépôt : tout le ./gradlew check
+# (tests des cinq modules, Checkstyle, politique de langue,
+# références interdites, lexeurs à jour, harnais d'ouverture).
+# Les contrôles maison y deviennent EXIGEANTS : sans motif de
+# références interdites ou sans JFlex, la machine de build échoue
+# au lieu de s'ignorer (le rapport d'analyse l'a demandé : un
+# contrôle muet ne prouve rien).
+#
+# Le motif des références interdites vit dans le secret
+# PIGMA_FORBIDDEN_REFS du dépôt GitHub ; JFlex s'y télécharge aux
+# versions épinglées du contrôle local ; le SDK Android vient de
+# l'action officielle avec sa licence acceptée.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: SDK Android (licence acceptée)
+        uses: android-actions/setup-android@v3
+
+      - name: JFlex du contrôle des lexeurs
+        run: |
+          mkdir -p "$HOME/tools"
+          curl -fsSL -o "$HOME/tools/jflex.jar" \
+            https://github.com/jflex-de/jflex/releases/download/v1.9.1/jflex-1.9.1.jar
+          curl -fsSL -o "$HOME/tools/java-cup-runtime-11b-20160615-3.jar" \
+            https://repo1.maven.org/maven2/com/vladsch/javacup/java-cup-runtime/11b-20160615-3/java-cup-runtime-11b-20160615-3.jar
+
+      - name: Vérifications complètes (tests, style, contrôles, harnais)
+        env:
+          PIGMA_FORBIDDEN_REFS: ${{ secrets.PIGMA_FORBIDDEN_REFS }}
+          PIGMA_FORBIDDEN_REFS_REQUIRED: "1"
+          PIGMA_LEXERS_FRESH_REQUIRED: "1"
+          TOOLS: ${{ env.HOME }}/tools
+        run: ./gradlew check --no-daemon
