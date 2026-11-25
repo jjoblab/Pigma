@@ -12,21 +12,42 @@ import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.DidSaveTextDocumentParams;
+import org.eclipse.lsp4j.CodeAction;
+import org.eclipse.lsp4j.CodeActionContext;
+import org.eclipse.lsp4j.CodeActionParams;
+import org.eclipse.lsp4j.DefinitionParams;
+import org.eclipse.lsp4j.DocumentFormattingParams;
+import org.eclipse.lsp4j.DocumentHighlight;
+import org.eclipse.lsp4j.DocumentHighlightParams;
+import org.eclipse.lsp4j.FormattingOptions;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
+import org.eclipse.lsp4j.Location;
+import org.eclipse.lsp4j.LocationLink;
 import org.eclipse.lsp4j.MarkupContent;
 import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.PrepareRenameDefaultBehavior;
+import org.eclipse.lsp4j.PrepareRenameParams;
+import org.eclipse.lsp4j.PrepareRenameResult;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.Range;
+import org.eclipse.lsp4j.ReferenceContext;
+import org.eclipse.lsp4j.ReferenceParams;
+import org.eclipse.lsp4j.RenameParams;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.SignatureHelp;
 import org.eclipse.lsp4j.SignatureHelpParams;
 import org.eclipse.lsp4j.SignatureInformation;
 import org.eclipse.lsp4j.ParameterInformation;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
+import org.eclipse.lsp4j.TextDocumentIdentifier;
+import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
+import org.eclipse.lsp4j.WorkspaceEdit;
+import org.eclipse.lsp4j.jsonrpc.messages.Either;
+import org.eclipse.lsp4j.jsonrpc.messages.Either3;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageClientAware;
 import org.eclipse.lsp4j.services.LanguageServer;
@@ -76,6 +97,18 @@ public class LspSessionTest {
         /** Vrai : l'aide aux paramètres se tait (le serveur ne sait pas). */
         volatile boolean signatureSilent;
 
+        /** Vrai : l'initialisation déclare toutes les fonctions (l'essai des capacités). */
+        volatile boolean declareAll;
+
+        /** Vrai : l'aller-à la définition rend des liens (la seconde forme du protocole). */
+        volatile boolean definitionByLink;
+
+        /** Vrai : le renommage rend la carte par URI (l'ancienne forme), sinon les changements de documents. */
+        volatile boolean renameByMap;
+
+        /** Le titre de la correction rapide rendue (null : aucune). */
+        volatile String quickFixTitle = "Supprimer la parenthèse en trop";
+
         @Override
         public void connect(LanguageClient client) {
             this.client = client;
@@ -85,6 +118,18 @@ public class LspSessionTest {
         public CompletableFuture<InitializeResult> initialize(InitializeParams params) {
             ServerCapabilities capabilities = new ServerCapabilities();
             capabilities.setHoverProvider(true);
+            if (declareAll) {
+                capabilities.setCompletionProvider(
+                        new org.eclipse.lsp4j.CompletionOptions());
+                capabilities.setSignatureHelpProvider(
+                        new org.eclipse.lsp4j.SignatureHelpOptions());
+                capabilities.setDefinitionProvider(true);
+                capabilities.setReferencesProvider(true);
+                capabilities.setCodeActionProvider(true);
+                capabilities.setDocumentHighlightProvider(true);
+                capabilities.setDocumentFormattingProvider(true);
+                capabilities.setRenameProvider(true);
+            }
             if (declaredSync != null) {
                 capabilities.setTextDocumentSync(declaredSync);
             }
@@ -202,6 +247,117 @@ public class LspSessionTest {
                     new ParameterInformation("int b")));
             return CompletableFuture.completedFuture(new SignatureHelp(
                     List.of(first, second), 1, null));
+        }
+
+        @Override
+        public CompletableFuture<Either<List<? extends Location>, List<? extends LocationLink>>> definition(
+                DefinitionParams params) {
+            if (definitionByLink) {
+                LocationLink link = new LocationLink("file:///demo.java",
+                        new Range(new Position(2, 4), new Position(2, 10)),
+                        new Range(new Position(2, 4), new Position(2, 10)),
+                        null);
+                return CompletableFuture.completedFuture(Either.forRight(List.of(link)));
+            }
+            // deux places : la déclaration dans le document interrogé,
+            // une autre dans un AUTRE document (la façade la proposera
+            // à l'écouteur de l'hôte)
+            Location declaration = new Location("file:///demo.java",
+                    new Range(new Position(2, 4), new Position(2, 10)));
+            Location elsewhere = new Location("file:///autre.java",
+                    new Range(new Position(5, 0), new Position(5, 6)));
+            return CompletableFuture.completedFuture(
+                    Either.forLeft(List.of(declaration, elsewhere)));
+        }
+
+        @Override
+        public CompletableFuture<List<? extends Location>> references(
+                ReferenceParams params) {
+            Location first = new Location("file:///demo.java",
+                    new Range(new Position(2, 4), new Position(2, 10)));
+            Location second = new Location("file:///demo.java",
+                    new Range(new Position(7, 12), new Position(7, 18)));
+            boolean withDeclaration = params.getContext().isIncludeDeclaration();
+            if (withDeclaration) {
+                return CompletableFuture.completedFuture(List.of(first, second));
+            }
+            return CompletableFuture.completedFuture(List.of(second));
+        }
+
+        @Override
+        public CompletableFuture<List<Either<org.eclipse.lsp4j.Command, CodeAction>>> codeAction(
+                CodeActionParams params) {
+            if (quickFixTitle == null) {
+                return CompletableFuture.completedFuture(List.of());
+            }
+            WorkspaceEdit edit = new WorkspaceEdit();
+            TextEdit removal = new TextEdit(
+                    new Range(new Position(0, 0), new Position(0, 1)), "");
+            if (renameByMap) {
+                edit.setChanges(java.util.Map.of("file:///demo.java", List.of(removal)));
+            } else {
+                org.eclipse.lsp4j.TextDocumentEdit documentChange =
+                        new org.eclipse.lsp4j.TextDocumentEdit(
+                                new org.eclipse.lsp4j.VersionedTextDocumentIdentifier(
+                                        "file:///demo.java", 1),
+                                List.of(Either.forLeft(removal)));
+                edit.setDocumentChanges(List.of(Either.forLeft(documentChange)));
+            }
+            CodeAction quickFix = new CodeAction(quickFixTitle);
+            quickFix.setEdit(edit);
+            return CompletableFuture.completedFuture(
+                    List.of(Either.forRight(quickFix)));
+        }
+
+        @Override
+        public CompletableFuture<Either3<Range, PrepareRenameResult, PrepareRenameDefaultBehavior>> prepareRename(
+                PrepareRenameParams params) {
+            // le mot sous la position se renomme (la plage nue du protocole)
+            return CompletableFuture.completedFuture(Either3.forFirst(
+                    new Range(new Position(0, 0), new Position(0, 4))));
+        }
+
+        @Override
+        public CompletableFuture<WorkspaceEdit> rename(RenameParams params) {
+            WorkspaceEdit edit = new WorkspaceEdit();
+            TextEdit replacement = new TextEdit(
+                    new Range(new Position(0, 0), new Position(0, 4)),
+                    params.getNewName());
+            if (renameByMap) {
+                edit.setChanges(java.util.Map.of("file:///demo.java",
+                        List.of(replacement)));
+            } else {
+                org.eclipse.lsp4j.TextDocumentEdit documentChange =
+                        new org.eclipse.lsp4j.TextDocumentEdit(
+                                new org.eclipse.lsp4j.VersionedTextDocumentIdentifier(
+                                        "file:///demo.java", 2),
+                                List.of(Either.forLeft(replacement)));
+                edit.setDocumentChanges(List.of(Either.forLeft(documentChange)));
+            }
+            return CompletableFuture.completedFuture(edit);
+        }
+
+        @Override
+        public CompletableFuture<List<? extends DocumentHighlight>> documentHighlight(
+                DocumentHighlightParams params) {
+            DocumentHighlight first = new DocumentHighlight(
+                    new Range(new Position(0, 0), new Position(0, 4)),
+                    org.eclipse.lsp4j.DocumentHighlightKind.Read);
+            DocumentHighlight second = new DocumentHighlight(
+                    new Range(new Position(3, 8), new Position(3, 12)),
+                    org.eclipse.lsp4j.DocumentHighlightKind.Write);
+            return CompletableFuture.completedFuture(List.of(first, second));
+        }
+
+        @Override
+        public CompletableFuture<List<? extends TextEdit>> formatting(
+                DocumentFormattingParams params) {
+            // le formatage du serveur d'essai : les espaces de fin de
+            // ligne s'y coupent
+            List<TextEdit> edits = new java.util.ArrayList<>();
+            edits.add(new TextEdit(
+                    new Range(new Position(1, 6), new Position(1, 9)), ""));
+            return CompletableFuture.completedFuture(edits);
         }
 
         private void publish() {
@@ -397,5 +553,157 @@ public class LspSessionTest {
             }
             Thread.sleep(20L);
         }
+    }
+
+    /** Les fonctions nouvelles de Sora editor : la négociation des capacités. */
+    @Test
+    public void capabilitiesFollowTheDeclaration() throws Exception {
+        TrialServer server = new TrialServer();
+        server.declareAll = true;
+        LspSession session = LspSession.beside(server, null);
+        LspCapabilities before = session.capabilities();
+        assertTrue("la liaison sans initialisation ne sait rien",
+                !before.hover() && !before.definition() && !before.rename());
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        LspCapabilities capabilities = session.capabilities();
+        assertTrue("le survol déclaré", capabilities.hover());
+        assertTrue("la complétion déclarée", capabilities.completion());
+        assertTrue("l'aide aux paramètres déclarée", capabilities.signatureHelp());
+        assertTrue("la définition déclarée", capabilities.definition());
+        assertTrue("les références déclarées", capabilities.references());
+        assertTrue("le renommage déclaré", capabilities.rename());
+        assertTrue("les corrections déclarées", capabilities.codeAction());
+        assertTrue("le surlignage déclaré", capabilities.documentHighlight());
+        assertTrue("le formatage déclaré", capabilities.formatting());
+        session.shutdown();
+        LspSession silent = LspSession.beside(new TrialServer(), null);
+        silent.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        assertTrue("le serveur silencieux ne déclare que le survol",
+                silent.capabilities().hover() && !silent.capabilities().definition()
+                        && !silent.capabilities().formatting());
+        silent.shutdown();
+    }
+
+    /** L'aller-à la définition : les places des deux formes du protocole. */
+    @Test
+    public void definitionAnswersThePlaces() throws Exception {
+        TrialServer server = new TrialServer();
+        LspSession session = LspSession.beside(server, null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        List<LspLocation> places = session.definition("file:///demo.java",
+                new LspPosition(7, 15)).get(5, TimeUnit.SECONDS);
+        assertEquals("deux places rendues", 2, places.size());
+        assertEquals("la déclaration vit dans le document",
+                "file:///demo.java", places.get(0).uri());
+        assertEquals("la plage y suit", 2, places.get(0).range().start().line());
+        assertEquals("l'autre document y reste",
+                "file:///autre.java", places.get(1).uri());
+        // la seconde forme du protocole (les liens) s'y adapte aussi
+        server.definitionByLink = true;
+        List<LspLocation> linked = session.definition("file:///demo.java",
+                new LspPosition(7, 15)).get(5, TimeUnit.SECONDS);
+        assertEquals("le lien rend une place", 1, linked.size());
+        assertEquals("la cible du lien compte", "file:///demo.java", linked.get(0).uri());
+        assertEquals("la plage cible suit", 2, linked.get(0).range().start().line());
+        session.shutdown();
+    }
+
+    /** Les références : la déclaration compte selon la demande. */
+    @Test
+    public void referencesRespectTheDeclaration() throws Exception {
+        LspSession session = LspSession.beside(new TrialServer(), null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        List<LspLocation> withDeclaration = session.references("file:///demo.java",
+                new LspPosition(7, 15), true).get(5, TimeUnit.SECONDS);
+        assertEquals("la déclaration compte", 2, withDeclaration.size());
+        List<LspLocation> withoutDeclaration = session.references("file:///demo.java",
+                new LspPosition(7, 15), false).get(5, TimeUnit.SECONDS);
+        assertEquals("sans la déclaration, l'usage seul", 1, withoutDeclaration.size());
+        assertEquals("la plage de l'usage suit", 7, withoutDeclaration.get(0).range().start().line());
+        session.shutdown();
+    }
+
+    /** Les corrections rapides : le titre et les remplacements des deux formes. */
+    @Test
+    public void codeActionsCarryTheEdits() throws Exception {
+        TrialServer server = new TrialServer();
+        LspSession session = LspSession.beside(server, null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        List<LspCodeAction> actions = session.codeActions("file:///demo.java",
+                new LspRange(new LspPosition(0, 0), new LspPosition(0, 1)),
+                List.of()).get(5, TimeUnit.SECONDS);
+        assertEquals("une action rendue", 1, actions.size());
+        assertEquals("le titre suit", "Supprimer la parenthèse en trop",
+                actions.get(0).title());
+        assertEquals("un remplacement porte", 1, actions.get(0).edits().size());
+        assertEquals("la plage du remplacement suit",
+                new LspPosition(0, 0), actions.get(0).edits().get(0).range().start());
+        // l'ancienne forme du protocole (la carte par URI) s'y lit aussi
+        server.renameByMap = true;
+        List<LspCodeAction> mapped = session.codeActions("file:///demo.java",
+                new LspRange(new LspPosition(0, 0), new LspPosition(0, 1)),
+                List.of()).get(5, TimeUnit.SECONDS);
+        assertEquals("l'action de la carte par URI porte ses remplacements",
+                1, mapped.get(0).edits().size());
+        session.shutdown();
+    }
+
+    /** La préparation du renommage : la plage renommable du protocole. */
+    @Test
+    public void prepareRenameAnswersTheRange() throws Exception {
+        LspSession session = LspSession.beside(new TrialServer(), null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        LspRange renamable = session.prepareRename("file:///demo.java",
+                new LspPosition(0, 2)).get(5, TimeUnit.SECONDS);
+        assertTrue("la plage renommable suit",
+                renamable != null && renamable.start().line() == 0
+                        && renamable.end().character() == 4);
+        session.shutdown();
+    }
+
+    /** Le renommage : les remplacements du document, le nom neuf dedans. */
+    @Test
+    public void renameAnswersTheEdits() throws Exception {
+        TrialServer server = new TrialServer();
+        LspSession session = LspSession.beside(server, null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        List<LspTextEdit> edits = session.rename("file:///demo.java",
+                new LspPosition(0, 2), "compte").get(5, TimeUnit.SECONDS);
+        assertEquals("un remplacement rendu", 1, edits.size());
+        assertEquals("le nom neuf s'y écrit", "compte", edits.get(0).newText());
+        assertEquals("la plage renommée suit", 0, edits.get(0).range().start().line());
+        server.renameByMap = true;
+        List<LspTextEdit> mapped = session.rename("file:///demo.java",
+                new LspPosition(0, 2), "compte").get(5, TimeUnit.SECONDS);
+        assertEquals("l'ancienne forme du protocole porte pareil",
+                "compte", mapped.get(0).newText());
+        session.shutdown();
+    }
+
+    /** Le surlignage du document : les occurrences du symbole. */
+    @Test
+    public void documentHighlightAnswersTheRanges() throws Exception {
+        LspSession session = LspSession.beside(new TrialServer(), null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        List<LspRange> ranges = session.documentHighlight("file:///demo.java",
+                new LspPosition(0, 2)).get(5, TimeUnit.SECONDS);
+        assertEquals("deux occurrences surlignées", 2, ranges.size());
+        assertEquals("la première plage suit", 0, ranges.get(0).start().line());
+        assertEquals("la seconde plage suit", 3, ranges.get(1).start().line());
+        session.shutdown();
+    }
+
+    /** Le formatage : les remplacements du document entier. */
+    @Test
+    public void formattingAnswersTheEdits() throws Exception {
+        LspSession session = LspSession.beside(new TrialServer(), null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        List<LspTextEdit> edits = session.formatting("file:///demo.java", 4, true)
+                .get(5, TimeUnit.SECONDS);
+        assertEquals("un remplacement rendu", 1, edits.size());
+        assertEquals("les espaces de fin s'y coupent",
+                new LspPosition(1, 6), edits.get(0).range().start());
+        assertEquals("le remplacement est vide", "", edits.get(0).newText());
+        session.shutdown();
     }
 }

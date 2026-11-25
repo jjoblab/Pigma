@@ -16,39 +16,60 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.eclipse.lsp4j.ClientCapabilities;
 import org.eclipse.lsp4j.ClientInfo;
+import org.eclipse.lsp4j.CodeAction;
+import org.eclipse.lsp4j.CodeActionContext;
+import org.eclipse.lsp4j.CodeActionParams;
+import org.eclipse.lsp4j.Command;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.CompletionParams;
+import org.eclipse.lsp4j.Diagnostic;
+import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
+import org.eclipse.lsp4j.DefinitionParams;
+import org.eclipse.lsp4j.DocumentFormattingParams;
+import org.eclipse.lsp4j.DocumentHighlight;
+import org.eclipse.lsp4j.DocumentHighlightParams;
+import org.eclipse.lsp4j.FormattingOptions;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
 import org.eclipse.lsp4j.InitializedParams;
+import org.eclipse.lsp4j.Location;
+import org.eclipse.lsp4j.LocationLink;
 import org.eclipse.lsp4j.MarkedString;
 import org.eclipse.lsp4j.MarkupContent;
 import org.eclipse.lsp4j.MessageActionItem;
 import org.eclipse.lsp4j.MessageParams;
 import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.PrepareRenameDefaultBehavior;
+import org.eclipse.lsp4j.PrepareRenameParams;
+import org.eclipse.lsp4j.PrepareRenameResult;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.Range;
+import org.eclipse.lsp4j.ReferenceContext;
+import org.eclipse.lsp4j.ReferenceParams;
+import org.eclipse.lsp4j.RenameParams;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.ShowMessageRequestParams;
 import org.eclipse.lsp4j.SignatureHelpParams;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TextDocumentItem;
+import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
 import org.eclipse.lsp4j.TextDocumentSyncOptions;
 import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
+import org.eclipse.lsp4j.WorkspaceEdit;
+import org.eclipse.lsp4j.jsonrpc.messages.Either3;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
 import org.eclipse.lsp4j.launch.LSPLauncher;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageClientAware;
 import org.eclipse.lsp4j.services.LanguageServer;
-import org.eclipse.lsp4j.jsonrpc.messages.Either;
 
 /**
  * La liaison cliente : lsp4j porte le protocole (les requêtes partent
@@ -108,6 +129,12 @@ public final class LspSession {
      * sûr : la notification sans plage est légale partout).
      */
     private volatile boolean incrementalSync;
+
+    /**
+     * Ce que le serveur a déclaré savoir (la négociation de
+     * l'initialisation l'a rempli — NONE avant).
+     */
+    private volatile LspCapabilities capabilities = LspCapabilities.NONE;
 
     /**
      * L'ombre du dernier texte synchronisé par document : la base du
@@ -225,9 +252,21 @@ public final class LspSession {
         params.setCapabilities(new ClientCapabilities());
         return launcher.getRemoteProxy().initialize(params).thenApply(result -> {
             incrementalSync = declaresIncrementalSync(result);
+            capabilities = LspCapabilities.fromResult(result);
             launcher.getRemoteProxy().initialized(new InitializedParams());
             return result;
         });
+    }
+
+    /**
+     * Ce que le serveur a déclaré savoir à l'initialisation : les
+     * fonctions y se coupent une à une côté façade (demander une
+     * fonction que le serveur n'a pas déclarée offense le protocole).
+     *
+     * @return les capacités négociées, NONE avant l'initialisation
+     */
+    public LspCapabilities capabilities() {
+        return capabilities;
     }
 
     /**
@@ -421,6 +460,235 @@ public final class LspSession {
                 new TextDocumentIdentifier(uri), position.toLsp());
         return launcher.getRemoteProxy().getTextDocumentService()
                 .signatureHelp(params).thenApply(LspSignatureHelp::fromLsp);
+    }
+
+    /**
+     * Demande la définition du symbole à la position : la réponse
+     * porte les places pointées (les positions nues ou les liens —
+     * les deux formes du protocole y rentrent).
+     *
+     * @param uri      le document interrogé
+     * @param position la position du symbole
+     * @return le futur des places, jamais null (vide : le serveur ne
+     *         sait pas)
+     */
+    public CompletableFuture<List<LspLocation>> definition(String uri,
+            LspPosition position) {
+        DefinitionParams params = new DefinitionParams(
+                new TextDocumentIdentifier(uri), position.toLsp());
+        return launcher.getRemoteProxy().getTextDocumentService()
+                .definition(params).thenApply(LspLocation::fromAnswer);
+    }
+
+    /**
+     * Demande les références du symbole à la position : chaque usage
+     * du symbole dans l'espace de travail y revient.
+     *
+     * @param uri                le document interrogé
+     * @param position           la position du symbole
+     * @param includeDeclaration la déclaration compte-t-elle parmi les
+     *                           références
+     * @return le futur des places, jamais null (vide : aucune)
+     */
+    public CompletableFuture<List<LspLocation>> references(String uri,
+            LspPosition position, boolean includeDeclaration) {
+        ReferenceParams params = new ReferenceParams(
+                new TextDocumentIdentifier(uri), position.toLsp(),
+                new ReferenceContext(includeDeclaration));
+        return launcher.getRemoteProxy().getTextDocumentService()
+                .references(params).thenApply(LspLocation::fromLsp);
+    }
+
+    /**
+     * Demande les corrections rapides d'une plage : le contexte porte
+     * les diagnostics que l'appelant y tient (les correctifs du
+     * protocole s'y nourrissent — la façade y passe ceux du serveur
+     * sur la ligne).
+     *
+     * @param uri        le document interrogé
+     * @param range      la plage interrogée (la ligne du curseur)
+     * @param context    les diagnostics de la plage côté appelant,
+     *                   null pour un contexte vide
+     * @return le futur des actions, jamais null (vide : aucune)
+     */
+    public CompletableFuture<List<LspCodeAction>> codeActions(String uri,
+            LspRange range, List<LspDiagnostic> context) {
+        CodeActionParams params = new CodeActionParams(
+                new TextDocumentIdentifier(uri), range.toLsp(),
+                new CodeActionContext(diagnosticsOfContext(context)));
+        return launcher.getRemoteProxy().getTextDocumentService()
+                .codeAction(params).thenApply(answer -> {
+                    List<LspCodeAction> actions = new ArrayList<>();
+                    if (answer != null) {
+                        for (Either<Command, CodeAction> entry : answer) {
+                            LspCodeAction action = LspCodeAction.fromLsp(entry, uri);
+                            if (action != null) {
+                                actions.add(action);
+                            }
+                        }
+                    }
+                    return actions;
+                });
+    }
+
+    /**
+     * Les diagnostics du contexte de correction, la forme lsp4j du
+     * protocole.
+     *
+     * @param context les diagnostics du domaine, null pour aucun
+     * @return la liste du protocole, jamais null
+     */
+    private static List<Diagnostic> diagnosticsOfContext(List<LspDiagnostic> context) {
+        List<Diagnostic> ofProtocol = new ArrayList<>();
+        if (context != null) {
+            for (LspDiagnostic diagnostic : context) {
+                if (diagnostic != null) {
+                    ofProtocol.add(new Diagnostic(diagnostic.range().toLsp(),
+                            diagnostic.message(), severityOf(diagnostic.severity()),
+                            "pigma"));
+                }
+            }
+        }
+        return ofProtocol;
+    }
+
+    /**
+     * La sévérité du protocole pour la valeur du domaine (0 : sans
+     * sévérité — null au protocole).
+     *
+     * @param severity la valeur du domaine
+     * @return la sévérité lsp4j, null si absente
+     */
+    private static DiagnosticSeverity severityOf(int severity) {
+        return severity >= 1 && severity <= 4
+                ? DiagnosticSeverity.forValue(severity) : null;
+    }
+
+    /**
+     * Demande la plage renommable à la position : le serveur y dit
+     * si le symbole se renomme et quelle plage il occupe (le
+     * comportement par défaut du protocole — la troisième forme —
+     * rend null : renommable, la plage est le mot sous la position).
+     *
+     * @param uri      le document interrogé
+     * @param position la position du symbole
+     * @return le futur de la plage renommable, null quand le serveur
+     *         refuse l'endroit (ou n'en dit rien)
+     */
+    public CompletableFuture<LspRange> prepareRename(String uri,
+            LspPosition position) {
+        PrepareRenameParams params = new PrepareRenameParams(
+                new TextDocumentIdentifier(uri), position.toLsp());
+        return launcher.getRemoteProxy().getTextDocumentService()
+                .prepareRename(params).thenApply(LspSession::prepareRenameRange);
+    }
+
+    /**
+     * La plage renommable de la réponse du protocole : la plage nue,
+     * le résultat détaillé (sa plage compte), null quand le serveur
+     * n'en dit rien.
+     *
+     * @param answer la réponse du protocole
+     * @return la plage du domaine, null si absente
+     */
+    private static LspRange prepareRenameRange(
+            Either3<Range, PrepareRenameResult, PrepareRenameDefaultBehavior> answer) {
+        if (answer == null) {
+            return null;
+        }
+        if (answer.isFirst() && answer.getFirst() != null) {
+            return LspRange.fromLsp(answer.getFirst());
+        }
+        if (answer.isSecond() && answer.getSecond() != null
+                && answer.getSecond().getRange() != null) {
+            return LspRange.fromLsp(answer.getSecond().getRange());
+        }
+        return null;
+    }
+
+    /**
+     * Demande le renommage du symbole à la position : la réponse
+     * porte l'édition de l'espace de travail — les remplacements du
+     * document interrogé seuls reviennent (les autres documents se
+     * laissent : un éditeur n'en tient qu'un).
+     *
+     * @param uri      le document interrogé
+     * @param position la position du symbole
+     * @param newName  le nom posé
+     * @return le futur des remplacements du document, jamais null
+     *         (vide : le serveur ne sait pas)
+     */
+    public CompletableFuture<List<LspTextEdit>> rename(String uri,
+            LspPosition position, String newName) {
+        RenameParams params = new RenameParams(
+                new TextDocumentIdentifier(uri), position.toLsp(), newName);
+        return launcher.getRemoteProxy().getTextDocumentService()
+                .rename(params).thenApply(edit -> LspCodeAction.editsOf(edit, uri));
+    }
+
+    /**
+     * Demande les occurrences du symbole à la position : les plages
+     * surlignées du document (le surlignage du protocole).
+     *
+     * @param uri      le document interrogé
+     * @param position la position du symbole
+     * @return le futur des plages, jamais null (vide : aucune)
+     */
+    public CompletableFuture<List<LspRange>> documentHighlight(String uri,
+            LspPosition position) {
+        DocumentHighlightParams params = new DocumentHighlightParams(
+                new TextDocumentIdentifier(uri), position.toLsp());
+        return launcher.getRemoteProxy().getTextDocumentService()
+                .documentHighlight(params).thenApply(answer -> {
+                    List<LspRange> ranges = new ArrayList<>();
+                    if (answer != null) {
+                        for (DocumentHighlight highlight : answer) {
+                            if (highlight != null && highlight.getRange() != null) {
+                                ranges.add(LspRange.fromLsp(highlight.getRange()));
+                            }
+                        }
+                    }
+                    return ranges;
+                });
+    }
+
+    /**
+     * Demande le formatage du document entier : la réponse porte les
+     * remplacements à poser (les plages du document AVANT le
+     * remplacement — du dernier au premier pour les poser).
+     *
+     * @param uri           le document à formater
+     * @param tabSize       la taille d'une tabulation
+     * @param insertSpaces  vrai pour des espaces plutôt que des tabulations
+     * @return le futur des remplacements, jamais null (vide : rien à
+     *         changer, ou le serveur ne sait pas)
+     */
+    public CompletableFuture<List<LspTextEdit>> formatting(String uri, int tabSize,
+            boolean insertSpaces) {
+        DocumentFormattingParams params = new DocumentFormattingParams(
+                new TextDocumentIdentifier(uri),
+                new FormattingOptions(tabSize, insertSpaces));
+        return launcher.getRemoteProxy().getTextDocumentService()
+                .formatting(params).thenApply(LspSession::textEditsOf);
+    }
+
+    /**
+     * Les remplacements du domaine d'une réponse de remplacements
+     * lsp4j.
+     *
+     * @param answer la réponse du protocole
+     * @return les remplacements du domaine, jamais null
+     */
+    private static List<LspTextEdit> textEditsOf(List<? extends TextEdit> answer) {
+        List<LspTextEdit> edits = new ArrayList<>();
+        if (answer != null) {
+            for (TextEdit edit : answer) {
+                if (edit != null) {
+                    edits.add(LspTextEdit.fromLsp(edit));
+                }
+            }
+        }
+        return edits;
     }
 
     /**

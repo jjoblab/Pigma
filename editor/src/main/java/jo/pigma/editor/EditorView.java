@@ -16,6 +16,7 @@ import jo.pigma.editor.popups.LocalHistory;
 import jo.pigma.editor.popups.DiagnosticCard;
 import jo.pigma.editor.popups.PopupStyle;
 import jo.pigma.editor.popups.QuickActionCard;
+import jo.pigma.editor.popups.RenameCard;
 import jo.pigma.editor.render.RenderCache;
 import jo.pigma.editor.popups.PopupMetrics;
 import jo.pigma.editor.popups.SearchBar;
@@ -23,6 +24,7 @@ import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.editor.popups.OverflowCard;
 import jo.pigma.editor.popups.SelectionBar;
 import jo.pigma.editor.popups.SignatureCard;
+import jo.pigma.lsp.LspRange;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -176,6 +178,21 @@ public final class EditorView extends View {
     /** La carte « aller à la ligne » — dessinée dans la vue. */
     private GotoBar gotoBar;
 
+    /**
+     * La carte « renommer le symbole », dessinée dans la vue, posée
+     * au caret, le clavier délégué — le nom neuf s'y écrit, la
+     * validation y part au porteur du renommage (la façade du serveur
+     * de langage s'y branche).
+     */
+    private RenameCard renameBar;
+
+    /**
+     * Les plages surlignées par le serveur de langage : les
+     * occurrences du symbole au curseur (le surlignage du protocole,
+     * la teinte s'y distingue de la recherche).
+     */
+    private List<LspRange> serverHighlights = List.of();
+
     /** Le doigt est-il tombé sur une carte ouverte ? — le geste entier lui revient. */
     private boolean downOnCard;
 
@@ -311,6 +328,9 @@ public final class EditorView extends View {
     /** Le fournisseur d'actions rapides de l'hôte (l'ampoule les porte). */
     private QuickActionProvider quickActionProvider;
 
+    /** Le fournisseur d'actions rapides du serveur de langage (la façade y pose les fonctions du protocole). */
+    private QuickActionProvider serverQuickActionProvider;
+
     /** Les actions rapides vivantes de la ligne du curseur (l'ampoule en vit). */
     private List<QuickActionCard.Entry> quickActions = List.of();
 
@@ -430,6 +450,13 @@ public final class EditorView extends View {
     /** La teinte de la correspondance courante (plus dense). */
     private final Paint searchCurrentPaint = new Paint();
 
+    /**
+     * La teinte des occurrences du serveur de langage (le surlignage
+     * du protocole — bleu, la teinte de la recherche est ambre : les
+     * deux se lisent d'un coup d'œil).
+     */
+    private final Paint serverHighlightPaint = new Paint();
+
     /** Le souligné des diagnostics d'appariement. */
     private final Paint diagnosticPaint = new Paint();
 
@@ -512,6 +539,8 @@ public final class EditorView extends View {
         searchPaint.setColor(0x38FFC107);
         searchCurrentPaint.setStyle(Paint.Style.FILL);
         searchCurrentPaint.setColor(0x80FFC107);
+        serverHighlightPaint.setStyle(Paint.Style.FILL);
+        serverHighlightPaint.setColor(0x332979FF);
         infoPopup = new InfoPopup(dp(1));
         diagnosticPaint.setStyle(Paint.Style.STROKE);
         diagnosticPaint.setStrokeWidth(dp(2));
@@ -760,6 +789,19 @@ public final class EditorView extends View {
     }
 
     /**
+     * Branche l'écouteur des mouvements du curseur et de l'ancre : la
+     * façade du serveur de langage y suit le curseur (le surlignage
+     * des occurrences s'y redemande — la leçon de la référence : les
+     * fonctions du protocole vivent sur la vue, l'hôte n'y touche
+     * pas). Un seul écouteur : le porteur y marshalle s'il veut.
+     *
+     * @param listener l'écouteur, null pour le ranger
+     */
+    public void setSelectionListener(SelectionState.Listener listener) {
+        selection.setListener(listener);
+    }
+
+    /**
      * Pose le STYLE DES POPUPS de l'hôte : le fond translucide, les
      * encres, la taille des textes, la hauteur des rangées, la
      * largeur et la forme des cartes — toutes les cartes et la
@@ -778,6 +820,9 @@ public final class EditorView extends View {
         diagnosticCard.setStyle(popupStyle);
         quickActionCard.setStyle(popupStyle);
         gutter.setStyle(popupStyle);
+        if (renameBar != null) {
+            renameBar.setStyle(popupStyle);
+        }
         if (searchBar != null) {
             searchBar.setStyle(popupStyle);
         }
@@ -834,6 +879,24 @@ public final class EditorView extends View {
      */
     public void setQuickActionProvider(QuickActionProvider provider) {
         quickActionProvider = provider;
+        quickActionsRevision = -1;
+        invalidate();
+    }
+
+    /**
+     * Le fournisseur d'actions rapides du SERVEUR DE LANGAGE : la
+     * façade du serveur y pose les fonctions du protocole (l'aller-à
+     * la définition, les références, le renommage, le formatage, les
+     * corrections rapides) — l'ampoule les porte APRÈS celles de
+     * l'hôte : les intentions de l'éditeur et de l'hôte se lisent
+     * d'abord, les fonctions du serveur ensuite (la façade y veut,
+     * l'hôte n'a RIEN à câbler — le second slot, pas la place de
+     * l'hôte).
+     *
+     * @param provider le fournisseur du serveur, null pour le ranger
+     */
+    public void setServerQuickActionProvider(QuickActionProvider provider) {
+        serverQuickActionProvider = provider;
         quickActionsRevision = -1;
         invalidate();
     }
@@ -943,6 +1006,19 @@ public final class EditorView extends View {
                     quickActionProvider.quickActionsAt(line, column);
             if (hosted != null) {
                 actions.addAll(hosted);
+            }
+        }
+        // les fonctions du serveur de langage se lisent APRÈS les
+        // intentions de l'hôte (la façade y pose l'aller-à la
+        // définition, les références, le renommage, le formatage, les
+        // corrections rapides du protocole)
+        if (serverQuickActionProvider != null) {
+            int caretOffset = Math.min(selection.caret(), buffer.length());
+            int column = caretOffset - buffer.getLineStart(line);
+            List<QuickActionCard.Entry> served =
+                    serverQuickActionProvider.quickActionsAt(line, column);
+            if (served != null) {
+                actions.addAll(served);
             }
         }
         return actions;
@@ -1591,6 +1667,61 @@ public final class EditorView extends View {
     }
 
     /**
+     * Pose les remplacements du serveur de langage (la correction
+     * rapide, le renommage, le formatage) : chaque plage LSP se
+     * remplace par son texte neuf, TOUT en une transaction — une
+     * seule unité d'annulation (la façon d'Android Studio : un
+     * renommage s'annule d'un geste). Les remplacements se posent du
+     * DERNIER au PREMIER pour que les plages ne bougent pas (la règle
+     * du protocole : les plages vivent dans le document d'avant).
+     *
+     * @param edits les remplacements du serveur, jamais null
+     * @return vrai quand au moins un remplacement s'est posé
+     */
+    public boolean applyTextEdits(List<jo.pigma.lsp.LspTextEdit> edits) {
+        if (edits == null || edits.isEmpty()) {
+            return false;
+        }
+        boolean applied = false;
+        try (TextTransaction transaction = undoStack.newTransaction()) {
+            for (int edit = edits.size() - 1; edit >= 0; edit--) {
+                jo.pigma.lsp.LspTextEdit change = edits.get(edit);
+                int start = buffer.offsetOfPosition(
+                        change.range().start().line(), change.range().start().character());
+                int end = buffer.offsetOfPosition(
+                        change.range().end().line(), change.range().end().character());
+                if (start >= 0 && end >= start && end <= buffer.length()) {
+                    transaction.replace(start, end, change.newText());
+                    applied = true;
+                }
+            }
+        }
+        if (applied) {
+            selection.setAnchor(-1);
+            selection.setCaret(Math.min(selection.caret(), buffer.length()));
+            invalidate();
+        }
+        return applied;
+    }
+
+    /**
+     * Le mot au curseur (les bornes du mot se lisent dans la fenêtre
+     * de la ligne) : le renommage du serveur le porte, la façade y
+     * lit le symbole. Vide quand le curseur ne porte pas de mot.
+     *
+     * @return le mot au curseur, vide sinon
+     */
+    public String wordAtCaret() {
+        int caret = Math.min(selection.caret(), buffer.length());
+        int line = buffer.lineOfOffset(caret);
+        int lineStart = buffer.getLineStart(line);
+        int lineEnd = buffer.getLineEnd(line);
+        int wordStart = wordBoundsStart(caret, lineStart);
+        int wordEnd = wordBoundsEnd(caret, lineEnd);
+        return wordEnd > wordStart ? buffer.getText(wordStart, wordEnd) : "";
+    }
+
+    /**
      * La carte de recherche, DESSINÉE DANS LA VUE — jamais de
      * fenêtre flottante, pas de jeton de fenêtre, pas de conflit de
      * focus avec l'IME. La carte ne prend
@@ -1663,6 +1794,41 @@ public final class EditorView extends View {
         }
     }
 
+    /**
+     * Ouvre la carte « renommer le symbole » au caret : le nom neuf
+     * démarre du symbole (la façon d'Android Studio — il se corrige,
+     * il ne se retape pas), la validation part au porteur du
+     * renommage (la façade du serveur de langage y branche le
+     * protocole), la croix la range. Le clavier se lève : les lettres
+     * attendent une frappe — même règle que la recherche.
+     *
+     * @param symbol le symbole à renommer
+     * @param target le porteur du renommage
+     */
+    public void showRenamePopup(String symbol, RenameCard.RenameTarget target) {
+        if (renameBar == null) {
+            renameBar = new RenameCard(dp(1));
+            renameBar.bind(this);
+        }
+        renameBar.setStyle(popupStyle);
+        renameBar.show(symbol, target);
+        openKeyboard();
+        invalidate();
+    }
+
+    /** Range la carte « renommer le symbole ». */
+    public void dismissRenamePopup() {
+        if (renameBar != null && renameBar.isShown()) {
+            renameBar.hide();
+            invalidate();
+        }
+    }
+
+    /** La carte « renommer le symbole », null si jamais ouverte (le harnais la lit). */
+    public RenameCard renameBar() {
+        return renameBar;
+    }
+
     /** La carte de recherche, null si jamais ouverte (le harnais la lit). */
     public SearchBar searchBar() {
         return searchBar;
@@ -1675,8 +1841,8 @@ public final class EditorView extends View {
 
     /**
      * La carte ouverte qui reçoit le clavier (la règle des popups
-     * dessinées dans la vue) : la recherche ou l'aller-à montrés,
-     * aucune sinon.
+     * dessinées dans la vue) : la recherche, l'aller-à ou le
+     * renommage montrés, aucune sinon.
      */
     private KeyboardCard openCard() {
         if (searchBar != null && searchBar.isShown()) {
@@ -1684,6 +1850,9 @@ public final class EditorView extends View {
         }
         if (gotoBar != null && gotoBar.isShown()) {
             return gotoBar;
+        }
+        if (renameBar != null && renameBar.isShown()) {
+            return renameBar;
         }
         return null;
     }
@@ -2095,13 +2264,16 @@ public final class EditorView extends View {
                     && searchBar.onTouchArea(event.getX(), event.getY());
             boolean touchedGoto = !touchedSearch && gotoBar != null && gotoBar.isShown()
                     && gotoBar.onTouchArea(event.getX(), event.getY());
+            boolean touchedRename = !touchedSearch && !touchedGoto
+                    && renameBar != null && renameBar.isShown()
+                    && renameBar.onTouchArea(event.getX(), event.getY());
             // la barre et ses cartes ne prennent le doigt que d'une
             // sélection VIVANTE : une sélection morte sans trame
             // intermédiaire y laisserait une barre périmée — le doigt
             // passerait à travers le texte (la sélection se range à
             // la trame suivante, la barre l'ignore entre-temps)
             boolean selectionAlive = hasSelection() && selectionDragBound == 0;
-            downOnCard = touchedSearch || touchedGoto
+            downOnCard = touchedSearch || touchedGoto || touchedRename
                     || (completionCard != null && completionCard.isShown()
                             && completionCard.onTouchArea(event.getX(), event.getY()))
                     || (signatureCard != null && signatureCard.isShown()
@@ -2121,7 +2293,8 @@ public final class EditorView extends View {
                 // lève — la carte ne prend jamais le focus, le clavier
                 // reste à l'éditeur qui route les frappes à la carte
                 if ((touchedSearch && searchBar.keyboardWanted())
-                        || (touchedGoto && gotoBar.keyboardWanted())) {
+                        || (touchedGoto && gotoBar.keyboardWanted())
+                        || (touchedRename && renameBar.keyboardWanted())) {
                     openKeyboard();
                 }
                 return true;
@@ -2500,6 +2673,7 @@ public final class EditorView extends View {
         drawScopeBand(canvas, first, last, count);
         drawSelection(canvas, first, last, count);
         drawSearchHighlights(canvas, first, last, count);
+        drawServerHighlights(canvas, first, last, count);
         for (int line = first; line <= last && line < count; line++) {
             if (isHidden(line)) {
                 continue;
@@ -2544,6 +2718,12 @@ public final class EditorView extends View {
         }
         if (gotoBar != null && gotoBar.isShown()) {
             gotoBar.draw(canvas, popupMetrics());
+        }
+        // la carte de renommage, par-dessus tout elle aussi : posée au
+        // caret, le clavier délégué — la pose se recalcule ici, le
+        // caret la suit (le harnais la lit)
+        if (renameBar != null && renameBar.isShown()) {
+            renameBar.draw(canvas, popupMetrics());
         }
         // la fenêtre visible est payée : le reste remplit au fil de fond
         ensureFill();
@@ -2653,6 +2833,76 @@ public final class EditorView extends View {
             canvas.drawRect(left, top, right, top + lineHeight,
                     m == searchCurrent ? searchCurrentPaint : searchPaint);
         }
+    }
+
+    /**
+     * Les teintes du serveur de langage : les occurrences du symbole
+     * au curseur (le surlignage du protocole) se teintent en bleu —
+     * la recherche reste ambre, les deux familles se lisent d'un
+     * coup d'œil. Chaque plage vit en lignes/colonnes : la fenêtre
+     * la découpe ligne par ligne (une plage peut franchir une borne
+     * de ligne).
+     */
+    private void drawServerHighlights(Canvas canvas, int first, int last, int count) {
+        if (serverHighlights.isEmpty()) {
+            return;
+        }
+        int windowStart = buffer.getLineStart(first);
+        int windowEnd = last + 1 < count
+                ? buffer.getLineStart(last + 1) : buffer.length();
+        for (LspRange range : serverHighlights) {
+            int start = buffer.offsetOfPosition(
+                    range.start().line(), range.start().character());
+            int end = buffer.offsetOfPosition(
+                    range.end().line(), range.end().character());
+            if (start >= end || start >= windowEnd || end <= windowStart) {
+                continue;
+            }
+            // chaque tranche de ligne de la plage se teinte : la
+            // colonne borne la première et la dernière, les
+            // intermédiaires prennent la ligne entière
+            int line = buffer.lineOfOffset(Math.max(start, windowStart));
+            int lastLine = buffer.lineOfOffset(Math.min(end, windowEnd));
+            for (; line <= lastLine; line++) {
+                if (isHidden(line)) {
+                    continue;
+                }
+                int lineStart = buffer.getLineStart(line);
+                int columnStart = line == buffer.lineOfOffset(start)
+                        ? start - lineStart : 0;
+                int lineEnd = buffer.getLineEnd(line);
+                int columnEnd = line == buffer.lineOfOffset(end)
+                        ? end - lineStart : lineEnd - lineStart;
+                float left = getPaddingLeft() + columnStart * charWidth;
+                float right = getPaddingLeft() + columnEnd * charWidth;
+                float top = getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
+                canvas.drawRect(left, top, right, top + lineHeight,
+                        serverHighlightPaint);
+            }
+        }
+    }
+
+    /**
+     * Pose les plages surlignées par le serveur de langage : les
+     * occurrences du symbole au curseur (le surlignage du protocole
+     * — la façade du serveur les y pose, le doigt les voit). La liste
+     * entière remplace la précédente ; null ou vide les range.
+     *
+     * @param ranges les plages surlignées (coordonnées LSP), null
+     *               pour ranger
+     */
+    public void setServerHighlights(List<LspRange> ranges) {
+        serverHighlights = ranges == null ? List.of() : List.copyOf(ranges);
+        invalidate();
+    }
+
+    /**
+     * Les plages surlignées par le serveur (le harnais les lit).
+     *
+     * @return les plages en coordonnées LSP, jamais null
+     */
+    public List<LspRange> serverHighlights() {
+        return serverHighlights;
     }
 
     /**
