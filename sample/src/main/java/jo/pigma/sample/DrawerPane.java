@@ -15,7 +15,8 @@ import android.widget.LinearLayout;
  *
  * <p>Le sample y range son menu : le thème, les serveurs de langage,
  * les documents hors normes — tout ce qui n'a pas besoin d'être
- * toujours visible. Le bouton-icône de la barre supérieure ouvre ;
+ * toujours visible. La poignée d'ouverture vit dans la barre
+ * supérieure du contenu (l'écran la pose par {@link #setHandle});
  * le voile ou une action du menu referme. Le menu vit au-dessus du
  * contenu, jamais dans le flux : la disposition du contenu ne bouge
  * pas quand le menu s'ouvre.</p>
@@ -41,6 +42,12 @@ public final class DrawerPane extends ViewGroup {
 
     /** Le menu coulissant (le second enfant). */
     private LinearLayout drawer;
+
+    /** La couche supérieure par-dessus le contenu (la feuille basse). */
+    private View overlay;
+
+    /** La poignée d'ouverture du menu (le bouton de la barre). */
+    private View handle;
 
     /** Le voile au-dessus du contenu quand le menu est ouvert. */
     private final Paint scrimPaint = new Paint();
@@ -75,20 +82,54 @@ public final class DrawerPane extends ViewGroup {
     public void setPanes(View mainContent, LinearLayout menu) {
         content = mainContent;
         drawer = menu;
-        removeAllViews();
-        addView(content);
-        addView(drawer);
+        overlay = null;
+        rebuildChildren();
         drawer.setVisibility(opened ? View.VISIBLE : View.GONE);
+        requestLayout();
+        invalidate();
     }
 
     /**
      * Pose une vue par-dessus le contenu (la feuille basse vit au
-     * dessus de l'éditeur, hors du flux du contenu).
+     * dessus de l'éditeur, hors du flux du contenu) : le menu reste
+     * le DERNIER enfant — le z-order y suit l'ordre d'ajout, la
+     * feuille s'insère avant lui.
      *
-     * @param overlay la vue de couche supérieure
+     * @param sheet la vue de couche supérieure
      */
-    public void addOverlay(View overlay) {
-        addView(overlay);
+    public void addOverlay(View sheet) {
+        overlay = sheet;
+        rebuildChildren();
+        requestLayout();
+        invalidate();
+    }
+
+    /**
+     * Reconstruit l'ordre des enfants : contenu, couche, menu — le
+     * menu se dessine et se touche le dernier (au-dessus de tout).
+     */
+    private void rebuildChildren() {
+        removeAllViews();
+        if (content != null) {
+            addView(content);
+        }
+        if (overlay != null) {
+            addView(overlay);
+        }
+        if (drawer != null) {
+            addView(drawer);
+        }
+    }
+
+    /**
+     * Pose la poignée d'ouverture du menu (le bouton-icône de la
+     * barre supérieure du contenu — l'écran l'a déjà posé dans son
+     * arbre ; le conteneur n'y fait que le retenir pour le toucher).
+     *
+     * @param opener la vue qui ouvre le menu
+     */
+    public void setHandle(View opener) {
+        handle = opener;
     }
 
     /**
@@ -119,6 +160,7 @@ public final class DrawerPane extends ViewGroup {
         if (drawer != null) {
             drawer.setVisibility(opened ? View.VISIBLE : View.GONE);
         }
+        requestLayout();
         invalidate();
         if (drawerListener != null) {
             drawerListener.onDrawerOpened(opened);
@@ -127,7 +169,8 @@ public final class DrawerPane extends ViewGroup {
 
     /**
      * Le toucher : ouvert, le voile referme le menu ; fermé, le
-     * toucher descend au contenu.
+     * toucher descend au contenu (le menu au-dessus ne vit que
+     * ouvert).
      */
     @Override
     public boolean onTouchEvent(MotionEvent event) {
@@ -136,6 +179,16 @@ public final class DrawerPane extends ViewGroup {
             return true;
         }
         return false;
+    }
+
+    /**
+     * L'interception du toucher : le menu ouvert prend TOUT le geste
+     * au-dessus de sa largeur (le voile compris) — le contenu ne
+     * touche plus à rien tant que le menu vit.
+     */
+    @Override
+    public boolean onInterceptTouchEvent(MotionEvent event) {
+        return opened;
     }
 
     /**
@@ -148,33 +201,71 @@ public final class DrawerPane extends ViewGroup {
     }
 
     /**
-     * Le dessin : le contenu d'abord, le voile et le menu ensuite
-     * quand il est ouvert (le menu se dessine à gauche).
+     * La mesure : le conteneur épouse la contrainte qu'on lui donne
+     * (l'écran plein), le contenu et la couche la partagent, le menu
+     * demande sa largeur et la hauteur de l'écran.
      */
     @Override
-    protected void onDraw(Canvas canvas) {
-        if (content == null || drawer == null) {
-            return;
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        int width = View.MeasureSpec.getSize(widthMeasureSpec);
+        int height = View.MeasureSpec.getSize(heightMeasureSpec);
+        if (content != null) {
+            measureChild(content, widthMeasureSpec, heightMeasureSpec);
         }
-        if (opened) {
-            canvas.drawRect(0.0f, 0.0f, getWidth(), getHeight(), scrimPaint);
-            canvas.drawRect(0.0f, 0.0f, Math.min(drawerWidthPx(), getWidth()),
-                    getHeight(), drawerPaint);
+        if (overlay != null) {
+            measureChild(overlay, widthMeasureSpec, heightMeasureSpec);
+        }
+        if (drawer != null && drawer.getVisibility() != View.GONE) {
+            drawer.measure(
+                    View.MeasureSpec.makeMeasureSpec(drawerWidthPx(),
+                            View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+        }
+        setMeasuredDimension(width, height);
+    }
+
+    /**
+     * La disposition : le contenu et la couche tiennent l'écran, le
+     * menu ouvert se pose par-dessus à gauche.
+     */
+    @Override
+    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+        if (content != null) {
+            content.layout(left, top, right, bottom);
+        }
+        if (overlay != null) {
+            overlay.layout(left, top, right, bottom);
+        }
+        if (drawer != null && drawer.getVisibility() != View.GONE) {
+            int drawerWidth = Math.min(drawerWidthPx(), right - left);
+            drawer.layout(left, top, left + drawerWidth, bottom);
         }
     }
 
     /**
-     * La disposition des enfants : le conteneur de démonstration ne
-     * dispose rien (le harnais dimensionne la vue qu'il éprouve, le
-     * cadre applicatif réel dispose l'arbre).
-     *
-     * @param changed la géométrie a-t-elle changé
-     * @param left    bord gauche
-     * @param top     bord haut
-     * @param right   bord droit
-     * @param bottom  bord bas
+     * Le dessin du conteneur : le fond d'abord (le contenu et la
+     * couche se dessinent par {@link #dispatchDraw}), le voile et le
+     * fond du menu ensuite — les enfants du cadre se dessinent d'eux-
+     * mêmes dans l'ordre d'ajout, le menu y reste le dernier.
      */
     @Override
-    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+    protected void onDraw(Canvas canvas) {
+        if (!opened) {
+            return;
+        }
+        canvas.drawRect(0.0f, 0.0f, getWidth(), getHeight(), scrimPaint);
+        canvas.drawRect(0.0f, 0.0f, Math.min(drawerWidthPx(), getWidth()),
+                getHeight(), drawerPaint);
+    }
+
+    /**
+     * La poignée d'ouverture vit-elle à l'écran ? Le scénario de la
+     * refonte y répond (le bouton-hamburger de la barre supérieure
+     * ouvre le menu).
+     *
+     * @return vrai si la poignée existe
+     */
+    boolean handleSet() {
+        return handle != null;
     }
 }

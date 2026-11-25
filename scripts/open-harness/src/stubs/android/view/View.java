@@ -54,6 +54,9 @@ public class View {
     private OnClickListener clickListener;
     private View parent;
 
+    /** La translation verticale posée (le rendu de la feuille y entre). */
+    private float translationY;
+
     /** L'horloge virtuelle des différés (millisecondes). */
     private static long clockMillis;
 
@@ -356,6 +359,142 @@ public class View {
     /** Pose le parent direct (à l'ajout ou au retrait d'un groupe). */
     public void harnessSetParent(View parent) {
         this.parent = parent;
+    }
+
+    /**
+     * Demande une nouvelle mesure et disposition de l'arbre (accepté,
+     * sans effet : le harnais dimensionne la vue qu'il éprouve).
+     */
+    public void requestLayout() {
+    }
+
+    /**
+     * Pose le drapeau « ne dessine pas » des groupes sans arrière-plan
+     * (accepté, sans effet : le harnais déclenche le dessin lui-même).
+     *
+     * @param willNotDraw vrai pour marquer la vue sans dessin propre
+     */
+    public void setWillNotDraw(boolean willNotDraw) {
+    }
+
+    /**
+     * Pose la translation verticale de la vue (accepté, rangé sans
+     * effet : le harnais ne rend pas la géométrie).
+     *
+     * @param translationY la translation en pixels
+     */
+    public void setTranslationY(float translationY) {
+        this.translationY = translationY;
+    }
+
+    /** La translation verticale posée. */
+    public float getTranslationY() {
+        return translationY;
+    }
+
+    /**
+     * La mesure de la vue (accepté, sans effet : les dimensions mesurées
+     * restent nulles — le harnais dimensionne la vue qu'il éprouve).
+     *
+     * @param widthMeasureSpec  la contrainte de largeur
+     * @param heightMeasureSpec la contrainte de hauteur
+     */
+    public void measure(int widthMeasureSpec, int heightMeasureSpec) {
+    }
+
+    /**
+     * La mesure propre de la vue (accepté, sans effet : les
+     * conteneurs de l'écran la surchargent pour le cadre réel — le
+     * harnais n'y mesure jamais).
+     *
+     * @param widthMeasureSpec  la contrainte de largeur
+     * @param heightMeasureSpec la contrainte de hauteur
+     */
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+    }
+
+    /**
+     * Pose les dimensions mesurées (accepté, sans effet).
+     *
+     * @param measuredWidth  la largeur mesurée
+     * @param measuredHeight la hauteur mesurée
+     */
+    protected final void setMeasuredDimension(int measuredWidth, int measuredHeight) {
+    }
+
+    /** La largeur mesurée (nulle au harnais : la mesure n'y court pas). */
+    public final int getMeasuredWidth() {
+        return 0;
+    }
+
+    /** La hauteur mesurée (nulle au harnais : la mesure n'y court pas). */
+    public final int getMeasuredHeight() {
+        return 0;
+    }
+
+    /**
+     * La disposition de la vue : la géométrie s'y pose (taille comprise),
+     * sans parent ni enfants réels.
+     *
+     * @param left   bord gauche
+     * @param top    bord haut
+     * @param right  bord droit
+     * @param bottom bord bas
+     */
+    public void layout(int left, int top, int right, int bottom) {
+        width = right - left;
+        height = bottom - top;
+    }
+
+    /**
+     * Les contraintes de mesure du cadre : un mode et une taille codés
+     * dans un entier (les modes du cadre y vivent pour la compilation
+     * des conteneurs ; le harnais n'en fabrique jamais).
+     */
+    public static final class MeasureSpec {
+
+        /** Le parent impose la taille exacte. */
+        public static final int EXACTLY = 1 << 30;
+
+        /** La taille est un plafond. */
+        public static final int AT_MOST = 2 << 30;
+
+        /** Aucune contrainte. */
+        public static final int UNSPECIFIED = 0;
+
+        private MeasureSpec() {
+        }
+
+        /**
+         * Fabrique une contrainte.
+         *
+         * @param size la taille
+         * @param mode le mode
+         * @return la contrainte codée
+         */
+        public static int makeMeasureSpec(int size, int mode) {
+            return mode | (size & ~(-1 << 30));
+        }
+
+        /**
+         * La taille de la contrainte.
+         *
+         * @param measureSpec la contrainte codée
+         * @return la taille
+         */
+        public static int getSize(int measureSpec) {
+            return measureSpec & (~(-1 << 30));
+        }
+
+        /**
+         * Le mode de la contrainte.
+         *
+         * @param measureSpec la contrainte codée
+         * @return le mode
+         */
+        public static int getMode(int measureSpec) {
+            return measureSpec & (-1 << 30);
+        }
     }
 
     /** L'horloge virtuelle courante (millisecondes). */

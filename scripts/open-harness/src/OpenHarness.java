@@ -2593,23 +2593,32 @@ public final class OpenHarness {
         // le drawer : fermé au départ, le bouton du menu l'ouvre, le
         // menu porte le thème et les hors normes
         check("le drawer part fermé", !drawer.isDrawerOpen());
-        drawer.setDrawerOpen(true);
-        check("le drawer s'ouvre", drawer.isDrawerOpen());
+        Button menuOpener = findButton(activity.harnessRootView(), "☰");
+        check("la poignée du menu vit à la barre (le hamburger)",
+                menuOpener != null);
+        if (menuOpener != null) {
+            menuOpener.performClick();
+        }
+        check("la poignée du menu l'ouvre", drawer.isDrawerOpen());
         check("le menu du drawer porte les boutons du menu",
                 findButton(activity.harnessRootView(), "Clair") != null
                         && findButton(activity.harnessRootView(), "50k ⨯") != null);
         drawer.setDrawerOpen(false);
         check("le drawer se referme", !drawer.isDrawerOpen());
-        // la feuille basse : part repliée, les états montent d'un
-        // cran par le tiré, les mesures y vivent toujours
-        check("la feuille part repliée",
-                sheet.sheetState() == BottomSheet.State.COLLAPSED);
-        sheet.setSheetState(BottomSheet.State.HALF_EXPANDED);
-        check("la feuille monte au demi-plié",
+        // la feuille basse : part demi-pliée (les mesures se lisent de
+        // plain-pied), les états montent et descendent d'un cran, les
+        // mesures y vivent toujours
+        check("la feuille part demi-pliée (les mesures lisibles)",
                 sheet.sheetState() == BottomSheet.State.HALF_EXPANDED);
         check("les mesures vivent à la feuille",
                 textOf("coloration :") != null);
+        sheet.setSheetState(BottomSheet.State.EXPANDED);
+        check("la feuille monte à l'ouvert",
+                sheet.sheetState() == BottomSheet.State.EXPANDED);
         sheet.setSheetState(BottomSheet.State.COLLAPSED);
+        check("la feuille se referme (la poignée seule dépasse)",
+                sheet.sheetState() == BottomSheet.State.COLLAPSED);
+        sheet.setSheetState(BottomSheet.State.HALF_EXPANDED);
         // la bascule de thème du menu : le journal la porte encore au
         // relevé final (la feuille ouverte la montre)
         click("Sombre");

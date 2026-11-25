@@ -1,5 +1,7 @@
 package android.view;
 
+import android.graphics.Canvas;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -174,5 +176,60 @@ public class ViewGroup extends View {
      * @param bottom  bord bas
      */
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+    }
+
+    /**
+     * Le dessin des enfants (accepté, sans effet au harnais : le
+     * dessin du harnais appelle chaque onDraw directement — les
+     * conteneurs de l'écran la surchargent pour le cadre réel).
+     *
+     * @param canvas le canevas
+     */
+    protected void dispatchDraw(Canvas canvas) {
+    }
+
+    /**
+     * La distribution du toucher aux enfants (accepté, sans
+     * distribution réelle : le harnais touche les vues directement).
+     *
+     * @param event l'événement
+     * @return vrai si consommé
+     */
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        return onTouchEvent(event);
+    }
+
+    /**
+     * L'interception du toucher avant les enfants (accepté, sans
+     * interception : les conteneurs de l'écran la surchargent).
+     *
+     * @param event l'événement
+     * @return vrai pour prendre le geste
+     */
+    public boolean onInterceptTouchEvent(MotionEvent event) {
+        return false;
+    }
+
+    /**
+     * Mesure un enfant selon ses paramètres (aucune mesure réelle :
+     * l'enfant garde ses dimensions nulles).
+     *
+     * @param child             l'enfant à mesurer
+     * @param parentWidthMeasureSpec la contrainte de largeur du parent
+     * @param parentHeightMeasureSpec la contrainte de hauteur du parent
+     */
+    protected void measureChild(View child, int parentWidthMeasureSpec,
+                                int parentHeightMeasureSpec) {
+        child.measure(parentWidthMeasureSpec, parentHeightMeasureSpec);
+    }
+
+    /**
+     * La vue est-elle visible à l'écran ? (la visibilité seule y
+     * suffit au harnais : aucune géométrie n'y vit).
+     *
+     * @return vrai si visible
+     */
+    public boolean harnessChildShown(View child) {
+        return child.getVisibility() == View.VISIBLE;
     }
 }

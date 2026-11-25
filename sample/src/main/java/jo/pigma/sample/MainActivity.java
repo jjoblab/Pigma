@@ -71,6 +71,7 @@ public final class MainActivity extends Activity {
     private TabRow tabRow;
     private DrawerPane drawerPane;
     private BottomSheet bottomSheet;
+    private Button menuButton;
     private Button undoButton;
     private Button redoButton;
     private Button copyButton;
@@ -159,6 +160,9 @@ public final class MainActivity extends Activity {
         tabRow = new TabRow(this);
         drawerPane = new DrawerPane(this);
         bottomSheet = new BottomSheet(this);
+        menuButton = new Button(this);
+        menuButton.setText("☰");
+        menuButton.setOnClickListener(view -> drawerPane.setDrawerOpen(!drawerPane.isDrawerOpen()));
         undoButton = new Button(this);
         redoButton = new Button(this);
         undoButton.setText("Annuler");
@@ -298,9 +302,13 @@ public final class MainActivity extends Activity {
      * @return la racine du contenu
      */
     private View buildLayout() {
-        // le contenu : les onglets au-dessus, l'éditeur dessous
+        // le contenu : la barre du menu au sommet, les onglets
+        // au-dessous, l'éditeur dessous
         LinearLayout contentColumn = new LinearLayout(this);
         contentColumn.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams menuParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        contentColumn.addView(menuButton, menuParams);
         LinearLayout.LayoutParams tabParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, tabRow.preferredHeightPx());
         contentColumn.addView(tabRow, tabParams);
@@ -339,10 +347,15 @@ public final class MainActivity extends Activity {
         menuColumn.addView(row(margin, lspButton, lspLuaButton));
 
         drawerPane.setPanes(contentColumn, menuColumn);
-        // la feuille basse vit PAR-DESSUS le contenu (le troisième
-        // enfant du panneau : le harnais la trouve dans l'arbre, le
-        // cadre réel la dessine au-dessus de l'éditeur)
+        // la feuille basse vit PAR-DESSUS le contenu (l'ordre des
+        // enfants suit le z-order : contenu, feuille, menu — le menu
+        // reste au-dessus de tout)
         drawerPane.addOverlay(bottomSheet);
+        drawerPane.setHandle(menuButton);
+        // la feuille part demi-pliée : les mesures se lisent de
+        // plain-pied à l'ouverture de l'application (le replié ne
+        // montre que la poignée)
+        bottomSheet.setSheetState(BottomSheet.State.HALF_EXPANDED);
         return drawerPane;
     }
 

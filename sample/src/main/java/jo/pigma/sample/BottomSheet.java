@@ -12,12 +12,15 @@ import android.widget.LinearLayout;
  * Feuille basse façon bottom sheet : le panneau des mesures du
  * sample vit collé au bas de l'écran, avec une poignée à tirer.
  *
- * <p>Trois états : fermé (seule la poignée dépasse), demi-plié (le
+ * <p>Trois états : replié (seule la poignée dépasse), demi-plié (le
  * titre et les mesures tiennent), ouvert (le journal du scénario y
  * vit aussi). Le doigt tire la poignée pour passer d'un état à
- * l'autre ; l'écran peut y forcer l'état par programme. Le contenu
- * de l'éditeur ne bouge pas : la feuille se dessine par-dessus,
- * l'éditeur reste la vue de fond.</p>
+ * l'autre ; l'écran peut y forcer l'état par programme.</p>
+ *
+ * <p>La feuille vit PAR-DESSUS l'éditeur sans l'étouffer : elle
+ * occupe tout l'écran en géométrie (l'enfant s'y dispose) mais se
+ * TRANSLATE de sa partie cachée — seule la hauteur de son état se
+ * dessine et ne prend le toucher, le reste descend au contenu.</p>
  */
 public final class BottomSheet extends ViewGroup {
 
@@ -89,6 +92,7 @@ public final class BottomSheet extends ViewGroup {
         content = sheetContent;
         removeAllViews();
         addView(content);
+        requestLayout();
     }
 
     /**
@@ -106,7 +110,8 @@ public final class BottomSheet extends ViewGroup {
     }
 
     /**
-     * Force l'état de la feuille : l'auditeur y est prévenu.
+     * Force l'état de la feuille : la translation suit (la hauteur
+     * visible change), l'auditeur y est prévenu.
      *
      * @param target l'état demandé
      */
@@ -115,15 +120,15 @@ public final class BottomSheet extends ViewGroup {
             return;
         }
         state = target;
-        invalidate();
+        applyTranslation();
         if (sheetListener != null) {
             sheetListener.onSheetStateChanged(state);
         }
     }
 
     /**
-     * La hauteur que la feuille montre à l'état donné (le calcul du
-     * harnais y entre : les états montent par quarts de l'écran).
+     * La hauteur que la feuille montre à l'état donné : les états
+     * montent par quarts de l'écran, le replié garde la poignée.
      *
      * @param target l'état
      * @return la hauteur montrée en pixels
@@ -132,7 +137,7 @@ public final class BottomSheet extends ViewGroup {
         float quarter = getHeight() / 4.0f;
         switch (target) {
             case COLLAPSED:
-                return HANDLE_HEIGHT_DP * dp() * 3.0f;
+                return Math.max(CORNER_RADIUS_DP, HANDLE_HEIGHT_DP * 3.0f) * dp();
             case HALF_EXPANDED:
                 return quarter;
             default:
@@ -141,13 +146,58 @@ public final class BottomSheet extends ViewGroup {
     }
 
     /**
-     * Le toucher : la poignée se tire (montée : ouvre d'un cran ;
-     * descente : referme d'un cran) — la zone au-dessus de la
-     * feuille retourne au contenu.
+     * La translation de la feuille : la partie cachée descend sous
+     * le bas de l'écran (l'écran plein moins la hauteur visible).
+     */
+    private void applyTranslation() {
+        if (getHeight() > 0) {
+            setTranslationY(getHeight() - visibleHeightPx(state));
+        }
+        requestLayout();
+        invalidate();
+    }
+
+    /**
+     * La mesure : la feuille épouse la contrainte qu'on lui donne
+     * (l'écran plein — la translation cachera le trop), son contenu
+     * s'y mesure pareillement.
+     */
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        int width = View.MeasureSpec.getSize(widthMeasureSpec);
+        int height = View.MeasureSpec.getSize(heightMeasureSpec);
+        if (content != null) {
+            measureChild(content, widthMeasureSpec, heightMeasureSpec);
+        }
+        setMeasuredDimension(width, height);
+    }
+
+    /**
+     * La disposition : le contenu tient l'écran plein (la feuille le
+     * découpe à sa hauteur visible par la translation).
+     */
+    @Override
+    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+        if (content != null) {
+            content.layout(left, top, right, bottom);
+        }
+        applyTranslation();
+    }
+
+    /**
+     * Le toucher : seul le TIROIR DE LA POIGNÉE (le haut de la
+     * hauteur visible) prend le geste — la montée ouvre d'un cran,
+     * la descente referme d'un cran ; le reste de la feuille
+     * retourne au contenu.
      */
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (event == null) {
+        if (event == null || getHeight() == 0) {
+            return false;
+        }
+        float sheetTop = getHeight() - visibleHeightPx(state);
+        float handleBottom = sheetTop + CORNER_RADIUS_DP * dp() * 2.0f;
+        if (event.getY() > handleBottom) {
             return false;
         }
         int action = event.getAction();
@@ -162,9 +212,9 @@ public final class BottomSheet extends ViewGroup {
         if (action == MotionEvent.ACTION_UP) {
             float pull = lastTouchY - event.getY();
             if (pull < -dp() * 8.0f) {
-                stepState(-1);
-            } else if (pull > dp() * 8.0f) {
                 stepState(1);
+            } else if (pull > dp() * 8.0f) {
+                stepState(-1);
             }
             return true;
         }
@@ -185,8 +235,9 @@ public final class BottomSheet extends ViewGroup {
     }
 
     /**
-     * Le dessin : la feuille se dessine du bas de l'écran à la
-     * hauteur de son état, coins ronds en haut, poignée au sommet.
+     * Le dessin : le fond de la feuille aux coins ronds se dessine
+     * dans la hauteur visible, la poignée au sommet — le contenu
+     * s'y dessine par-dessus ({@link #dispatchDraw} du cadre).
      */
     @Override
     protected void onDraw(Canvas canvas) {
@@ -212,20 +263,5 @@ public final class BottomSheet extends ViewGroup {
     /** Le facteur de densité de l'écran. */
     private float dp() {
         return getResources().getDisplayMetrics().density;
-    }
-
-    /**
-     * La disposition des enfants : la feuille de démonstration ne
-     * dispose rien (le harnais dimensionne la vue qu'il éprouve, le
-     * cadre applicatif réel dispose l'arbre).
-     *
-     * @param changed la géométrie a-t-elle changé
-     * @param left    bord gauche
-     * @param top     bord haut
-     * @param right   bord droit
-     * @param bottom  bord bas
-     */
-    @Override
-    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
     }
 }
