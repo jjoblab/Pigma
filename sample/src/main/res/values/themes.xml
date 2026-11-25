@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Le thème de l'écran : Material3, l'exigence des vues de la
+    bibliothèque Material présentes à l'écran (MaterialToolbar,
+    TabLayout, le tiroir, la feuille basse). L'héritage part du
+    pont framework : MaterialComponents y raccorde le vrai thème,
+    la vue de l'éditeur garde son fond propre (applyTheme porte
+    les couleurs, aucun attribut ne se heurte au pont).
+-->
+<resources>
+    <style name="AppTheme" parent="Theme.Material3.Light.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>

@@ -37,6 +37,14 @@ public class Context {
     }
 
     /** Les ressources (métriques fixes). */
+    /** Le thème porteur (le harnais n'en porte pas : un objet quelconque). */
+    public Object getTheme() {
+        return theme;
+    }
+
+    /** Le thème du harnais (un objet quelconque, rangé sans effet). */
+    private final Object theme = new Object();
+
     public Resources getResources() {
         return RESOURCES;
     }

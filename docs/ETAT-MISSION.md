@@ -16,6 +16,40 @@ aller-à, signature, sélection, copie du texte). Le harnais
 39/39 verts, l'APK reconstruit (6,99 Mo, signé debug) et livré dans
 download/.**
 
+## Session 36 — le force close d'ouverture et les priorités du rapport (2026-11-25)
+
+0. **Le force close à l'ouverture** : l'écran portait des vues de
+   la bibliothèque Material (MaterialToolbar, TabLayout) sous le
+   thème CADRE du manifeste — ThemeEnforcement de la bibliothèque
+   lève à la construction de la première vue. Le thème passe à
+   Material3 (res/values/themes.xml, l'attribut du manifeste suit),
+   l'icône d'ouverture du menu devient un vrai drawable du pont
+   (la description d'accessibilité la suit), le comportement de la
+   feuille basse se pose DANS les paramètres du panneau avant
+   l'ajout au coordinateur (setBehavior — l'attachement réel du
+   cadre, c'est lui qui porte la glisse et la translation).
+
+0. **P0-2 du rapport** : useLegacyPackaging posé (jniLibs) — le
+   manifeste fusionné porte extractNativeLibs=true, le serveur
+   EmmyLua vivra dans nativeLibraryDir et canExecute() deviendra
+   vrai (vérifié au paquet).
+
+0. **P0-3 du rapport** : la fermeture de la liaison LSP quitte le
+   fil d'interface — un exécuteur démon dédié (pigma-lsp-stop) y
+   porte la poignée de main d'arrêt, la session se détache
+   immédiatement côté écran, un rebranchement relance l'exécuteur.
+
+0. **P0-1 du rapport** : la course cœur/coloration se ferme — le
+   tampon porte un verrou de mutation (le remplacement entier y
+   passe), le cliché du moteur s'y prend par TextBuffer.snapshot
+   (texte, bornes et révision d'un seul tenant), la révision devient
+   volatile. Un test de stress (ConcurrentBufferTest : 1,5 s d'un
+   fil éditeur contre un fil de clichés) éprouve la cohérence.
+
+0. **P0-4 du rapport (partie)** : la lecture de mémoire libre ne
+   se paie plus à chaque image — une ancre échantillonnée (une trame
+   sur 32) porte la mesure, la pire trame s'y compare.
+
 ## Session 35 — la refonte du module :sample (2026-11-25)
 
 0. **Les vrais conteneurs du cadre** : plus AUCUN ViewGroup maison

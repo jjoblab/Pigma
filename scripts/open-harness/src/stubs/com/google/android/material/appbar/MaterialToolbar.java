@@ -1,6 +1,7 @@
 package com.google.android.material.appbar;
 
 import android.content.Context;
+import android.graphics.drawable.Drawable;
 import android.view.View;
 
 /**
@@ -40,21 +41,40 @@ public class MaterialToolbar extends View {
         return title;
     }
 
+    /** L'icône de navigation posée (le harnais n'en dessine pas). */
+    private Drawable navigationIcon;
+
+    /** La description d'accessibilité de l'icône posée. */
+    private CharSequence navigationDescription;
+
     /**
-     * Pose l'icône de navigation (la ressource se range, sans
-     * effet au harnais).
+     * Pose l'icône de navigation (un drawable du cadre : le
+     * glyphe du hamburger sur l'écran réel).
      *
-     * @param resId l'identifiant de ressource (0 : aucune)
+     * @param icon l'icône (null : aucune)
      */
-    public void setNavigationIcon(int resId) {
+    public void setNavigationIcon(Drawable icon) {
+        navigationIcon = icon;
+    }
+
+    /** L'icône de navigation posée (null : aucune). */
+    public Drawable getNavigationIcon() {
+        return navigationIcon;
     }
 
     /**
-     * Gonfle un menu (accepté, sans effet au harnais).
+     * Pose la description d'accessibilité de l'icône de
+     * navigation.
      *
-     * @param resId l'identifiant du menu (0 : aucun)
+     * @param description la description
      */
-    public void inflateMenu(int resId) {
+    public void setNavigationContentDescription(CharSequence description) {
+        navigationDescription = description;
+    }
+
+    /** La description d'accessibilité posée. */
+    public CharSequence getNavigationContentDescription() {
+        return navigationDescription;
     }
 
     /**

@@ -4,7 +4,8 @@ import java.util.function.Supplier;
 
 import org.junit.Test;
 
-import jo.pigma.editor.RenderCache.PlanBaker;
+import jo.pigma.editor.render.RenderCache;
+import jo.pigma.editor.render.RenderCache.PlanBaker;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotSame;

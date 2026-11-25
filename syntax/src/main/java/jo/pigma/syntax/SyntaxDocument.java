@@ -326,38 +326,48 @@ public final class SyntaxDocument implements TextListener {
             return null;
         }
         synchronized (stateLock) {
-            int count = buffer.getLineCount();
-            if (lexedUpto >= count) {
-                return null;
-            }
-            int from = lexedUpto;
-            int startState = from == 0 ? 0 : lines[from - 1].endState();
-            int last = Math.min(from + maxLines, count) - 1;
-            int base = buffer.getLineStart(from);
-            int textEnd = buffer.getLineEnd(last);
-            if (base < 0 || textEnd < base || textEnd > buffer.length()) {
-                // le tampon mute avant de notifier (bornes neuves,
-                // longueur ancienne) : le cliché serait déchiré, on
-                // n'en prend pas — l'édition relancera le fil de fond
-                return null;
-            }
-            int linesInSlice = last - from + 1;
-            int[] starts = new int[linesInSlice];
-            int[] ends = new int[linesInSlice];
-            for (int i = 0; i < linesInSlice; i++) {
-                starts[i] = buffer.getLineStart(from + i) - base;
-                ends[i] = buffer.getLineEnd(from + i) - base;
-            }
-            String text = buffer.getText(base, textEnd);
-            if (buffer.getRevision() != observedRevision) {
-                // le tampon est déjà à une révision que le moteur n'a
-                // pas observée (la notification dort encore) : le
-                // cliché porterait un texte neuf sous une révision
-                // ancienne — on n'en prend pas, la révision observée
-                // montera à la notification et le fil repartira
-                return null;
-            }
-            return new FillSlice(observedRevision, from, startState, text, starts, ends);
+            // le cliché lit le tampon d'un seul tenant (le verrou de
+            // mutation tient le texte, les bornes et la révision
+            // ensemble) — une écriture du fil d'interface ne peut
+            // plus déchirer la prise (bornes neuves, texte ancien) ;
+            // la notification de l'écriture attendra stateLock pour
+            // replacer la révision observée, le cliché reste
+            // cohérent quoi qu'il arrive
+            FillSlice taken = buffer.snapshot((length, revision) -> {
+                int count = buffer.getLineCount();
+                if (lexedUpto >= count) {
+                    return null;
+                }
+                int from = lexedUpto;
+                int startState = from == 0 ? 0 : lines[from - 1].endState();
+                int last = Math.min(from + maxLines, count) - 1;
+                int base = buffer.getLineStart(from);
+                int textEnd = buffer.getLineEnd(last);
+                if (base < 0 || textEnd < base || textEnd > length) {
+                    // le tampon mute avant de notifier (bornes neuves,
+                    // longueur ancienne) : le cliché serait déchiré, on
+                    // n'en prend pas — l'édition relancera le fil de fond
+                    return null;
+                }
+                int linesInSlice = last - from + 1;
+                int[] starts = new int[linesInSlice];
+                int[] ends = new int[linesInSlice];
+                for (int i = 0; i < linesInSlice; i++) {
+                    starts[i] = buffer.getLineStart(from + i) - base;
+                    ends[i] = buffer.getLineEnd(from + i) - base;
+                }
+                String text = buffer.getText(base, textEnd);
+                if (revision != observedRevision) {
+                    // le tampon est déjà à une révision que le moteur n'a
+                    // pas observée (la notification dort encore) : le
+                    // cliché porterait un texte neuf sous une révision
+                    // ancienne — on n'en prend pas, la révision observée
+                    // montera à la notification et le fil repartira
+                    return null;
+                }
+                return new FillSlice(observedRevision, from, startState, text, starts, ends);
+            });
+            return taken;
         }
     }
 

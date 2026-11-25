@@ -35,6 +35,17 @@ android {
             isMinifyEnabled = false
         }
     }
+
+    packaging {
+        jniLibs {
+            // le serveur natif EmmyLua est un EXÉCUTABLE : il doit
+            // vivre dans nativeLibraryDir, seul répertoire exécutable
+            // d'une application — sans l'extraction à l'ancienne, le
+            // .so reste compressé dans l'APK, canExecute() est faux
+            // et le bouton « LSP Lua » annonce le serveur manquant
+            useLegacyPackaging = true
+        }
+    }
 }
 
 dependencies {

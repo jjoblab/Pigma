@@ -30,13 +30,22 @@ public final class TextBuffer implements CharSequence {
 
     private static final int INITIAL_CAPACITY = 64;
 
+    /**
+     * Le verrou de mutation : les écritures (le remplacement et ses
+     * tableaux : contenu, trou, index de lignes, révision) y passent
+     * ENTIERES, et les clichés d'un autre fil (le moteur de
+     * coloration) le prennent par {@link #snapshot(RangeReader)} —
+     * une lecture ne voit plus jamais un tableau à moitié réécrit.
+     */
+    final Object editLock = new Object();
+
     private char[] content;
     private int gapStart;
     private int gapEnd;
     private int textLength;
     private int[] lineStarts;
     private int lineCount;
-    private int revision;
+    private volatile int revision;
     private final List<TextListener> headListeners = new ArrayList<>();
 
     private final List<TextListener> listeners = new ArrayList<>();
@@ -159,12 +168,51 @@ public final class TextBuffer implements CharSequence {
     /**
      * Révision du texte : incrémentée à chaque remplacement effectif, jamais
      * remise à zéro. Un résultat calculé sur une révision doit être jeté dès
-     * que celle-ci avance.
+     * que celle-ci avance. La lecture est volatile : un autre fil (le
+     * moteur de coloration) y voit la dernière valeur posée sans
+     * attendre un verrou.
      *
      * @return la révision courante
      */
     public int getRevision() {
         return revision;
+    }
+
+    /**
+     * Lit le tampon d'un seul tenant sous le verrou de mutation :
+     * le lecteur reçoit le texte, les bornes et la révision
+     * cohérents — une écriture du fil d'interface ne peut pas
+     * se glisser dans la lecture (le cliché resterait déchiré).
+     * Réservé aux lecteurs d'un AUTRE fil (le moteur de fond) ;
+     * le fil d'interface lit hors verrou, ses propres écritures
+     * suivent son ordre programme.
+     *
+     * @param reader le lecteur appelé sous verrou, jamais {@code null}
+     * @param <R>    le type du résultat du lecteur
+     * @return le résultat du lecteur
+     */
+    public <R> R snapshot(RangeReader<R> reader) {
+        synchronized (editLock) {
+            return reader.read(length(), revision);
+        }
+    }
+
+    /**
+     * Le lecteur d'un cliché : le texte n'y vit pas, les bornes et
+     * la longueur y passent — le lecteur y appelle les lectures
+     * publiques, le verrou tient déjà.
+     */
+    @FunctionalInterface
+    public interface RangeReader<R> {
+
+        /**
+         * Lit le tampon (sous le verrou de mutation).
+         *
+         * @param length   la longueur du texte au moment de la lecture
+         * @param revision la révision au moment de la lecture
+         * @return le résultat du lecteur
+         */
+        R read(int length, int revision);
     }
 
     // ------------------------------------------------------------- lignes
@@ -329,22 +377,29 @@ public final class TextBuffer implements CharSequence {
         if (removed == 0 && inserted == 0) {
             return;
         }
-        updateLineStarts(start, end, removed, inserted, text);
-        moveGap(start);
-        gapEnd += removed;
-        textLength -= removed;
-        if (inserted > 0) {
-            ensureGapCapacity(inserted);
-            text.getChars(0, inserted, content, gapStart);
-            gapStart += inserted;
-            textLength += inserted;
+        List<TextListener> snapshot;
+        synchronized (editLock) {
+            updateLineStarts(start, end, removed, inserted, text);
+            moveGap(start);
+            gapEnd += removed;
+            textLength -= removed;
+            if (inserted > 0) {
+                ensureGapCapacity(inserted);
+                text.getChars(0, inserted, content, gapStart);
+                gapStart += inserted;
+                textLength += inserted;
+            }
+            revision++;
+            // les documents d'abord (en tête), les lecteurs ensuite : l'ordre
+            // document-avant-interface est l'invariant qui protège les
+            // lectures de mi-remplacement
+            snapshot = new ArrayList<>(headListeners);
+            snapshot.addAll(listeners);
         }
-        revision++;
-        // les documents d'abord (en tête), les lecteurs ensuite : l'ordre
-        // document-avant-interface est l'invariant qui protège les
-        // lectures de mi-remplacement
-        List<TextListener> snapshot = new ArrayList<>(headListeners);
-        snapshot.addAll(listeners);
+        // la notification sort du verrou : un écouteur qui relit le
+        // tampon (le moteur de coloration y reprend un cliché) ne
+        // s'empile pas sur la mutation — et l'ordre
+        // document-avant-interface reste celui de la liste
         for (TextListener listener : snapshot) {
             listener.textChanged(this, start, removed, inserted, revision);
         }

@@ -5,6 +5,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -189,6 +191,30 @@ public final class LspEditor {
     private final Runnable documentSync = this::pushDocumentToServer;
 
     /**
+     * L'exécuteur de l'arrêt : la poignée de main de la fermeture
+     * (l'attente de la réponse du serveur, la fermeture ordonnée
+     * des canaux) vit HORS du fil d'interface — l'écran ne gèle
+     * plus au débranchement, l'arrêt se règle en fond et meurt
+     * avec la dernière liaison (le fil y est démon). Un
+     * rebranchement après un débranchement y relance l'exécuteur :
+     * le champ n'est jamais lu après sa mise à mort.
+     */
+    private volatile ExecutorService shutdownExecutor = newExecutor();
+
+    /**
+     * Un exécuteur d'arrêt neuf (le fil démon de la fermeture).
+     *
+     * @return l'exécuteur, jamais null
+     */
+    private static ExecutorService newExecutor() {
+        return Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "pigma-lsp-stop");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+
+    /**
      * La génération de la pompe du document (le document change : les
      * réponses en vol des quatre fonctions du document se périment).
      */
@@ -341,9 +367,23 @@ public final class LspEditor {
         view.setServerSemantics(List.of());
         resetProviders();
         capabilities = LspCapabilities.NONE;
-        session.shutdown();
+        // la poignée de main de l'arrêt part au fil de fond : le fil
+        // d'interface ne l'attend plus (l'attente d'une seconde y
+        // gelait l'écran) — la liaison change de main ici, la
+        // fermeture s'y règle, l'exécuteur meurt après elle (un
+        // rebranchement en relance un neuf)
+        LspSession stopping = session;
         session = null;
         uri = null;
+        ExecutorService stoppingExecutor = shutdownExecutor;
+        shutdownExecutor = newExecutor();
+        stoppingExecutor.execute(() -> {
+            try {
+                stopping.shutdown();
+            } finally {
+                stoppingExecutor.shutdown();
+            }
+        });
         view.post(view::invalidate);
     }
 

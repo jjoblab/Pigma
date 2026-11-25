@@ -11,11 +11,23 @@ import android.view.ViewGroup;
  */
 public class CoordinatorLayout extends ViewGroup {
 
+    /** Un comportement de coordinateur (la feuille basse en pose un). */
+    public static class Behavior {
+
+        /** Un comportement neuf, sans effet au harnais. */
+        public Behavior() {
+        }
+    }
+
     /**
      * Paramètres de disposition du coordinateur : le comportement
-     * s'y règle (accepté, rangé sans effet au harnais).
+     * s'y règle (l'attachement réel de la feuille basse — le
+     * harnais le range, l'appareil le vit).
      */
     public static class LayoutParams extends ViewGroup.MarginLayoutParams {
+
+        /** Le comportement posé (null : aucun). */
+        private Behavior behavior;
 
         /**
          * Des paramètres de coordinateur.
@@ -25,6 +37,20 @@ public class CoordinatorLayout extends ViewGroup {
          */
         public LayoutParams(int width, int height) {
             super(width, height);
+        }
+
+        /** Le comportement posé (null : aucun). */
+        public Behavior getBehavior() {
+            return behavior;
+        }
+
+        /**
+         * Pose le comportement du panneau.
+         *
+         * @param newBehavior le comportement (null : aucun)
+         */
+        public void setBehavior(Behavior newBehavior) {
+            behavior = newBehavior;
         }
     }
 

@@ -517,6 +517,16 @@ public final class EditorView extends View {
      */
     private long worstFrameMemoryDelta;
 
+    /**
+     * L'ancre de mémoire libre : relue à une trame sur
+     * {@link #MEMORY_ANCHOR_INTERVAL} (la trame ordinaire ne paie
+     * plus la lecture, la pire s'y compare).
+     */
+    private long memoryAnchor;
+
+    /** L'intervalle d'échantillonnage de l'ancre mémoire (puissance de deux). */
+    private static final int MEMORY_ANCHOR_INTERVAL = 32;
+
     private long frameCount;
 
     private final TextListener modelListener = new TextListener() {
@@ -2726,8 +2736,15 @@ public final class EditorView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         long frameBegin = System.nanoTime();
-        long memoryAtFrameBegin = Runtime.getRuntime().freeMemory();
         lastFrameEngineNanos = 0L;
+        // l'ancre de mémoire libre se relit à une trame sur
+        // MEMORRY_ANCHOR_INTERVAL (le rapport a montré deux lectures
+        // de l'environnement à CHAQUE image pour la pire trame —
+        // l'échantillon suffit au relevé, la trame ordinaire n'en
+        // paie plus aucune)
+        if ((frameCount & (MEMORY_ANCHOR_INTERVAL - 1)) == 0) {
+            memoryAnchor = Runtime.getRuntime().freeMemory();
+        }
         super.onDraw(canvas);
         canvas.drawColor(themeBackground);
         int count = buffer.getLineCount();
@@ -2802,9 +2819,11 @@ public final class EditorView extends View {
             worstFrameNanos = lastFrameNanos;
             worstFrameEngineNanos = lastFrameEngineNanos;
             // la mémoire rendue pendant la trame : un ramasse-miettes
-            // qui y court laisse sa signature (un bond de mémoire libre)
+            // qui y court laisse sa signature (un bond de mémoire
+            // libre) — comparée à l'ancre échantillonnée, pas à
+            // une lecture par image
             worstFrameMemoryDelta =
-                    Runtime.getRuntime().freeMemory() - memoryAtFrameBegin;
+                    Runtime.getRuntime().freeMemory() - memoryAnchor;
         }
         frameCount++;
     }

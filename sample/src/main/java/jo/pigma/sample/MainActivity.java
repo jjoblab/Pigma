@@ -319,8 +319,11 @@ public final class MainActivity extends Activity {
         // drawer y vit, la navigation y répond) au-dessus des onglets
         toolbar = new com.google.android.material.appbar.MaterialToolbar(this);
         toolbar.setTitle("Pigma");
-        toolbar.inflateMenu(0);
-        toolbar.setNavigationIcon(0);
+        // l'icône d'ouverture du menu : le glyphe standard du
+        // cadre (l'hamburger), la barre le porte au premier plan
+        toolbar.setNavigationIcon(getResources().getDrawable(
+                androidx.appcompat.R.drawable.abc_ic_ab_back_material, getTheme()));
+        toolbar.setNavigationContentDescription("Ouvrir le menu");
         toolbar.setNavigationOnClickListener(view ->
                 openCloseDrawer());
         tabLayout = new TabLayout(this);
@@ -375,20 +378,27 @@ public final class MainActivity extends Activity {
         sheetColumn.addView(row(margin, copyButton));
 
         // le coordinateur porte le contenu et la feuille : le
-        // comportement de feuille s'y attache au panneau, la feuille
-        // vit par-dessus l'éditeur
-        com.google.android.material.bottomsheet.BottomSheetBehavior<LinearLayout> behavior =
-                new com.google.android.material.bottomsheet.BottomSheetBehavior<>();
+        // comportement de feuille se pose DANS les paramètres du
+        // panneau avant l'ajout (l'attachement du cadre — c'est lui
+        // qui porte la glisse et la translation sur appareil), la
+        // feuille vit par-dessus l'éditeur
         androidx.coordinatorlayout.widget.CoordinatorLayout coordinator =
                 new androidx.coordinatorlayout.widget.CoordinatorLayout(this);
         coordinator.addView(contentColumn, new androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT));
-        sheetBehavior = behavior;
-        coordinator.addView(sheetColumn, new androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams sheetParams =
+                new androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        sheetBehavior = new com.google.android.material.bottomsheet.BottomSheetBehavior<>();
+        sheetParams.setBehavior(sheetBehavior);
+        coordinator.addView(sheetColumn, sheetParams);
         sheetBehavior.setPeekHeight(dp(120));
-        sheetBehavior.setState(com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_HALF_EXPANDED);
         sheetBehavior.setSkipCollapsed(false);
+        // la feuille part demi-pliée : les mesures se lisent de
+        // plain-pied à l'ouverture (le replié ne montre que la
+        // hauteur d'aperçu)
+        sheetBehavior.setState(
+                com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_HALF_EXPANDED);
 
         // le menu coulissant : thème, hors normes, serveurs de langage
         LinearLayout menuColumn = new LinearLayout(this);

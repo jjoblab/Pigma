@@ -839,7 +839,9 @@ public final class LspSession {
      * La fermeture propre du protocole : la requête d'arrêt (le serveur
      * finit, une seconde d'attente — il peut être mort), la
      * notification de sortie, puis les canaux se ferment (le lecteur
-     * de lsp4j s'arrête, le processus meurt s'il y en a un).
+     * de lsp4j s'arrête, le processus meurt s'il y en a un). L'appel
+     * ne vit plus au fil d'interface (la façade l'y envoie à son
+     * exécuteur de fond) : l'attente y reste, l'écran ne la voit plus.
      */
     public void shutdown() {
         running = false;

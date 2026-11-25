@@ -2,6 +2,8 @@ package com.google.android.material.bottomsheet;
 
 import android.view.View;
 
+import androidx.coordinatorlayout.widget.CoordinatorLayout;
+
 /**
  * Comportement de feuille basse de démonstration : l'état, la
  * hauteur de aperçu et les drapeaux se rangent, les changements
@@ -11,7 +13,7 @@ import android.view.View;
  *
  * @param <V> le type du panneau porté (une ViewGroup de l'écran)
  */
-public final class BottomSheetBehavior<V extends View> {
+public final class BottomSheetBehavior<V extends View> extends CoordinatorLayout.Behavior {
 
     /** Les états de la feuille basse (les constantes du cadre). */
     public static final int STATE_EXPANDED = 3;
