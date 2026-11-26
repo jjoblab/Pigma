@@ -30,6 +30,8 @@ import jo.pigma.editor.popups.RenameCard;
 import jo.pigma.editor.render.RenderCache;
 import jo.pigma.editor.render.LinePlan;
 import jo.pigma.editor.internal.render.Painter;
+import jo.pigma.editor.internal.search.SearchController;
+import jo.pigma.editor.internal.scroll.ScrollController;
 import jo.pigma.editor.popups.PopupMetrics;
 import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.editor.popups.CompletionCard;
@@ -145,9 +147,10 @@ public final class EditorView extends View {
     /**
      * Le plafond de correspondances collectées par une recherche : le
      * document entier reste parcouru (le compte s'arrête seulement) —
-     * un document piège ne remplit pas la mémoire.
+     * un document piège ne remplit pas la mémoire. Le plafond vit au
+     * chercheur ({@link SearchController#MATCH_LIMIT}).
      */
-    private static final int SEARCH_MATCH_LIMIT = 10_000;
+    private static final int SEARCH_MATCH_LIMIT = SearchController.MATCH_LIMIT;
 
     private final TextBuffer buffer;
     private final UndoStack undoStack;
@@ -204,14 +207,9 @@ public final class EditorView extends View {
     /** L'état de sélection — le curseur et l'ancre au paquet selection/. */
     private final SelectionState selection = new SelectionState();
 
-    /** La requête de recherche courante (null : pas de recherche). */
-    private String searchQuery;
-
-    /** Les débuts des correspondances, triés croissants. */
-    private int[] searchMatches = new int[0];
-
-    /** L'index de la correspondance courante (-1 : aucune). */
-    private int searchCurrent = -1;
+    /** Le chercheur (le composant du découpage — R1 : la requête, les
+     * correspondances, le cycle qui boucle). */
+    private SearchController search;
 
     /** La popup d'info ancrée — état et dessin au paquet des popups. */
     private InfoPopup infoPopup;
@@ -387,15 +385,10 @@ public final class EditorView extends View {
     /** L'abscisse du doigt pendant le traîné (l'aperçu flottant la suit). */
     private float dragFingerX;
 
-    /**
-     * Le défilement au bord du traîné-déposé est-il programmé ? (une
-     * échéance à la fois — le doigt tient la zone, la suite se
-     * reprogramme).
-     */
-    private boolean edgeScrollScheduled;
-
-    /** Une échéance du défilement au bord du traîné-déposé. */
-    private final Runnable edgeScroll = this::runEdgeScroll;
+    /** Le balayeur aux bords (le composant du découpage — R1 : le
+     * traîné tenu au bord y fait glisser la vue, échéance après
+     * échéance). */
+    private ScrollController edgeScroller;
 
     /** Le rendu de la ligne sous la loupe (1×, hors trame) — blitté par trame. */
     private android.graphics.Bitmap loupeLine;
@@ -714,9 +707,8 @@ public final class EditorView extends View {
             // une édition déplace tout ce qui suit : les positions des
             // correspondances seraient des mensonges — la recherche se
             // range (la feuille la relance), la popup d'info aussi
-            if (searchQuery != null) {
-                searchMatches = new int[0];
-                searchCurrent = -1;
+            if (search != null) {
+                search.forget();
             }
             // LE WRAP suit l'édition : la ligne coupée d'avant peut
             // s'allonger ou raccourcir — le recalcul suivra (borné aux
@@ -749,6 +741,96 @@ public final class EditorView extends View {
         painter = new Painter(dp(1));
         textPaint = painter.textPaint();
         painter.applyTheme(theme.defaultColor());
+        // LE CHERCHEUR (le composant du découpage — R1) : la vue y
+        // branche le texte, le curseur et l'aller-à (la teinte et les
+        // remplacements y lisent le chercheur directement)
+        search = new SearchController(new SearchController.Host() {
+            @Override
+            public CharSequence documentText() {
+                return buffer.getText(0, buffer.length());
+            }
+
+            @Override
+            public int caret() {
+                return selection.caret();
+            }
+
+            @Override
+            public void revealMatch(int start, int queryLength) {
+                selection.setAnchor(-1);
+                selection.setCaret(Math.min(start + queryLength,
+                        buffer.length()));
+                ensureCaretVisible();
+            }
+
+            @Override
+            public void repaint() {
+                invalidate();
+            }
+        });
+        // LE BALAYEUR AUX BORDS (le composant du découpage — R1) :
+        // le traîné tenu au bord y fait glisser la vue
+        edgeScroller = new ScrollController(new ScrollController.Host() {
+            @Override
+            public boolean isTextDragging() {
+                return textDragging;
+            }
+
+            @Override
+            public float fingerY() {
+                return dragFingerY;
+            }
+
+            @Override
+            public float viewportTop() {
+                return getPaddingTop();
+            }
+
+            @Override
+            public float viewportBottom() {
+                return getHeight() - getPaddingBottom();
+            }
+
+            @Override
+            public float lineHeight() {
+                return lineHeight;
+            }
+
+            @Override
+            public float maxScrollY() {
+                return maxScroll();
+            }
+
+            @Override
+            public float scrollY() {
+                return scrollY;
+            }
+
+            @Override
+            public void setScrollY(float value) {
+                scrollY = value;
+            }
+
+            @Override
+            public void recomputeDrop() {
+                dropOffset = offsetNearest(dragFingerX, dragFingerY);
+            }
+
+            @Override
+            public void repaint() {
+                invalidate();
+            }
+
+            @Override
+            public void postDelayed(Runnable tick, long delayMs) {
+                EditorView.this.postDelayed(tick, delayMs);
+            }
+
+            @Override
+            public void removeCallbacks(Runnable tick) {
+                EditorView.this.removeCallbacks(tick);
+            }
+        });
         applyTextSize(14.0f * getResources().getDisplayMetrics().scaledDensity);
         caretPaint.setColor(CARET_COLOR);
         bracketPaint.setStyle(Paint.Style.STROKE);
@@ -1896,9 +1978,7 @@ public final class EditorView extends View {
         // autre document : la sélection n'y désigne plus rien, la
         // recherche et la popup d'info non plus
         selection.setAnchor(-1);
-        searchQuery = null;
-        searchMatches = new int[0];
-        searchCurrent = -1;
+        search.forget();
         infoPopup.dismiss();
         try (TextTransaction transaction = undoStack.newTransaction()) {
             transaction.replace(0, buffer.length(), text);
@@ -1942,9 +2022,7 @@ public final class EditorView extends View {
     private void reopenSameDocument() {
         selection.setAnchor(-1);
         selectionDragBound = 0;
-        searchQuery = null;
-        searchMatches = new int[0];
-        searchCurrent = -1;
+        search.forget();
         infoPopup.dismiss();
         undoStack.clear();
         folds.clear();
@@ -2207,31 +2285,7 @@ public final class EditorView extends View {
             clearSearch();
             return;
         }
-        searchQuery = query;
-        IntArray found = new IntArray();
-        CharSequence text = buffer.getText(0, buffer.length());
-        int at = 0;
-        while (found.size() < SEARCH_MATCH_LIMIT) {
-            int hit = indexOf(text, query, at);
-            if (hit < 0) {
-                break;
-            }
-            found.add(hit);
-            at = hit + query.length();
-        }
-        searchMatches = found.toArray();
-        searchCurrent = -1;
-        if (searchMatches.length > 0) {
-            searchCurrent = 0;
-            for (int m = 0; m < searchMatches.length; m++) {
-                if (searchMatches[m] >= selection.caret()) {
-                    searchCurrent = m;
-                    break;
-                }
-            }
-            gotoSearchMatch(searchCurrent);
-        }
-        invalidate();
+        search.search(query);
     }
 
     /**
@@ -2239,17 +2293,12 @@ public final class EditorView extends View {
      * dernière vient la première).
      */
     public void searchNext() {
-        if (searchMatches.length > 0) {
-            gotoSearchMatch((searchCurrent + 1) % searchMatches.length);
-        }
+        search.next();
     }
 
     /** La correspondance précédente (la recherche boucle aussi en arrière). */
     public void searchPrevious() {
-        if (searchMatches.length > 0) {
-            gotoSearchMatch((searchCurrent - 1 + searchMatches.length)
-                    % searchMatches.length);
-        }
+        search.previous();
     }
 
     /**
@@ -2260,7 +2309,7 @@ public final class EditorView extends View {
      * @return le nombre de correspondances trouvées, 0 sans recherche
      */
     public int searchMatchCount() {
-        return searchMatches.length;
+        return search.matchCount();
     }
 
     /**
@@ -2270,15 +2319,12 @@ public final class EditorView extends View {
      * @return l'index de la correspondance courante
      */
     public int searchCurrentIndex() {
-        return searchCurrent;
+        return search.currentIndex();
     }
 
     /** Range la recherche (les teintes disparaissent, la requête s'oublie). */
     public void clearSearch() {
-        searchQuery = null;
-        searchMatches = new int[0];
-        searchCurrent = -1;
-        invalidate();
+        search.clear();
     }
 
     /**
@@ -2289,18 +2335,19 @@ public final class EditorView extends View {
      * @param replacement le texte de remplacement
      */
     public void replaceCurrent(String replacement) {
-        if (searchQuery == null || searchCurrent < 0
-                || searchCurrent >= searchMatches.length) {
+        String query = search.query();
+        int current = search.currentIndex();
+        int start = search.matchAt(current);
+        if (query == null || start < 0) {
             return;
         }
-        int start = searchMatches[searchCurrent];
-        int end = start + searchQuery.length();
+        int end = start + query.length();
         if (end > buffer.length()) {
             return;
         }
         pendingEditLabel = "remplacement";
         applyEdit(start, end, replacement);
-        search(searchQuery);
+        search(search.query());
     }
 
     /**
@@ -2314,20 +2361,21 @@ public final class EditorView extends View {
      * @return le nombre de remplacements faits
      */
     public int replaceAll(String replacement) {
-        if (searchQuery == null || searchMatches.length == 0) {
+        String query = search.query();
+        int[] matches = search.matches();
+        if (query == null || matches.length == 0) {
             return 0;
         }
         pendingEditLabel = "remplacement global";
         // un instantané avant la transaction : l'écouteur du tampon
         // (notifié au PREMIER remplacement) range la recherche — la
         // boucle doit tenir ses positions, pas celles du champ
-        int[] matches = searchMatches;
         int count = matches.length;
         int firstStart = matches[0];
         try (TextTransaction transaction = undoStack.newTransaction()) {
             for (int m = count - 1; m >= 0; m--) {
                 int start = matches[m];
-                int end = start + searchQuery.length();
+                int end = start + query.length();
                 if (end > buffer.length()) {
                     continue;
                 }
@@ -2336,7 +2384,7 @@ public final class EditorView extends View {
         }
         selection.setAnchor(-1);
         selection.setCaret(Math.min(firstStart + replacement.length(), buffer.length()));
-        search(searchQuery);
+        search(search.query());
         return count;
     }
 
@@ -2732,56 +2780,6 @@ public final class EditorView extends View {
      */
     public String infoPopupTitle() {
         return infoPopup.title();
-    }
-
-    private void gotoSearchMatch(int index) {
-        searchCurrent = index;
-        int offset = searchMatches[index];
-        selection.setAnchor(-1);
-        selection.setCaret(Math.min(offset + searchQuery.length(), buffer.length()));
-        ensureCaretVisible();
-        invalidate();
-    }
-
-    /**
-     * La sous-chaîne suivante : le tampon n'offre pas d'indexOf sur
-     * vue, la boucle reste ici — le texte entier a déjà été lu.
-     */
-    private static int indexOf(CharSequence text, String needle, int from) {
-        int limit = text.length() - needle.length();
-        for (int at = Math.max(0, from); at <= limit; at++) {
-            int probe = 0;
-            while (probe < needle.length() && text.charAt(at + probe) == needle.charAt(probe)) {
-                probe++;
-            }
-            if (probe == needle.length()) {
-                return at;
-            }
-        }
-        return -1;
-    }
-
-    /** Un tableau d'entiers extensible sans dépendance (la collecte des correspondances). */
-    private static final class IntArray {
-
-        private int[] values = new int[16];
-
-        private int size;
-
-        void add(int value) {
-            if (size == values.length) {
-                values = java.util.Arrays.copyOf(values, values.length * 2);
-            }
-            values[size++] = value;
-        }
-
-        int size() {
-            return size;
-        }
-
-        int[] toArray() {
-            return java.util.Arrays.copyOf(values, size);
-        }
     }
 
     @Override
@@ -3256,8 +3254,7 @@ public final class EditorView extends View {
                     // le dépôt : le texte sélectionné se déplace au
                     // curseur de dépôt — l'appui ne compte pas pour un
                     // tap non plus ; le défilement au bord se range
-                    removeCallbacks(edgeScroll);
-                    edgeScrollScheduled = false;
+                    edgeScroller.cancel();
                     dropTextAtSelection(dropOffset);
                     textDragging = false;
                     textDragArmed = false;
@@ -3401,8 +3398,7 @@ public final class EditorView extends View {
                 pinching = false;
                 pinchedThisGesture = false;
                 if (selectionDragBound != 0 || textDragging || dragging) {
-                    removeCallbacks(edgeScroll);
-                    edgeScrollScheduled = false;
+                    edgeScroller.cancel();
                     selectionDragBound = 0;
                     dragFixedBound = -1;
                     textDragging = false;
@@ -3816,15 +3812,17 @@ public final class EditorView extends View {
      * d'appartenance écarte l'essentiel.
      */
     private void drawSearchHighlights(Canvas canvas, int first, int last, int count) {
-        if (searchQuery == null || searchMatches.length == 0) {
+        String query = search.query();
+        int[] matches = search.matches();
+        if (query == null || matches.length == 0) {
             return;
         }
-        int queryLength = searchQuery.length();
+        int queryLength = query.length();
         int windowStart = buffer.getLineStart(first);
         int windowEnd = last + 1 < count
                 ? buffer.getLineStart(last + 1) : buffer.length();
-        for (int m = 0; m < searchMatches.length; m++) {
-            int start = searchMatches[m];
+        for (int m = 0; m < matches.length; m++) {
+            int start = matches[m];
             if (start >= windowEnd) {
                 break;
             }
@@ -3843,7 +3841,7 @@ public final class EditorView extends View {
             float right = getPaddingLeft() + columnEnd * charWidth;
             float top = getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
             canvas.drawRect(left, top, right, top + lineHeight,
-                    m == searchCurrent ? searchCurrentPaint : searchPaint);
+                    m == search.currentIndex() ? searchCurrentPaint : searchPaint);
         }
     }
 
@@ -6555,46 +6553,7 @@ public final class EditorView extends View {
      * fenêtre suivrait sinon).
      */
     private void scheduleEdgeScroll() {
-        if (!textDragging || edgeScrollScheduled) {
-            return;
-        }
-        float zone = dp(48);
-        if (dragFingerY <= getPaddingTop() + zone
-                || dragFingerY >= getHeight() - getPaddingBottom() - zone) {
-            edgeScrollScheduled = true;
-            postDelayed(edgeScroll, 16L);
-        }
-    }
-
-    /**
-     * Une échéance du défilement au bord : la vue glisse d'une
-     * demi-ligne vers le doigt, le point de dépôt se relit à sa
-     * nouvelle place — le doigt tient toujours la zone, la suite se
-     * reprogramme ; le bord du document (la zone quittée) l'arrête.
-     */
-    private void runEdgeScroll() {
-        edgeScrollScheduled = false;
-        if (!textDragging) {
-            return;
-        }
-        float zone = dp(48);
-        float step = 0.0f;
-        if (dragFingerY <= getPaddingTop() + zone) {
-            step = -0.5f * lineHeight;
-        } else if (dragFingerY >= getHeight() - getPaddingBottom() - zone) {
-            step = 0.5f * lineHeight;
-        }
-        if (step == 0.0f) {
-            return;
-        }
-        float before = scrollY;
-        scrollY = clampToRange(scrollY + step, 0.0f, maxScroll());
-        if (scrollY == before) {
-            return;
-        }
-        dropOffset = offsetNearest(dragFingerX, dragFingerY);
-        invalidate();
-        scheduleEdgeScroll();
+        edgeScroller.scheduleNearEdges(dp(48));
     }
 
     /**
