@@ -288,8 +288,14 @@ public final class DiagnosticCard {
                 cy + side * 0.16f, cy + side * 0.42f, fixPaint);
         canvas.drawLine(cy - side * 0.08f, cy + side * 0.55f,
                 cy + side * 0.08f, cy + side * 0.55f, fixPaint);
-        String title = ellipsize("Corriger : " + fix.title(), textPaint,
-                cardW - dp(ICON_DP) - 3 * dp(14));
+        // le titre du correctif RESTE DANS LE CADRE (le retour du
+        // terrain : « Corriger : … » y débordait) : la largeur
+        // disponible se mesure au pinceau du correctif, l'ellipsize
+        // coupe à l'excédent, jamais au-delà du mur
+        float available = Math.max(0.0f, poseX + cardW - dp(14)
+                - (poseX + dp(14) + dp(ICON_DP) + dp(8)));
+        String title = ellipsize("Corriger : " + fix.title(), fixTextPaint,
+                available);
         canvas.drawText(title, poseX + dp(14) + dp(ICON_DP) + dp(8),
                 baseline, fixTextPaint);
     }
@@ -442,6 +448,13 @@ public final class DiagnosticCard {
         float widest = 0.0f;
         for (Entry entry : entries) {
             widest = Math.max(widest, textPaint.measureText(entry.message()));
+        }
+        // l'étage des correctifs PAIE sa largeur aussi (le titre y
+        // respire, la carte l'englobe — le débordement y naissait :
+        // la carte trop étroite pour son propre correctif)
+        for (Fix fix : fixes()) {
+            widest = Math.max(widest,
+                    fixTextPaint.measureText("Corriger : " + fix.title()));
         }
         return widest + dp(ICON_DP) + dp(16) + 2 * dp(14);
     }

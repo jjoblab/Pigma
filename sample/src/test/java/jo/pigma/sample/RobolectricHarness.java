@@ -622,8 +622,9 @@ public final class RobolectricHarness {
                 editor.diagnosticBadgeCenterY() != Float.MAX_VALUE);
         // le tap sur la pastille (au-dessus du mot) ouvre la carte ;
         // le centre réel s'y lit, le doigt s'y pose
+        float badgeX = editor.diagnosticBadgeCenterX();
         float badgeY = editor.diagnosticBadgeCenterY();
-        tap(x, badgeY);
+        tap(badgeX, badgeY);
         frame();
         check("la carte de diagnostic s'ouvre par la pastille",
                 editor.diagnosticCard().isShown());

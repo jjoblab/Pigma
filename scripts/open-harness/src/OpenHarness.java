@@ -2284,10 +2284,10 @@ public final class OpenHarness {
         check("le tap sur le souligné pose la pastille (B4)",
                 editor.diagnosticBadgeCenterY() != Float.MAX_VALUE);
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
-                editor.getPaddingLeft() + editor.charWidth() / 2.0f,
+                editor.diagnosticBadgeCenterX(),
                 editor.diagnosticBadgeCenterY()));
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
-                editor.getPaddingLeft() + editor.charWidth() / 2.0f,
+                editor.diagnosticBadgeCenterX(),
                 editor.diagnosticBadgeCenterY()));
         frame();
         check("le tap sur la pastille ouvre la carte (B4)",
