@@ -32,6 +32,7 @@ import jo.pigma.editor.render.LinePlan;
 import jo.pigma.editor.internal.render.Painter;
 import jo.pigma.editor.internal.search.SearchController;
 import jo.pigma.editor.internal.scroll.ScrollController;
+import jo.pigma.editor.internal.touch.PinchController;
 import jo.pigma.editor.popups.PopupMetrics;
 import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.editor.popups.CompletionCard;
@@ -177,24 +178,10 @@ public final class EditorView extends View {
     /** La borne haute du pincement en sp. */
     private float maxTextSp = 40.0f;
 
-    /** Le pincement vit (deux doigts posés). */
-    private boolean pinching;
-
-    /** Un pincement a eu lieu dans ce geste (l'appui final ne vaut pas un tap). */
-    private boolean pinchedThisGesture;
-
-    /** L'écart des deux doigts au départ du pincement. */
-    private float pinchStartSpan;
-
-    /** Le corps du texte au départ du pincement. */
-    private float pinchStartPx;
-
-    /** L'ordonnée du foyer du pincement (le milieu des deux doigts au départ). */
-    private float pinchFocusY;
-
-    /** L'abscisse du foyer du pincement (la colonne sous les doigts
-     * y demeure pendant le zoom — le texte ne fuit ni en X ni en Y). */
-    private float pinchFocusX;
+    /** Le pincement (la première brique du contrôleur des gestes —
+     * R1 : l'écart des doigts porte le facteur, le milieu porte le
+     * foyer, la ligne sous le foyer y demeure). */
+    private PinchController pinch;
 
     private SyntaxDocument syntax;
     private LanguageSyntax language;
@@ -831,6 +818,105 @@ public final class EditorView extends View {
                 EditorView.this.removeCallbacks(tick);
             }
         });
+        // LE PINCEMENT (la première brique du contrôleur des gestes —
+        // R1) : l'écart des doigts porte le facteur, le milieu le
+        // foyer
+        pinch = new PinchController(new PinchController.Host() {
+            @Override
+            public float textPx() {
+                return textPx;
+            }
+
+            @Override
+            public void applyTextSize(float freshPx) {
+                EditorView.this.applyTextSize(freshPx);
+            }
+
+            @Override
+            public float lineHeight() {
+                return lineHeight;
+            }
+
+            @Override
+            public float charWidth() {
+                return charWidth;
+            }
+
+            @Override
+            public float viewportTop() {
+                return getPaddingTop();
+            }
+
+            @Override
+            public float viewportLeft() {
+                return getPaddingLeft();
+            }
+
+            @Override
+            public float scrollY() {
+                return scrollY;
+            }
+
+            @Override
+            public void setScrollY(float value) {
+                scrollY = value;
+            }
+
+            @Override
+            public float maxScrollY() {
+                return maxScroll();
+            }
+
+            @Override
+            public float scrollX() {
+                return scrollX;
+            }
+
+            @Override
+            public void setScrollX(float value) {
+                scrollX = value;
+            }
+
+            @Override
+            public float maxScrollX() {
+                return EditorView.this.maxScrollX();
+            }
+
+            @Override
+            public void takeFocus() {
+                requestFocus();
+            }
+
+            @Override
+            public void settleGestures() {
+                dragging = false;
+                selectionDragBound = 0;
+                dragFixedBound = -1;
+                textDragging = false;
+                textDragArmed = false;
+                dropOffset = -1;
+                dismissInfoPopup();
+            }
+
+            @Override
+            public void touchRestartedAt(float x, float y) {
+                if (!Float.isNaN(x) && !Float.isNaN(y)) {
+                    touchStartX = x;
+                    touchStartY = y;
+                }
+                dragging = false;
+            }
+
+            @Override
+            public void forgetLastTap() {
+                lastTapNanos = 0L;
+            }
+
+            @Override
+            public void repaint() {
+                invalidate();
+            }
+        });
         applyTextSize(14.0f * getResources().getDisplayMetrics().scaledDensity);
         caretPaint.setColor(CARET_COLOR);
         bracketPaint.setStyle(Paint.Style.STROKE);
@@ -1061,20 +1147,9 @@ public final class EditorView extends View {
      * @param event l'événement du doigt qui s'ajoute
      */
     private void engagePinch(MotionEvent event) {
-        requestFocus();
-        pinching = true;
-        pinchedThisGesture = true;
-        dragging = false;
-        selectionDragBound = 0;
-        dragFixedBound = -1;
-        textDragging = false;
-        textDragArmed = false;
-        dropOffset = -1;
-        dismissInfoPopup();
-        pinchStartSpan = pinchSpan(event);
-        pinchStartPx = textPx;
-        pinchFocusY = (event.getY(0) + event.getY(1)) / 2.0f;
-        pinchFocusX = (event.getX(0) + event.getX(1)) / 2.0f;
+        pinch.engage(pinchSpan(event),
+                (event.getX(0) + event.getX(1)) / 2.0f,
+                (event.getY(0) + event.getY(1)) / 2.0f);
     }
 
     /**
@@ -1086,22 +1161,9 @@ public final class EditorView extends View {
      * @param event l'événement des doigts qui bougent
      */
     private void pinchMove(MotionEvent event) {
-        float span = pinchSpan(event);
-        if (span <= 0.0f || pinchStartSpan <= 0.0f) {
-            return;
-        }
-        float focusY = (event.getY(0) + event.getY(1)) / 2.0f;
-        float focusX = (event.getX(0) + event.getX(1)) / 2.0f;
-        float lineAtFocus = (pinchFocusY - getPaddingTop() + scrollY) / lineHeight;
-        // la colonne sous le foyer du départ demeure sous le foyer
-        // courant : le texte ne fuit sous les doigts, en Y comme en X
-        float columnAtFocus = (pinchFocusX - getPaddingLeft() + scrollX) / charWidth;
-        applyTextSize(pinchStartPx * (span / pinchStartSpan));
-        scrollY = clampToRange(lineAtFocus * lineHeight - (focusY - getPaddingTop()),
-                0.0f, maxScroll());
-        scrollX = clampToRange(columnAtFocus * charWidth - (focusX - getPaddingLeft()),
-                0.0f, maxScrollX());
-        invalidate();
+        pinch.move(pinchSpan(event),
+                (event.getX(0) + event.getX(1)) / 2.0f,
+                (event.getY(0) + event.getY(1)) / 2.0f);
     }
 
     /**
@@ -1112,15 +1174,12 @@ public final class EditorView extends View {
      * @param event l'événement du doigt qui s'en va
      */
     private void endPinch(MotionEvent event) {
-        pinching = false;
         int staying = 1 - event.getActionIndex();
         if (staying >= 0 && staying < event.getPointerCount()) {
-            touchStartX = event.getX(staying);
-            touchStartY = event.getY(staying);
+            pinch.end(event.getX(staying), event.getY(staying));
+        } else {
+            pinch.end(Float.NaN, Float.NaN);
         }
-        dragging = false;
-        lastTapNanos = 0L;
-        invalidate();
     }
 
     /**
@@ -3057,8 +3116,7 @@ public final class EditorView extends View {
                 touchStartX = event.getX();
                 touchStartY = event.getY();
                 touchDownNanos = System.nanoTime();
-                pinching = false;
-                pinchedThisGesture = false;
+                pinch.reset();
                 // LA MINIMAP ET SA BARRE D'ANNULER/RÉTABLIR prennent
                 // leur geste au DOWN : la barre COIFFE la région (les
                 // pastilles y jouent au tap), la carte du document
@@ -3128,12 +3186,12 @@ public final class EditorView extends View {
             case MotionEvent.ACTION_POINTER_UP:
                 // un doigt du pincement s'en va : le zoom se dénoue, le
                 // doigt qui demeure peut glisser sans sauter
-                if (pinching) {
+                if (pinch.isPinching()) {
                     endPinch(event);
                 }
                 break;
             case MotionEvent.ACTION_MOVE:
-                if (pinching) {
+                if (pinch.isPinching()) {
                     if (event.getPointerCount() >= 2) {
                         pinchMove(event);
                     }
@@ -3227,12 +3285,11 @@ public final class EditorView extends View {
                 }
                 break;
             case MotionEvent.ACTION_UP:
-                if (pinching || pinchedThisGesture) {
+                if (pinch.isPinching() || pinch.hasPinchedThisGesture()) {
                     // le pincement se referme : l'appui final ne vaut
                     // pas un tap (le curseur ne saute pas au doigt qui
                     // reste le dernier levé)
-                    pinching = false;
-                    pinchedThisGesture = false;
+                    pinch.reset();
                     lastTapNanos = 0L;
                     invalidate();
                     break;
@@ -3395,8 +3452,7 @@ public final class EditorView extends View {
                 // et la barre de sélection ne naîtrait jamais (l'état
                 // de poignée tenue tuerait les deux) ; le pincement
                 // s'y range pareillement
-                pinching = false;
-                pinchedThisGesture = false;
+                pinch.reset();
                 if (selectionDragBound != 0 || textDragging || dragging) {
                     edgeScroller.cancel();
                     selectionDragBound = 0;
