@@ -67,7 +67,7 @@ propriétaire (`RAPPORT-POPUPS-PIGMA.md`, 2026-11-26, version analysée
 popups manquantes `M*` — la table suit son §9.
 
 | 88 | Popups, l'étape 1 du rapport : le survol ASYNCHRONE (la question PART — le contrat InfoPopupProvider/InfoAnswer — la popup vit immédiate avec « … », la réponse la remplace à son arrivée, le null rend la place à l'index local ; `hover.get` meurt avec `setRequestTimeoutMs`) ; LA COMMANDE UNIQUE des usages (R-C — UsageProvider : la carte vit immédiate au repli textuel, les références sémantiques du serveur y REMPLACENT la liste, les surlignages demeurent, plus de saut aveugle) ; l'ActionRegistry (R-A — les cinq actions d'édition définies UNE FOIS, les deux cartes y mènent leurs rangées) | D-P1, R-A, R-C | **fait** | `docs/chantiers/88.md` | `4bea262` |
-| 89 | Popups, l'étape 2 : les modèles LSP COMPLETS — LspCompletionItem (kind, detail, documentation, insertText/textEdit, sortText, deprecated ; `completionItem/resolve` à la sélection), LspSignatureHelp (les surcharges, la documentation du paramètre), LspHover (le Markdown) | D-P2, D-P5, D-P6, M8, M9 | prévu | — | — |
+| 89 | Popups, l'étape 2 : les modèles LSP COMPLETS — LspCompletionItem (kind, detail, documentation, insertText/textEdit, sortText, deprecated ; `completionItem/resolve` à la sélection), LspSignatureHelp (les surcharges, la documentation du paramètre), LspHover (le Markdown) | D-P2, D-P5, D-P6, M8, M9 | **fait** | `docs/chantiers/89.md` | `398b845` |
 | 90 | Popups, l'étape 3 : PopupHost (le gestionnaire — un seul état « popup active », l'exclusion mutuelle, la fermeture au changement de contexte, la fin des 23 fermetures manuelles et du popup fantôme) ; CardBase/ListCard (la pose, le style, le défilement, la croix) ; migration d'une carte à la fois (UsageCard et DiagnosticCard d'abord) | D-P4, R-E, R-F | prévu | — | — |
 | 91 | Popups, l'étape 4 — les P1 manquantes : le CHOIX DE CIBLES (plusieurs définitions), la STRUCTURE DU FICHIER (l'arbre des symboles), la LISTE DES PROBLÈMES (parcourir les erreurs), la SUGGESTION D'IMPORT, l'Historique DU PRESSE-PAPIERS | M1, M2, M13, M14, M20, D-P3, R-D | prévu | — | — |
 | 92 | Popups, l'étape 5 — les P2 : la définition en APERÇU, l'aller au symbole/fichier, les fichiers récents, l'APERÇU du renommage, l'entourer de, les extraits | M3–M5, M15, M18, M21 | prévu | — | — |
@@ -90,6 +90,11 @@ popups manquantes `M*` — la table suit son §9.
 
 ## Journal des mises à jour
 
+- 2026-11-27 — chantier 89 fermé : la deuxième étape du plan des
+  popups — D-P2/D-P6/D-P5 réglés (les candidats de complétion
+  ENTIERS et résolus, les surcharges de signature vivent, le survol
+  porte son balisage), M8/M9 nés (le panneau de documentation de
+  complétion, le corps Markdown qui défile au doigt).
 - 2026-11-27 — chantier 88 fermé : la première étape du plan des
   popups — D-P1 réglé (le survol n'attend plus sur le fil
   d'interface : la popup vit immédiate, la réponse la remplace),
