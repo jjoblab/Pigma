@@ -251,6 +251,13 @@ public final class CompletionCard {
             if (wasEmpty && !fresh.isEmpty()) {
                 belowSide = 0;
             }
+            // AUCUNE SURBRILLANCE À LA NAISSANCE (le bug d'usage B6 :
+            // le premier candidat se surlignait d'office et l'Entrée
+            // le validait — le saut de ligne demandé mourait dans la
+            // carte) : la surbrillance ne vient que d'un CHOIX EXPLICITE
+            // (flèche déléguée, doigt sur la rangée) ; seule la carte
+            // vivante retient son candidat choisi à travers la
+            // re-filtration (le « kept » ci-dessus)
             highlighted = -1;
             if (kept != null) {
                 for (int at = 0; at < entries.size(); at++) {
@@ -259,9 +266,6 @@ public final class CompletionCard {
                         break;
                     }
                 }
-            }
-            if (highlighted < 0 && !entries.isEmpty()) {
-                highlighted = 0;
             }
             keepCurrentVisible();
         }

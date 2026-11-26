@@ -23,6 +23,19 @@ public class Paint {
     }
 
     /**
+     * Alignement du texte dessiné : gauche, centre ou droite de
+     * l'abscisse donnée.
+     */
+    public enum Align {
+        /** Le texte commence à l'abscisse. */
+        LEFT,
+        /** Le texte se centre sur l'abscisse. */
+        CENTER,
+        /** Le texte finit à l'abscisse. */
+        RIGHT
+    }
+
+    /**
      * Métriques d'une police : distances signées depuis la ligne de
      * base, en pixels.
      */
@@ -44,6 +57,9 @@ public class Paint {
     private Style style = Style.FILL;
     private float strokeWidth = 1.0f;
     private boolean fakeBold;
+
+    /** L'alignement courant du texte (gauche par défaut). */
+    private Align align = Align.LEFT;
     private Typeface typeface;
 
     /** Un pinceau neuf aux valeurs par défaut. */
@@ -159,6 +175,19 @@ public class Paint {
      */
     public void setFakeBoldText(boolean fakeBold) {
         this.fakeBold = fakeBold;
+    }
+
+    /**
+     * L'alignement du texte (conservé pour les cartes centrées —
+     * l'espacement fixe du stub le lit à la mesure).
+     */
+    public void setTextAlign(Align align) {
+        this.align = align;
+    }
+
+    /** L'alignement courant du texte. */
+    public Align getTextAlign() {
+        return align;
     }
 
     /** Le gras synthétique courant. */

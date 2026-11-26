@@ -97,6 +97,9 @@ public final class RobolectricHarness {
         doubleTapWord();
         minimapTouchZone();
         folds();
+        completionEnter();
+        foldPlaceholderText();
+        diagnosticBadge();
         stateSaveRestore();
         assertTrue(failures + " vérification(s) en échec", failures == 0);
         System.out.println("résumé harnais réel : " + scenarios
@@ -465,6 +468,169 @@ public final class RobolectricHarness {
         check("une ligne se cache encore", editor.hiddenLineCount() > 0);
         tap(placeholderX, y);
         check("le placeholder rouvre encore", editor.hiddenLineCount() == 0);
+    }
+
+    /**
+     * B6 : l'Entrée ne valide la complétion QUE sur un choix explicite.
+     * La carte ouverte sans surbrillance (aucune flèche, aucun doigt)
+     * laisse la touche traverser jusqu'au saut de ligne ; une flèche
+     * pose le choix, l'Entrée l'insère.
+     */
+    private void completionEnter() {
+        begin("complétion : l'Entrée exige un choix explicite (B6)");
+        String original = editor.getBuffer().toString();
+        // un mot qui nourrit la carte : le préfixe « pack » de
+        // l'en-tête du texte de démonstration (package y vit)
+        int caret = editor.getBuffer().toString().indexOf("pack");
+        editor.setSelection(caret + 4, caret + 4);
+        frame();
+        check("la carte de complétion vit au mot",
+                editor.completionCard().isShown());
+        check("aucun candidat surbrillé d'office",
+                editor.completionCard().highlighted() < 0);
+        int before = editor.getBuffer().length();
+        connection.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,
+                KeyEvent.KEYCODE_ENTER));
+        check("l'Entrée traverse la carte sans choix : le saut vit",
+                editor.getBuffer().length() == before + 1
+                        && editor.getBuffer().toString()
+                                .startsWith(original.substring(0, caret + 4)
+                                        + "\n"));
+        // le retour au propre : l'annulation défait le saut
+        editor.getUndoStack().undo();
+        check("l'annulation rend le texte d'avant",
+                editor.getBuffer().toString().equals(original));
+        // la flèche pose le choix explicite : l'Entrée valide
+        editor.setSelection(caret + 4, caret + 4);
+        frame();
+        if (editor.completionCard().isShown()) {
+            editor.completionCard().onArrow(1);
+            check("la flèche pose un choix explicite",
+                    editor.completionCard().highlighted() >= 0);
+            String word = original.substring(caret, caret + 4);
+            connection.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,
+                    KeyEvent.KEYCODE_ENTER));
+            check("l'Entrée avec choix valide le candidat",
+                    !editor.getBuffer().toString()
+                            .startsWith(original.substring(0, caret + 4)
+                                    + "\n")
+                            || word.isEmpty());
+        }
+        // le retour au texte original par les annulations
+        while (!editor.getBuffer().toString().equals(original)
+                && editor.getUndoStack().canUndo()) {
+            editor.getUndoStack().undo();
+        }
+        check("le texte est exactement l'original",
+                editor.getBuffer().toString().equals(original));
+    }
+
+    /**
+     * B5 : le placeholder du pli replié ne DOUBLE PAS l'ouvrant — la
+     * carte du rapport « method {{...} » y mourait. Le placeholder
+     * naît SUR le dernier ouvrant de l'en-tête : le pli visé est
+     * celui de la classe (son en-tête porte l'accolade), pas la
+     * javadoc de tête (elle n'ouvre rien).
+     */
+    private void foldPlaceholderText() {
+        begin("plis : le placeholder naît sur l'ouvrant (B5)");
+        // le caret hors de la ligne visée : l'ampoule d'actions
+        // rapides suit le CARET, pas la ligne tapée — un caret posé
+        // sur la ligne visée volerait le tap de gouttière
+        editor.setSelection(0, 0);
+        frame();
+        int foldLine = -1;
+        for (int line = 0; line < editor.getBuffer().getLineCount();
+                line++) {
+            String head = editor.getBuffer().getText(
+                    editor.getBuffer().getLineStart(line),
+                    editor.getBuffer().getLineEnd(line)).toString();
+            if (editor.getStructureDocument().foldStartsAt(line)
+                    && (head.endsWith("{") || head.contains("{"))) {
+                foldLine = line;
+                break;
+            }
+        }
+        check("un pli à en-tête ouvrant existe dans la démo",
+                foldLine >= 0);
+        if (foldLine < 0) {
+            return;
+        }
+        String head = editor.getBuffer().getText(
+                editor.getBuffer().getLineStart(foldLine),
+                editor.getBuffer().getLineEnd(foldLine)).toString();
+        float y = lineTop(foldLine) + editor.lineHeight() / 2.0f;
+        tap(editor.getPaddingLeft() * 0.3f, y);
+        check("le pli replié cache des lignes",
+                editor.hiddenLineCount() > 0);
+        int openerColumn = -1;
+        for (int at = head.length() - 1; at >= 0; at--) {
+            char sign = head.charAt(at);
+            if (sign == '{' || sign == '(' || sign == '[') {
+                openerColumn = at;
+                break;
+            }
+        }
+        check("l'en-tête du pli porte un ouvrant", openerColumn >= 0);
+        // le tap au-delà de la colonne de l'ouvrant rouvre le bloc :
+        // la borne du placeholder vit à l'ouvrant, pas après l'en-tête
+        float openerX = editor.getPaddingLeft()
+                + openerColumn * editor.charWidth();
+        tap(openerX + editor.charWidth() * 4.0f, y);
+        check("le tap après l'ouvrant rouvre le pli",
+                editor.hiddenLineCount() == 0);
+    }
+
+    /**
+     * B4 : la pastille d'erreur du tap — le premier tap sur un mot
+     * diagnostiqué pose la pastille (elle vit trois secondes), le tap
+     * sur la pastille ouvre la carte de diagnostic. La parenthèse en
+     * trop du texte de démonstration porte le diagnostic local.
+     */
+    private void diagnosticBadge() {
+        begin("diagnostic : la pastille du tap ouvre la carte (B4)");
+        String original = editor.getBuffer().toString();
+        editor.setSelection(original.length(), original.length());
+        connection.commitText(")", 1);
+        // l'analyse est AMORTIE (300 ms) : le temps réel avance, la
+        // passe repart à l'échéance — ses tranches vivent dans les
+        // post(), le looper s'y draine, les diagnostics arrivent
+        try {
+            Thread.sleep(400);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        frame();
+        idle();
+        frame();
+        idle();
+        int caret = editor.getCaretOffset();
+        int line = editor.getBuffer().lineOfOffset(caret);
+        float y = lineTop(line) + editor.lineHeight() / 2.0f;
+        // le caractère diagnostiqué vit à caret-1 (le curseur s'est
+        // posé APRÈS le « ) » commis) : le doigt vise SA colonne
+        int signOffset = caret - 1;
+        float x = editor.getPaddingLeft()
+                + (signOffset - editor.getBuffer().getLineStart(line))
+                * editor.charWidth();
+        // le premier tap pose la pastille (le curseur s'y pose aussi)
+        tap(x, y);
+        frame();
+        check("la ligne porte un diagnostic (pré-requis)",
+                !editor.diagnosticsOfLine(line).isEmpty());
+        check("le tap sur le mot diagnostiqué pose la pastille",
+                editor.diagnosticBadgeCenterY() != Float.MAX_VALUE);
+        // le tap sur la pastille (au-dessus du mot) ouvre la carte ;
+        // le centre réel s'y lit, le doigt s'y pose
+        float badgeY = editor.diagnosticBadgeCenterY();
+        tap(x, badgeY);
+        frame();
+        check("la carte de diagnostic s'ouvre par la pastille",
+                editor.diagnosticCard().isShown());
+        // le retour au propre : la parenthèse s'en va
+        editor.getUndoStack().undo();
+        check("le texte est exactement l'original",
+                editor.getBuffer().toString().equals(original));
     }
 
     /**

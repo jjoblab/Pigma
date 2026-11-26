@@ -1483,17 +1483,19 @@ public final class OpenHarness {
         check("les candidats poursuivent le préfixe",
                 !card.words().isEmpty()
                         && card.words().get(0).startsWith("ta"));
-        check("le premier candidat est le courant", card.highlighted() == 0);
+        check("aucun candidat surbrillé d'office (B6)",
+                card.highlighted() < 0);
         int caretLine = editor.getBuffer().getLineCount() - 1;
         check("la carte se pose au caret — dessous ou dessus, dans les murs",
                 (card.poseY() >= lineTop(caretLine) + LINE_HEIGHT
                         || card.poseY() + card.height() <= lineTop(caretLine))
                         && card.poseX() >= 0
                         && card.poseX() + card.width() <= editor.getWidth());
-        // la flèche déléguée sur un candidat unique reste bornée
+        // la flèche déléguée pose LE premier choix explicite (B6) —
+        // sur un candidat unique comme sur une liste
         pressKey(KeyEvent.KEYCODE_DPAD_DOWN);
         frame();
-        check("la flèche sur un candidat unique reste au courant",
+        check("la flèche pose le premier choix (B6)",
                 card.highlighted() == 0);
         // la validation déléguée insère : le préfixe se remplace par
         // le candidat entier
@@ -1540,11 +1542,11 @@ public final class OpenHarness {
         pressKey(KeyEvent.KEYCODE_DPAD_DOWN);
         pressKey(KeyEvent.KEYCODE_DPAD_DOWN);
         frame();
-        check("deux flèches baissent descendent au troisième candidat",
-                card.highlighted() == 2);
+        check("deux flèches depuis rien posent le deuxième candidat (B6)",
+                card.highlighted() == 1);
         pressKey(KeyEvent.KEYCODE_DPAD_UP);
         frame();
-        check("la flèche haut remonte", card.highlighted() == 1);
+        check("la flèche haut remonte au premier", card.highlighted() == 0);
         String second = card.words().get(1);
         tap(card.poseX() + card.width() / 2.0f, card.rowCenterY(1));
         frame();
@@ -2279,7 +2281,16 @@ public final class OpenHarness {
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
                 editor.getPaddingLeft() + editor.charWidth() / 2.0f, markerY));
         frame();
-        check("le souligné rouge ouvre la carte",
+        check("le tap sur le souligné pose la pastille (B4)",
+                editor.diagnosticBadgeCenterY() != Float.MAX_VALUE);
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
+                editor.getPaddingLeft() + editor.charWidth() / 2.0f,
+                editor.diagnosticBadgeCenterY()));
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
+                editor.getPaddingLeft() + editor.charWidth() / 2.0f,
+                editor.diagnosticBadgeCenterY()));
+        frame();
+        check("le tap sur la pastille ouvre la carte (B4)",
                 editor.diagnosticCard().isShown());
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
                 400.0f, 80.0f));

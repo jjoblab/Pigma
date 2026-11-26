@@ -136,6 +136,12 @@ public final class EditorView extends View {
     /** Plans partagés par contenu, au-delà le plus ancien s'évince. */
     private static final int SHARED_PLANS = 256;
 
+    /** La durée de vie de la pastille d'erreur du tap (B4). */
+    private static final long BADGE_LIFETIME_NANOS = 3_000_000_000L;
+
+    /** La même en millisecondes, pour l'invalidation différée. */
+    private static final long BADGE_LIFETIME_MS = 3_000L;
+
     /**
      * Le plafond de correspondances collectées par une recherche : le
      * document entier reste parcouru (le compte s'arrête seulement) —
@@ -470,6 +476,20 @@ public final class EditorView extends View {
     /** La carte de diagnostic — les erreurs et avertissements d'une ligne. */
     private DiagnosticCard diagnosticCard;
 
+    /**
+     * La pastille d'erreur du tap (B4) : le
+     * doigt masque le texte visé — un tap sur un mot diagnostiqué y
+     * pose une pastille au-dessus, le second tap l'ouvre en carte.
+     * Elle vit trois secondes et meurt au geste qui la déplace.
+     */
+    private long diagnosticBadgeUntilNanos;
+    private int diagnosticBadgeLine = -1;
+    private int diagnosticBadgeColumn;
+
+    /** Le pinceau de la pastille d'erreur (disque et point d'exclamation). */
+    private final Paint badgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint badgeTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
     /** La carte d'actions rapides — l'ampoule de la gouttière. */
     private QuickActionCard quickActionCard;
 
@@ -738,6 +758,13 @@ public final class EditorView extends View {
         diagnosticPaint.setStyle(Paint.Style.STROKE);
         diagnosticPaint.setStrokeWidth(dp(2));
         diagnosticPaint.setColor(0xFFFF3B30);
+        // la pastille d'erreur du tap : un disque plein, son point
+        // d'exclamation en blanc gras
+        badgePaint.setStyle(Paint.Style.FILL);
+        badgePaint.setColor(0xFFFF3B30);
+        badgeTextPaint.setColor(0xFFFFFFFF);
+        badgeTextPaint.setTextAlign(Paint.Align.CENTER);
+        badgeTextPaint.setFakeBoldText(true);
         completionCard = new CompletionCard(dp(1));
         completionCard.bind(this);
         signatureCard = new SignatureCard(dp(1));
@@ -905,6 +932,7 @@ public final class EditorView extends View {
         textPaint.setTextSize(clamped);
         inlayPaint.setTextSize(clamped * 0.85f);
         placeholderPaint.setTextSize(clamped);
+        badgeTextPaint.setTextSize(clamped);
         // la gouttière suit le zoom : les numéros s'agrandissent au
         // pincement comme le corps (le facteur porte le corps courant
         // sur le corps de repos de 14 sp)
@@ -1426,6 +1454,91 @@ public final class EditorView extends View {
         diagnosticCard.open(line, found);
         invalidate();
         return true;
+    }
+
+    /**
+     * Pose la pastille d'erreur sur le mot diagnostiqué visé par le
+     * tap (B4) : la pastille vit trois secondes au-dessus du mot, le
+     * tap suivant sur elle ouvre la carte. Un offset sans diagnostic
+     * range la pastille vivante (le geste a déplacé l'attention).
+     *
+     * @param offset l'offset visé par le doigt
+     */
+    private void offerDiagnosticBadge(int offset) {
+        int line = buffer.lineOfOffset(Math.min(offset, buffer.length()));
+        boolean onDiagnostic = false;
+        if (diagnostics != null && analysisRevision == buffer.getRevision()) {
+            for (DiagnosticsDocument.Diagnostic diagnostic
+                    : diagnostics.betweenLines(line, line)) {
+                if (diagnostic.start() <= offset && offset < diagnostic.end()) {
+                    onDiagnostic = true;
+                    break;
+                }
+            }
+        }
+        if (!onDiagnostic && diagnosticProvider != null
+                && diagnosticProvider.diagnosticCovers(line,
+                        offset - buffer.getLineStart(line))) {
+            onDiagnostic = true;
+        }
+        if (onDiagnostic) {
+            diagnosticBadgeLine = line;
+            diagnosticBadgeColumn = Math.min(offset,
+                    buffer.getLineEnd(line)) - buffer.getLineStart(line);
+            diagnosticBadgeUntilNanos = System.nanoTime()
+                    + BADGE_LIFETIME_NANOS;
+            postDelayed(this::invalidate, BADGE_LIFETIME_MS + 50);
+        } else {
+            diagnosticBadgeLine = -1;
+        }
+    }
+
+    /**
+     * Le doigt est-il sur la pastille vivante ? Le tap y ouvre la
+     * carte de la ligne ancrée.
+     *
+     * @param x l'abscisse du doigt (px, coordonnées de la vue)
+     * @param y l'ordonnée du doigt (px, coordonnées de la vue)
+     * @return vrai quand la pastille a pris le geste
+     */
+    private boolean tapDiagnosticBadge(float x, float y) {
+        if (diagnosticBadgeLine < 0
+                || System.nanoTime() > diagnosticBadgeUntilNanos) {
+            diagnosticBadgeLine = -1;
+            return false;
+        }
+        float cx = getPaddingLeft() + (diagnosticBadgeColumn + 0.5f)
+                * charWidth - scrollX;
+        float cy = diagnosticBadgeCenterY();
+        float radius = dp(11);
+        if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= radius * radius) {
+            int line = diagnosticBadgeLine;
+            diagnosticBadgeLine = -1;
+            openDiagnosticsAtLine(line);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * L'ordonnée du CENTRE de la pastille vivante (l'accès du harnais
+     * et du nœud d'accessibilité : la géométrie du dessin s'y lit,
+     * le doigt s'y pose).
+     *
+     * @return le centre vertical en pixels, {@link Float#MAX_VALUE}
+     *         si aucune pastille ne vit
+     */
+    public float diagnosticBadgeCenterY() {
+        if (diagnosticBadgeLine < 0) {
+            return Float.MAX_VALUE;
+        }
+        float baseline = lineBaseline(diagnosticBadgeLine);
+        float cy = baseline - lineHeight + dp(14);
+        // la ligne de tête visible : la pastille passe SOUS le mot
+        if (cy < getPaddingTop() + dp(6)) {
+            cy = baseline + dp(14);
+        }
+        return cy;
     }
 
     /**
@@ -3149,24 +3262,35 @@ public final class EditorView extends View {
                     // doigt se sélectionne (la frappe suivante le
                     // remplacera) — SAUF le littéral de couleur (la
                     // leçon de la référence : son sélecteur s'ouvre au
-                    // DOUBLE-TAP sur le littéral, le chip y vit)
+                    // DOUBLE-TAP sur le littéral, le chip y vit) et
+                    // SAUF le souligné d'un diagnostic (B4 : le
+                    // double-tap précis du stylet y ouvre la carte —
+                    // la pastille sert le doigt, ce chemin sert la
+                    // précision)
                     requestFocus();
-                    if (!openColorPickerAtTap(offsetNearest(
-                            event.getX(), event.getY()))) {
+                    int offset = offsetNearest(event.getX(), event.getY());
+                    if (!openColorPickerAtTap(offset)
+                            && !openDiagnosticAtTap(offset)) {
                         selectWordAt(event.getX(), event.getY());
                     }
                     clearComposing();
                 } else {
                     requestFocus();
-                    // le souligné rouge d'un diagnostic : la carte
-                    // s'y ouvre — le doigt vise le signe mésapparié, le
-                    // curseur ne bouge pas
+                    // LA PASTILLE D'ABORD (B4) : le
+                    // doigt masque le texte — le tap sur un mot diagnostiqué
+                    // pose une pastille au-dessus du mot, le tap sur la
+                    // pastille ouvre la carte. L'OUVERTURE DIRECTE vit au
+                    // DOUBLE-TAP sur le souligné (le stylet y garde son
+                    // chemin précis), la pastille sert le doigt — elle
+                    // COMPLÈTE le tap direct, elle ne le remplace pas
                     int offset = offsetNearest(event.getX(), event.getY());
-                    if (!openDiagnosticAtTap(offset)) {
+                    if (tapDiagnosticBadge(event.getX(), event.getY())) {
+                        // la pastille a pris le geste : la carte s'ouvre
+                    } else {
                         // LE PLACEHOLDER DU PLI REPLIÉ (B5) : le tap
                         // au-delà de la fin visible de l'en-tête d'un
-                        // pli replié ROUVRE le bloc (la leçon de la
-                        // référence — son « ... » s'y clique) ; le
+                        // pli replié ROUVRE le bloc (la leçon
+                        // de la référence — son « ... » s'y clique) ; le
                         // curseur ne se pose pas dans la région cachée
                         int tapLine = buffer.lineOfOffset(
                                 Math.min(offset, buffer.length()));
@@ -3176,6 +3300,10 @@ public final class EditorView extends View {
                             toggleFoldAt(tapLine);
                         } else {
                             placeCaretAt(event.getX(), event.getY());
+                            // le tap sur un mot diagnostiqué y pose la
+                            // pastille (elle meurt au geste qui déplace
+                            // le curseur ailleurs)
+                            offerDiagnosticBadge(offset);
                             clearComposing();
                             showSoftInput();
                         }
@@ -3446,6 +3574,7 @@ public final class EditorView extends View {
         updateSelectionBar();
         updateQuickActions();
         drawDiagnostics(canvas, first, last, count);
+        drawDiagnosticBadge(canvas);
         drawCompletionCard(canvas);
         drawInfoPopup(canvas);
         drawSignatureCard(canvas);
@@ -4447,6 +4576,35 @@ public final class EditorView extends View {
     }
 
     /**
+     * Dessine la pastille d'erreur vivante (B4) : un disque rouge au
+     * point d'exclamation, ancré AU-DESSUS du mot diagnostiqué tapé
+     * (sous la ligne si la place manque — la première ligne visible).
+     * Elle meurt à son échéance, le dessin ne la rend plus.
+     */
+    private void drawDiagnosticBadge(Canvas canvas) {
+        if (diagnosticBadgeLine < 0
+                || System.nanoTime() > diagnosticBadgeUntilNanos
+                || isHidden(diagnosticBadgeLine)) {
+            return;
+        }
+        float cx = getPaddingLeft() + (diagnosticBadgeColumn + 0.5f)
+                * charWidth - scrollX;
+        float baseline = lineBaseline(diagnosticBadgeLine);
+        float cy = baseline - lineHeight + dp(14);
+        // la ligne de tête visible : la pastille passe SOUS le mot
+        if (cy < getPaddingTop() + dp(6)) {
+            cy = baseline + dp(14);
+        }
+        float radius = dp(11);
+        badgePaint.setColor(0xFFFF3B30);
+        canvas.drawCircle(cx, cy, radius, badgePaint);
+        // le point d'exclamation, centré par sa métrique réelle
+        Paint.FontMetrics mark = badgeTextPaint.getFontMetrics();
+        canvas.drawText("!", cx,
+                cy - (mark.top + mark.bottom) / 2.0f, badgeTextPaint);
+    }
+
+    /**
      * La TRANCHE du plan d'une ligne entre deux colonnes (le rendu du
      * soft wrap : la rangée y dessine SES colonnes du plan cuit, le
      * décalage d'indent y pose la suite au premier caractère non
@@ -4541,8 +4699,8 @@ public final class EditorView extends View {
      */
     /**
      * La borne gauche du placeholder d'une ligne d'en-tête repliée —
-     * le tap au-delà rouvre le bloc (le placeholder s'y dessine,
-     * après la fin visible de l'en-tête).
+     * le tap au-delà rouvre le bloc (le placeholder s'y dessine, à
+     * partir du dernier ouvrant de l'en-tête).
      *
      * @param line l'indice de la ligne d'en-tête
      * @return l'abscisse où le placeholder commence
@@ -4550,25 +4708,99 @@ public final class EditorView extends View {
     private float foldPlaceholderLeft(int line) {
         String head = buffer.getText(buffer.getLineStart(line),
                 buffer.getLineEnd(line));
-        return getPaddingLeft() + head.length() * charWidth - scrollX;
+        return getPaddingLeft() + lastOpenerColumn(head) * charWidth - scrollX;
     }
 
+    /**
+     * Le placeholder du pli replié : la nature du pli se lit à son
+     * ouvrant — « {…} » pour un bloc, « (…) » pour un groupe, « […] »
+     * pour un tableau, « … » seul quand l'en-tête n'ouvre rien (les
+     * imports). L'ouvrant déjà présent dans l'en-tête ne se répète
+     * pas : le placeholder naît SUR lui (le bug d'usage B5 : le
+     * dessin d'avant posait « {...} » après un en-tête finissant par
+     * « { » — l'écran montrait « method {{...} »).
+     *
+     * @param canvas   le canevas de la vue
+     * @param line     l'indice de la ligne d'en-tête
+     * @param baseline la ligne de base du texte
+     */
     private void drawFoldPlaceholder(Canvas canvas, int line, float baseline) {
         String head = buffer.getText(buffer.getLineStart(line),
                 buffer.getLineEnd(line));
-        String trimmed = head.stripLeading();
-        String placeholder = "{...}";
-        if (trimmed.startsWith("/*")) {
-            placeholder = "/**...*/";
-        } else if (trimmed.startsWith("//")) {
-            placeholder = "//...";
-        }
-        float x = getPaddingLeft() + head.length() * charWidth;
+        String placeholder = foldPlaceholderText(line, head);
+        int openerColumn = lastOpenerColumn(head);
+        float x = getPaddingLeft() + openerColumn * charWidth - scrollX;
         // l'encre atténuée du texte du thème (la référence y dessine
         // son placeholder à la couleur du texte, discrètement)
         placeholderPaint.setColor((theme.defaultColor() & 0x00FFFFFF)
                 | 0x88000000);
         canvas.drawText(placeholder, x, baseline, placeholderPaint);
+    }
+
+    /**
+     * Le texte du placeholder : « ouvrant…fermant » quand l'en-tête
+     * ouvre et que la ligne de fin ferme (le fermant d'origine y
+     * survit avec son éventuel suffixe), « … » sinon. Le commentaire
+     * de bloc replié garde sa forme « /&#42;…&#42;/ ».
+     */
+    private String foldPlaceholderText(int line, String head) {
+        String trimmed = head.stripLeading();
+        if (trimmed.startsWith("/*")) {
+            return "/*...*/";
+        }
+        if (trimmed.startsWith("//")) {
+            return "//...";
+        }
+        int openerColumn = lastOpenerColumn(head);
+        if (openerColumn < 0) {
+            return "...";
+        }
+        char opener = head.charAt(openerColumn);
+        char closer = closerOf(opener);
+        if (closer == 0) {
+            return "...";
+        }
+        int end = foldBounds.foldEndLine(line);
+        String endText = end < buffer.getLineCount()
+                ? buffer.getText(buffer.getLineStart(end),
+                        buffer.getLineEnd(end)).strip() : "";
+        // le fermant d'origine survit : le premier fermant de la
+        // nature convient, son suffixe (« ; », « ) ») reste au texte
+        int closerAt = endText.indexOf(closer);
+        if (closerAt >= 0) {
+            return opener + "..." + endText.substring(closerAt,
+                    Math.min(endText.length(), closerAt + 3));
+        }
+        return opener + "..." + closer;
+    }
+
+    /**
+     * La colonne du DERNIER ouvrant de l'en-tête ({@code -1} s'il
+     * n'en porte pas) : le dessin du placeholder y naît, l'ouvrant
+     * visible reste le sien (aucun doublon).
+     */
+    private static int lastOpenerColumn(String head) {
+        for (int at = head.length() - 1; at >= 0; at--) {
+            char sign = head.charAt(at);
+            if (sign == '{' || sign == '(' || sign == '[') {
+                return at;
+            }
+        }
+        return -1;
+    }
+
+    /** Le fermant de la nature de l'ouvrant, 0 s'il n'en a pas. */
+    private static char closerOf(char opener) {
+        switch (opener) {
+            case '{':
+                return '}';
+            case '(':
+                return ')';
+            case '[':
+                return ']';
+            default:
+                return 0;
+        }
     }
 
     private void drawTokens(Canvas canvas, int line, int start, float baseline) {
