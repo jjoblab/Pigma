@@ -46,7 +46,7 @@ qu'il propose.
 | 76 | Processus LSP : stderr drainé (fil de vidange), arrêt en deux temps (grâce 500 ms puis tue-loup) | D8 | **fait** | `docs/chantiers/76.md` | à pousser |
 | 77 | Accessibilité : package editor.accessibility (nœud éditable, fenêtre de texte bornée, actions, événements de frappe et sélection) | D5 | **fait** | `docs/chantiers/77.md` | à pousser |
 | 78 | Historique local repensé : versions par geste (pause 2 s), plage occupée + texte d'avant, budget en caractères, restauration de plage exacte ; usages : extrait de la ligne par rangée | B7 | **fait** | `docs/chantiers/78.md` | à pousser |
-| 79 | Chaîne d'approvisionnement : verification-metadata, versions épinglées | D11 | prévu | — | — |
+| 79 | Chaîne d'approvisionnement : verification-metadata.xml (401 composants, sha256+sha512), mode strict documenté | D11 | **fait** | `docs/chantiers/79.md` | à pousser |
 | 80 | Fins de ligne : CRLF au tampon et au protocole | D13 | prévu | — | — |
 | 81 | Découpage de EditorView par composants (LayoutModel d'abord) | D6, R1 | prévu | — | — |
 
@@ -73,6 +73,10 @@ amputé de ce qui est déjà fait.
 - 2026-11-26 — création ; historique des 113 commits réattribué à
   `jjoblab <olson12jb@gmail.com>` et poussé (force) — les 3 commits
   « Z User » de la période des vagues 44-46 rewriting.
+- 2026-11-26 — chantier 79 fermé : D11 réglé — les 401 artefacts
+  de la construction se pinillonnent par sommes SHA (le mode
+  strict passe le check et l'APK), la régénération et le passage
+  aux signatures se documentent au gradle/VERIFICATION.md.
 - 2026-11-26 — chantier 78 fermé : B7 (historique) réglé — les
   versions par geste remplacent les traces par caractère (pause de
   2 s, plage occupée après le geste, texte d'avant, budget de
