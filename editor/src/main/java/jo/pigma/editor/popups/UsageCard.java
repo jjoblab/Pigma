@@ -231,7 +231,7 @@ public final class UsageCard extends ListCard {
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, borderPaint);
         float headerBaseline = poseY + dp(HEADER_DP) * 0.66f;
-        String title = "Usages · " + symbol;
+        String title = strings.usagesOf(symbol);
         canvas.drawText(ellipsizeTail(title, titlePaint, cardW - dp(76)),
                 poseX + dp(14), headerBaseline, titlePaint);
         drawCross(canvas, poseX + cardW - dp(24), poseY + dp(HEADER_DP) / 2.0f,
@@ -311,7 +311,7 @@ public final class UsageCard extends ListCard {
 
     /** La largeur qu'il faut pour la plus large rangée, respirée. */
     private float measuredWidth() {
-        float widest = titlePaint.measureText("Usages · " + symbol);
+        float widest = titlePaint.measureText(strings.usagesOf(symbol));
         for (Usage usage : usages) {
             String where = (usage.file() == null || usage.file().isEmpty()
                     ? "" : usage.file() + " · ") + "ligne " + (usage.line() + 1);

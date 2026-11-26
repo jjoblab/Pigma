@@ -10,6 +10,9 @@ import java.util.List;
  */
 public class AccessibilityNodeInfo {
 
+    /** L'action de cliquer (la forme int du vrai cadre — performAction y lit). */
+    public static final int ACTION_CLICK = 10;
+
     /** Une action du nœud (la forme du vrai cadre, la valeur suffit). */
     public static final class AccessibilityAction {
 
@@ -58,6 +61,11 @@ public class AccessibilityNodeInfo {
     private CharSequence text;
     private int selectionStart = -1;
     private int selectionEnd = -1;
+    private CharSequence contentDescription;
+    private boolean enabled;
+    private boolean clickable;
+    private boolean visibleToUser;
+    private android.graphics.Rect boundsInParent;
     private final List<AccessibilityAction> actions = new ArrayList<>();
 
     /** La classe déclarée du nœud. */
@@ -104,6 +112,66 @@ public class AccessibilityNodeInfo {
     /** La fin de la sélection. */
     public int getTextSelectionEnd() {
         return selectionEnd;
+    }
+
+    /** La description de contenu du nœud. */
+    public void setContentDescription(CharSequence description) {
+        this.contentDescription = description;
+    }
+
+    /** La description de contenu. */
+    public CharSequence getContentDescription() {
+        return contentDescription;
+    }
+
+    /** Le nœud vit-il (activé) ? */
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    /** Le nœud vit-il (activé) ? */
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    /** Le nœud se clique-t-il ? */
+    public void setClickable(boolean clickable) {
+        this.clickable = clickable;
+    }
+
+    /** Le nœud se clique-t-il ? */
+    public boolean isClickable() {
+        return clickable;
+    }
+
+    /** Le nœud se voit-il à l'écran ? */
+    public void setVisibleToUser(boolean visible) {
+        this.visibleToUser = visible;
+    }
+
+    /** Le nœud se voit-il à l'écran ? */
+    public boolean isVisibleToUser() {
+        return visibleToUser;
+    }
+
+    /** Les bornes du nœud dans son parent. */
+    public void setBoundsInParent(android.graphics.Rect bounds) {
+        this.boundsInParent = bounds;
+    }
+
+    /** Les bornes dans le parent. */
+    public android.graphics.Rect getBoundsInParent() {
+        return boundsInParent;
+    }
+
+    /** L'obtention d'un nœud vierge (la forme du vrai cadre). */
+    public static AccessibilityNodeInfo obtain() {
+        return new AccessibilityNodeInfo();
+    }
+
+    /** L'obtention d'un nœud ancré à une vue (la forme du vrai cadre). */
+    public static AccessibilityNodeInfo obtain(Object source) {
+        return new AccessibilityNodeInfo();
     }
 
     /** Une action s'ajoute. */

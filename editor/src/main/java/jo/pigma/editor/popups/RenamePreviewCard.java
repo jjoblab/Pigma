@@ -374,8 +374,8 @@ public final class RenamePreviewCard extends ListCard {
         String count = retained + "/" + occurrences.size();
         canvas.drawText(count, poseX + dp(14), footerBaseline, footerPaint);
         // le bouton « Appliquer » : la puce à l'accent (l'action s'y lit)
-        String label = retained > 0 ? "Appliquer (" + retained + ")"
-                : "Appliquer";
+        String label = retained > 0 ? strings.applyWith(retained)
+                : strings.apply();
         float labelW = chipTextPaint.measureText(label);
         float chipW = labelW + dp(24);
         float chipLeft = poseX + cardW - dp(14) - chipW;
@@ -430,7 +430,33 @@ public final class RenamePreviewCard extends ListCard {
         return dp(style.rowHeightDp() - 2);
     }
 
+    /** Le libellé d'une rangée (le service qui parle la lit — la case suit). */
+    @Override
+    protected String virtualRowLabelAt(int at) {
+        if (at < 0 || at >= occurrences.size()) {
+            return "";
+        }
+        RenamePreviewCard.Occurrence occurrence = occurrences.get(at);
+        String label = occurrence.where() == null ? "" : occurrence.where();
+        if (occurrence.excerpt() != null && !occurrence.excerpt().trim().isEmpty()) {
+            label += " — " + occurrence.excerpt().trim();
+        }
+        return label + (checked[at] ? " — " + strings.apply() : "");
+    }
+
+    /** L'action d'une rangée (le service qui parle la BASCULE — le
+     * renommage partiel vit au lecteur d'écran aussi). */
+    @Override
+    protected boolean virtualRowPlay(int at) {
+        if (at < 0 || at >= occurrences.size()) {
+            return false;
+        }
+        checked[at] = !checked[at];
+        return true;
+    }
+
     /** L'ordonnée du centre d'une rangée (le harnais y vise le doigt). */
+    @Override
     public float rowCenterY(int index) {
         if (index < topRow || index >= topRow + visibleRows) {
             return -1.0f;

@@ -347,7 +347,7 @@ public final class DiagnosticCard extends ListCard {
         float headerH = dp(style.headerHeightDp());
         float rowsTop = poseY + padY();
         float headerBaseline = rowsTop + headerH * 0.72f;
-        canvas.drawText("Diagnostics · ligne " + (line + 1),
+        canvas.drawText(strings.diagnosticsAt(line),
                 poseX + dp(14), headerBaseline, headerPaint);
         canvas.drawLine(poseX + dp(12), rowsTop + headerH - dp(2),
                 poseX + cardW - dp(12), rowsTop + headerH - dp(2), rulePaint);

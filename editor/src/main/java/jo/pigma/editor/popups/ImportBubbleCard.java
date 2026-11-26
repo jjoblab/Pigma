@@ -30,10 +30,11 @@ import java.util.List;
  * la carte AVANT de poser le remplacement (le geste ne se joue pas
  * deux fois).</p>
  */
-public final class ImportBubbleCard extends CardBase {
+public final class ImportBubbleCard extends CardBase implements VirtualRows {
 
-    /** La hauteur de la bulle compacte (dp). */
-    private static final int BUBBLE_DP = 40;
+    /** La hauteur de la bulle compacte (dp) — la cible tactile y tient
+     * à 48 dp au moins (la bulle entière se joue au doigt). */
+    private static final int BUBBLE_DP = 48;
 
     /** La hauteur d'une rangée ouverte (dp). */
     private static final int ROW_DP = 48;
@@ -274,12 +275,12 @@ public final class ImportBubbleCard extends CardBase {
         float baseline = poseY + dp(BUBBLE_DP) * 0.66f;
         BulbIcon.draw(canvas, bulbPaint, poseX + dp(ICON_COL_DP) / 2.0f,
                 poseY + dp(BUBBLE_DP) / 2.0f, dp(ICON_DP));
-        String question = "Importer « " + word + " » ?";
+        String question = strings.importQuestion(word);
         canvas.drawText(ellipsizeTail(question, textPaint,
                 cardW - dp(ICON_COL_DP) - dp(64)),
                 poseX + dp(ICON_COL_DP), baseline, textPaint);
         if (!expanded && candidates.size() > 1) {
-            String count = candidates.size() + " candidats";
+            String count = strings.candidatesCount(candidates.size());
             float countW = countPaint.measureText(count);
             canvas.drawText(count, poseX + cardW - dp(30) - countW,
                     baseline, countPaint);
@@ -339,6 +340,43 @@ public final class ImportBubbleCard extends CardBase {
         poseX = Math.max(margin,
                 Math.min(metrics.paddingLeft(),
                         metrics.viewWidth() - cardW - margin));
+    }
+
+    /**
+     * LES RANGÉES VIRTUELLES (le service qui parle lit les candidats
+     * de la bulle ouverte) — l'interface y vit sur la liste ouverte.
+     */
+    @Override
+    public int virtualRowCount() {
+        return isShown() && expanded ? candidates.size() : 0;
+    }
+
+    @Override
+    public String virtualRowLabel(int index) {
+        if (index < 0 || index >= virtualRowCount()) {
+            return "";
+        }
+        Import candidate = candidates.get(index);
+        return candidate == null || candidate.title() == null
+                ? "" : candidate.title();
+    }
+
+    @Override
+    public boolean virtualRowActivate(int index) {
+        if (index < 0 || index >= virtualRowCount()) {
+            return false;
+        }
+        Import chosen = candidates.get(index);
+        close();
+        if (chosen != null && chosen.apply() != null && editor != null) {
+            editor.post(chosen.apply());
+        }
+        return true;
+    }
+
+    @Override
+    public float virtualRowCenterY(int index) {
+        return rowCenterY(index);
     }
 
     /**

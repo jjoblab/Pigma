@@ -340,7 +340,8 @@ public final class GotoCard extends ListCard implements KeyboardCard {
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, borderPaint);
         float headerBaseline = poseY + dp(HEADER_DP) * 0.66f;
-        canvas.drawText("Aller à", poseX + dp(14), headerBaseline, titlePaint);
+        canvas.drawText(strings.gotoTitle(), poseX + dp(14), headerBaseline,
+                titlePaint);
         // LE FILTRE TAPÉ vit en tête (les lettres resserrent la
         // liste — l'invite « … » quand rien n'y vit)
         String typed = filter.isEmpty() ? "…" : filter;
@@ -390,8 +391,7 @@ public final class GotoCard extends ListCard implements KeyboardCard {
 
     /** Le pied de carte : le compte des rangées. */
     private void drawFooter(Canvas canvas) {
-        String count = filtered.size() == 1
-                ? "1 résultat" : filtered.size() + " résultats";
+        String count = strings.resultsCount(filtered.size());
         float countW = footerPaint.measureText(count);
         canvas.drawText(count, poseX + cardW - dp(14) - countW,
                 poseY + cardH - dp(FOOTER_DP) / 2.0f, footerPaint);
@@ -417,7 +417,7 @@ public final class GotoCard extends ListCard implements KeyboardCard {
 
     /** La largeur qu'il faut pour la plus large rangée, respirée. */
     private float measuredWidth() {
-        float widest = titlePaint.measureText("Aller à");
+        float widest = titlePaint.measureText(strings.gotoTitle());
         for (GotoRow row : rows) {
             widest = Math.max(widest, namePaint.measureText(
                     row.name() == null ? "" : row.name())
@@ -439,6 +439,32 @@ public final class GotoCard extends ListCard implements KeyboardCard {
         return dp(style.rowHeightDp() - 6);
     }
 
+    /** Le libellé d'une rangée (le service qui parle la lit). */
+    @Override
+    protected String virtualRowLabelAt(int at) {
+        if (at < 0 || at >= filtered.size()) {
+            return "";
+        }
+        GotoRow row = filtered.get(at);
+        return (row.name() == null ? "" : row.name())
+                + (row.where() == null || row.where().isEmpty() ? ""
+                        : ", " + row.where());
+    }
+
+    /** L'action d'une rangée (le service qui parle la joue au doigt du lecteur). */
+    @Override
+    protected boolean virtualRowPlay(int at) {
+        if (at < 0 || at >= filtered.size()) {
+            return false;
+        }
+        GotoRow chosen = filtered.get(at);
+        close();
+        if (chosen != null && chosen.go() != null && editor != null) {
+            editor.post(chosen.go());
+        }
+        return true;
+    }
+
     /**
      * L'ordonnée du centre d'une rangée (le harnais y vise le
      * doigt), -1 hors fenêtre.
@@ -446,6 +472,7 @@ public final class GotoCard extends ListCard implements KeyboardCard {
      * @param index l'indice de la rangée
      * @return le centre vertical (px, vue), -1 si hors fenêtre
      */
+    @Override
     public float rowCenterY(int index) {
         if (index < topRow || index >= topRow + visibleRows) {
             return -1.0f;

@@ -178,12 +178,12 @@ public final class ProblemsCard extends ListCard {
     /** L'étiquette d'une famille. */
     private String labelOf(int severity) {
         if (severity == DiagnosticCard.SEVERITY_WARNING) {
-            return "Avertissements";
+            return strings.warningsFamily();
         }
         if (severity == DiagnosticCard.SEVERITY_INFO) {
-            return "Informations";
+            return strings.infosFamily();
         }
-        return "Erreurs";
+        return strings.errorsFamily();
     }
 
     /** Ramasse les restes de la fermeture. */
@@ -278,7 +278,7 @@ public final class ProblemsCard extends ListCard {
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, borderPaint);
         float headerBaseline = poseY + dp(HEADER_DP) * 0.66f;
-        canvas.drawText("Problèmes", poseX + dp(14), headerBaseline,
+        canvas.drawText(strings.problems(), poseX + dp(14), headerBaseline,
                 titlePaint);
         drawCross(canvas, poseX + cardW - dp(24), poseY + dp(HEADER_DP) / 2.0f,
                 glyphPaint);
@@ -312,7 +312,7 @@ public final class ProblemsCard extends ListCard {
                 cardW - dp(ICON_DP) - 3 * dp(14));
         canvas.drawText(message, poseX + dp(14) + dp(ICON_DP) + dp(8),
                 baseline, textPaint);
-        String where = "ligne " + (row.line() + 1);
+        String where = strings.lineAt(row.line());
         float whereW = detailPaint.measureText(where);
         canvas.drawText(where, poseX + cardW - dp(14) - whereW, baseline,
                 detailPaint);
@@ -379,7 +379,7 @@ public final class ProblemsCard extends ListCard {
 
     /** La largeur qu'il faut pour le plus large message, respiré. */
     private float measuredWidth() {
-        float widest = titlePaint.measureText("Problèmes");
+        float widest = titlePaint.measureText(strings.problems());
         for (Row row : rows) {
             widest = Math.max(widest,
                     textPaint.measureText(row.message())
@@ -400,7 +400,38 @@ public final class ProblemsCard extends ListCard {
         return dp(style.rowHeightDp() - 6);
     }
 
+    /** Le libellé d'une rangée (le service qui parle la lit). */
+    @Override
+    protected String virtualRowLabelAt(int at) {
+        if (at < 0 || at >= rows.size()) {
+            return "";
+        }
+        Row row = rows.get(at);
+        if (row.group()) {
+            return row.message();
+        }
+        return row.message() + ", " + strings.lineAt(row.line());
+    }
+
+    /** L'action d'une rangée (le service qui parle la joue — l'étiquette n'agit pas). */
+    @Override
+    protected boolean virtualRowPlay(int at) {
+        if (at < 0 || at >= rows.size()) {
+            return false;
+        }
+        Row chosen = rows.get(at);
+        if (chosen.group() || chosen.go() == null) {
+            return false;
+        }
+        close();
+        if (editor != null) {
+            editor.post(chosen.go());
+        }
+        return true;
+    }
+
     /** L'ordonnée du centre d'une rangée (le harnais y vise le doigt). */
+    @Override
     public float rowCenterY(int index) {
         if (index < topRow || index >= topRow + visibleRows) {
             return -1.0f;

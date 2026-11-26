@@ -225,7 +225,8 @@ public final class SnippetCard extends ListCard {
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, borderPaint);
         float headerBaseline = poseY + dp(HEADER_DP) * 0.66f;
-        canvas.drawText("Extraits", poseX + dp(14), headerBaseline, titlePaint);
+        canvas.drawText(strings.snippets(), poseX + dp(14), headerBaseline,
+                titlePaint);
         drawCross(canvas, poseX + cardW - dp(24), poseY + dp(HEADER_DP) / 2.0f,
                 glyphPaint);
         canvas.drawLine(poseX + dp(12), poseY + dp(HEADER_DP) - dp(2),
@@ -269,8 +270,7 @@ public final class SnippetCard extends ListCard {
 
     /** Le pied de carte : le compte des extraits. */
     private void drawFooter(Canvas canvas) {
-        String count = snippets.size() == 1
-                ? "1 extrait" : snippets.size() + " extraits";
+        String count = strings.snippetsCount(snippets.size());
         float countW = footerPaint.measureText(count);
         canvas.drawText(count, poseX + cardW - dp(14) - countW,
                 poseY + cardH - dp(FOOTER_DP) / 2.0f, footerPaint);
@@ -296,7 +296,7 @@ public final class SnippetCard extends ListCard {
 
     /** La largeur qu'il faut pour la plus large rangée, respirée. */
     private float measuredWidth() {
-        float widest = titlePaint.measureText("Extraits");
+        float widest = titlePaint.measureText(strings.snippets());
         for (SnippetRegistry.Snippet snippet : snippets) {
             widest = Math.max(widest, labelPaint.measureText(
                     snippet.label() == null ? "" : snippet.label())
@@ -317,7 +317,35 @@ public final class SnippetCard extends ListCard {
         return dp(style.rowHeightDp() - 6);
     }
 
+    /** Le libellé d'une rangée (le service qui parle la lit). */
+    @Override
+    protected String virtualRowLabelAt(int at) {
+        if (at < 0 || at >= snippets.size()) {
+            return "";
+        }
+        SnippetRegistry.Snippet snippet = snippets.get(at);
+        return (snippet.label() == null ? "" : snippet.label()) + ", "
+                + (snippet.description() == null ? "" : snippet.description());
+    }
+
+    /** L'action d'une rangée (le service qui parle la joue au doigt du lecteur). */
+    @Override
+    protected boolean virtualRowPlay(int at) {
+        if (at < 0 || at >= snippets.size()) {
+            return false;
+        }
+        SnippetRegistry.Snippet chosen = snippets.get(at);
+        close();
+        if (chosen != null && inserter != null && editor != null) {
+            final SnippetRegistry.Snippet snippet = chosen;
+            editor.post(() -> inserter.insert(snippet.body(),
+                    snippet.fieldAt(), snippet.fieldEnd()));
+        }
+        return true;
+    }
+
     /** L'ordonnée du centre d'une rangée (le harnais y vise le doigt). */
+    @Override
     public float rowCenterY(int index) {
         if (index < topRow || index >= topRow + visibleRows) {
             return -1.0f;

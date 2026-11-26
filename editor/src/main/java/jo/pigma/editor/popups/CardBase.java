@@ -29,6 +29,9 @@ public abstract class CardBase {
     /** Le style posé par l'hôte : fond translucide, encres, tailles, largeur, forme. */
     protected PopupStyle style = PopupStyle.defaults();
 
+    /** Les chaînes posées par l'hôte (les libellés, les compteurs — la locale). */
+    protected PopupStrings strings = PopupStrings.defaults();
+
     /** L'abscisse posée (px, coordonnées de la vue). */
     protected float poseX;
 
@@ -86,6 +89,22 @@ public abstract class CardBase {
     /** Le style courant (le harnais le lit). */
     public PopupStyle style() {
         return style;
+    }
+
+    /**
+     * Pose les chaînes de l'hôte (les libellés et les compteurs — la
+     * source unique des chaînes localisées, la locale de
+     * l'application hôte).
+     *
+     * @param fresh les chaînes posées, null pour celles par défaut
+     */
+    public void setStrings(PopupStrings fresh) {
+        strings = fresh == null ? PopupStrings.defaults() : fresh;
+    }
+
+    /** Les chaînes courantes (le harnais les lit). */
+    public PopupStrings strings() {
+        return strings;
     }
 
     /** Reconfigure les pinceaux au style courant. */

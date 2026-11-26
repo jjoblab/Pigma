@@ -45,6 +45,9 @@ public final class GotoBar implements KeyboardCard {
     /** Le style posé par l'hôte : fond translucide, tailles, largeur, forme. */
     private PopupStyle style = PopupStyle.defaults();
 
+    /** Les chaînes posées par l'hôte (l'invite localisée — la source unique). */
+    private PopupStrings strings = PopupStrings.defaults();
+
     private EditorView editor;
 
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -79,6 +82,16 @@ public final class GotoBar implements KeyboardCard {
     /** Le style courant (le harnais le lit). */
     public PopupStyle style() {
         return style;
+    }
+
+    /**
+     * Pose les chaînes de l'hôte (l'invite localisée — la source
+     * unique des chaînes localisées, la locale de l'application).
+     *
+     * @param fresh les chaînes posées, null pour celles par défaut
+     */
+    public void setStrings(PopupStrings fresh) {
+        strings = fresh == null ? PopupStrings.defaults() : fresh;
     }
 
     /** Reconfigure les pinceaux au style courant. */
@@ -186,8 +199,8 @@ public final class GotoBar implements KeyboardCard {
         float baseline = rowTop + rowHeight * 0.7f;
         // l'invite d'Android Studio, puis les chiffres (l'indication
         // si le champ est vierge), puis la croix
-        float inviteWidth = textPaint.measureText("Aller à la ligne : ");
-        canvas.drawText("Aller à la ligne : ", poseX + dp(10), baseline, textPaint);
+        float inviteWidth = textPaint.measureText(strings.gotoBarInvite());
+        canvas.drawText(strings.gotoBarInvite(), poseX + dp(10), baseline, textPaint);
         canvas.drawText(digits.length() == 0 ? "numéro" : digits.toString(),
                 poseX + dp(10) + inviteWidth + dp(4), baseline,
                 digits.length() == 0 ? hintPaint : textPaint);

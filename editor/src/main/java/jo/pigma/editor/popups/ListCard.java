@@ -17,8 +17,15 @@ import android.graphics.Paint;
  * Les rangées s'y ARMEMENT au doigt ({@link #rowAt(float, float)})
  * — la carte sœur qui n'arme pas n'y touche pas, la carte qui arme y
  * lit son index.</p>
+ *
+ * <p>La base porte aussi LES RANGÉES VIRTUELLES (D-P9 — le service
+ * qui parle lit les rangées de la carte vivante) : {@link VirtualRows}
+ * s'y implémente sur la FENÊTRE — l'indice VISIBLE s'y traduit en
+ * indice de liste ({@code topRow}), le libellé et l'action restent à
+ * la carte ({@link #virtualRowLabelAt(int)}, {@link
+ * #virtualRowPlay(int)}).</p>
  */
-public abstract class ListCard extends CardBase {
+public abstract class ListCard extends CardBase implements VirtualRows {
 
     /** La première rangée de la fenêtre (le défilement de la carte). */
     protected int topRow;
@@ -76,6 +83,81 @@ public abstract class ListCard extends CardBase {
             cursor += rowHeight();
         }
         return -1;
+    }
+
+    /** Le nombre des rangées VISIBLES de la fenêtre (0 hors vie ; la
+     * fenêtre non posée expose la liste — le premier dessin la
+     * resserrera). */
+    @Override
+    public int virtualRowCount() {
+        if (!isShown()) {
+            return 0;
+        }
+        return visibleRows > 0 ? Math.min(visibleRows, rowCount())
+                : rowCount();
+    }
+
+    /**
+     * Le libellé d'une rangée VISIBLE (l'indice de la fenêtre s'y
+     * traduit en indice de liste).
+     */
+    @Override
+    public String virtualRowLabel(int index) {
+        if (index < 0 || index >= virtualRowCount()) {
+            return "";
+        }
+        return virtualRowLabelAt(topRow + index);
+    }
+
+    /** L'activation d'une rangée VISIBLE (l'indice de fenêtre y suit). */
+    @Override
+    public boolean virtualRowActivate(int index) {
+        if (index < 0 || index >= virtualRowCount()) {
+            return false;
+        }
+        return virtualRowPlay(topRow + index);
+    }
+
+    /** L'ordonnée du centre d'une rangée VISIBLE. */
+    @Override
+    public float virtualRowCenterY(int index) {
+        if (index < 0 || index >= virtualRowCount()) {
+            return -1.0f;
+        }
+        return rowCenterY(topRow + index);
+    }
+
+    /**
+     * Le libellé d'une rangée de liste (le service qui parle la
+     * lit) — la carte le dit.
+     *
+     * @param at l'indice de la rangée DANS LA LISTE
+     * @return le libellé, vide quand la rangée ne se lit pas
+     */
+    protected String virtualRowLabelAt(int at) {
+        return "";
+    }
+
+    /**
+     * L'action d'une rangée de liste (le service qui parle la joue
+     * — la MÊME action que le doigt).
+     *
+     * @param at l'indice de la rangée DANS LA LISTE
+     * @return vrai quand la rangée s'est jouée
+     */
+    protected boolean virtualRowPlay(int at) {
+        return false;
+    }
+
+    /**
+     * L'ordonnée du centre d'une rangée (le harnais y vise le doigt
+     * — l'indice DANS LA LISTE).
+     *
+     * @param index l'indice de la rangée dans la liste
+     * @return le centre vertical (px, vue), -1 hors fenêtre
+     */
+    protected float rowCenterY(int index) {
+        return -1.0f;
     }
 
     /** Le nombre de rangées vivantes de la liste. */

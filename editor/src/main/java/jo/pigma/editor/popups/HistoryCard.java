@@ -81,6 +81,9 @@ public final class HistoryCard {
     /** Le style posé par l'hôte : fond translucide, encres, tailles, largeur, forme. */
     private PopupStyle style = PopupStyle.defaults();
 
+    /** Les chaînes posées par l'hôte (le titre localisé — la source unique). */
+    private PopupStrings strings = PopupStrings.defaults();
+
     private EditorView editor;
 
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -120,6 +123,15 @@ public final class HistoryCard {
     /** Le style courant (le harnais le lit). */
     public PopupStyle style() {
         return style;
+    }
+
+    /**
+     * Pose les chaînes de l'hôte (le titre localisé — la source unique).
+     *
+     * @param fresh les chaînes posées, null pour celles par défaut
+     */
+    public void setStrings(PopupStrings fresh) {
+        strings = fresh == null ? PopupStrings.defaults() : fresh;
     }
 
     /** La hauteur d'une rangée repliée : le style la porte. */
@@ -395,7 +407,7 @@ public final class HistoryCard {
     private void drawHeader(Canvas canvas) {
         float titleX = poseX + dp(14);
         float titleY = poseY + dp(HEADER_DP) * 0.62f;
-        canvas.drawText("Historique local", titleX, titleY, titlePaint);
+        canvas.drawText(strings.history(), titleX, titleY, titlePaint);
         String span = fromLine == toLine
                 ? "ligne " + fromLine : "lignes " + fromLine + "–" + toLine;
         canvas.drawText(span, titleX, poseY + dp(HEADER_DP) * 0.92f, spanPaint);

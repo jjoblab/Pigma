@@ -25,6 +25,7 @@ import jo.pigma.editor.popups.DiagnosticCard;
 import jo.pigma.editor.popups.ActionRegistry;
 import jo.pigma.editor.popups.BulbIcon;
 import jo.pigma.editor.popups.BadgePop;
+import jo.pigma.editor.popups.PopupStrings;
 import jo.pigma.editor.popups.PopupStyle;
 import jo.pigma.editor.popups.QuickActionCard;
 import jo.pigma.editor.popups.RenameCard;
@@ -51,6 +52,7 @@ import jo.pigma.editor.popups.RenamePreviewCard;
 import jo.pigma.editor.popups.SurroundCard;
 import jo.pigma.editor.popups.SnippetCard;
 import jo.pigma.editor.popups.SnippetRegistry;
+import jo.pigma.editor.popups.VirtualRows;
 import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.editor.popups.OverflowCard;
@@ -583,6 +585,13 @@ public final class EditorView extends View {
     private PopupStyle popupStyle = PopupStyle.defaults();
 
     /**
+     * LES CHAÎNES DES POPUPS posées par l'hôte (les libellés et les
+     * compteurs — la source unique localisée ; les défauts portent le
+     * français courant, l'hôte n'y change que ce qu'il veut).
+     */
+    private PopupStrings popupStrings = PopupStrings.defaults();
+
+    /**
      * LE REGISTRE DES ACTIONS D'ÉDITION (R-A du rapport des popups) :
      * la carte d'actions rapides et l'étage « Édition » du
      * débordement servaient les MÊMES cinq actions, chacune SA liste —
@@ -657,6 +666,10 @@ public final class EditorView extends View {
     /** Le pont d'accessibilité (le service qui parle y lit la vue — D5). */
     private final jo.pigma.editor.accessibility.EditorAccessibility accessibility =
             jo.pigma.editor.accessibility.EditorAccessibility.of(this);
+
+    /** LE FOURNISSEUR DES RANGÉES VIRTUELLES (D-P9 — la carte vivante y lit). */
+    private final jo.pigma.editor.accessibility.PopupAccessibility popupNodes =
+            jo.pigma.editor.accessibility.PopupAccessibility.of(this);
 
     /** La borne de début du mot courant (l'insertion remplace le préfixe). */
     private int suggestionWordStart = -1;
@@ -1436,6 +1449,67 @@ public final class EditorView extends View {
     }
 
     /**
+     * LES CHAÎNES DES POPUPS (la source unique localisée — les
+     * libellés, les compteurs) : l'hôte les pose — les ressources de
+     * son application, la locale du système. Les cartes vivantes s'y
+     * reconfigurent ; sans consigne de l'hôte, RIEN ne change à
+     * l'écran (les défauts portent le français courant).
+     *
+     * @param fresh les chaînes posées, null pour celles par défaut
+     */
+    public void setPopupStrings(PopupStrings fresh) {
+        popupStrings = fresh == null ? PopupStrings.defaults() : fresh;
+        if (gotoBar != null) {
+            gotoBar.setStrings(popupStrings);
+        }
+        if (historyCard != null) {
+            historyCard.setStrings(popupStrings);
+        }
+        if (quickActionCard != null) {
+            quickActionCard.setStrings(popupStrings);
+        }
+        if (targetCard != null) {
+            targetCard.setStrings(popupStrings);
+        }
+        if (problemsCard != null) {
+            problemsCard.setStrings(popupStrings);
+        }
+        if (clipboardCard != null) {
+            clipboardCard.setStrings(popupStrings);
+        }
+        if (structureCard != null) {
+            structureCard.setStrings(popupStrings);
+        }
+        if (importBubbleCard != null) {
+            importBubbleCard.setStrings(popupStrings);
+        }
+        if (previewCard != null) {
+            previewCard.setStrings(popupStrings);
+        }
+        if (gotoCard != null) {
+            gotoCard.setStrings(popupStrings);
+        }
+        if (recentCard != null) {
+            recentCard.setStrings(popupStrings);
+        }
+        if (renamePreviewCard != null) {
+            renamePreviewCard.setStrings(popupStrings);
+        }
+        if (surroundCard != null) {
+            surroundCard.setStrings(popupStrings);
+        }
+        if (snippetCard != null) {
+            snippetCard.setStrings(popupStrings);
+        }
+        invalidate();
+    }
+
+    /** Les chaînes des popups courantes (le harnais les lit). */
+    public PopupStrings popupStrings() {
+        return popupStrings;
+    }
+
+    /**
      * La carte de diagnostic (les erreurs et avertissements d'une
      * ligne — le harnais la lit).
      *
@@ -1711,13 +1785,13 @@ public final class EditorView extends View {
         // seule s'y propose (le rapport : « sélection de lignes »)
         if (hasSelection()) {
             actions.add(new QuickActionCard.Entry(
-                    "Entourer de…", this::showSurroundPopup));
+                    popupStrings.surroundRow(), this::showSurroundPopup));
         }
         // LES EXTRAITS (les extraits du rapport) : le registre vivant seul
         // s'y propose (l'hôte y pose ses squelettes)
         if (!snippetRegistry.snippets().isEmpty()) {
             actions.add(new QuickActionCard.Entry(
-                    "Insérer un extrait…", this::showSnippetsPopup));
+                    popupStrings.snippetsRow(), this::showSnippetsPopup));
         }
         if (quickActionProvider != null) {
             int caretOffset = Math.min(selection.caret(), buffer.length());
@@ -3294,6 +3368,62 @@ public final class EditorView extends View {
     @Override
     public boolean onCheckIsTextEditor() {
         return true;
+    }
+
+    /**
+     * LE FOURNISSEUR DES RANGÉES VIRTUELLES (D-P9 — « exposer les
+     * rangées comme nœuds virtuels ») : la carte VIVANTE à rangées
+     * s'y trouve, le service qui parle y navigue (le libellé s'y
+     * lit, l'action s'y joue — la MÊME action que le doigt).
+     */
+    @Override
+    public android.view.accessibility.AccessibilityNodeProvider getAccessibilityNodeProvider() {
+        android.view.accessibility.AccessibilityNodeProvider provider =
+                popupNodes.provider();
+        return provider != null ? provider
+                : super.getAccessibilityNodeProvider();
+    }
+
+    /**
+     * LA CARTE VIVANTE à rangées (le service qui parle y lit ses
+     * rangées) : la carte flottante active d'abord, les cartes à
+     * clavier ensuite, la carte de la frappe et celle de la
+     * sélection demeurent (leur rangée n'est pas un choix).
+     *
+     * @return la carte à rangées vivante, null quand aucune ne vit
+     */
+    public VirtualRows activeVirtualRows() {
+        if (gotoCard != null && gotoCard.isShown()) {
+            return gotoCard;
+        }
+        if (structureCard != null && structureCard.isShown()) {
+            return structureCard;
+        }
+        if (targetCard != null && targetCard.isShown()) {
+            return targetCard;
+        }
+        if (problemsCard != null && problemsCard.isShown()) {
+            return problemsCard;
+        }
+        if (clipboardCard != null && clipboardCard.isShown()) {
+            return clipboardCard;
+        }
+        if (recentCard != null && recentCard.isShown()) {
+            return recentCard;
+        }
+        if (renamePreviewCard != null && renamePreviewCard.isShown()) {
+            return renamePreviewCard;
+        }
+        if (surroundCard != null && surroundCard.isShown()) {
+            return surroundCard;
+        }
+        if (snippetCard != null && snippetCard.isShown()) {
+            return snippetCard;
+        }
+        if (importBubbleCard != null && importBubbleCard.isShown()) {
+            return importBubbleCard;
+        }
+        return null;
     }
 
     /**
@@ -6347,19 +6477,22 @@ public final class EditorView extends View {
         }
         List<OverflowCard.Section> families = new ArrayList<>();
         List<OverflowCard.Row> navigation = new ArrayList<>();
-        navigation.add(new OverflowCard.Row("Aller à la ligne…", this::toggleGotoPopup));
-        navigation.add(new OverflowCard.Row("Rechercher…", this::toggleSearchPopup));
+        navigation.add(new OverflowCard.Row(popupStrings.gotoLineRow(),
+                this::toggleGotoPopup));
+        navigation.add(new OverflowCard.Row(popupStrings.searchRow(),
+                this::toggleSearchPopup));
         // LES USAGES du symbole au curseur (la leçon de la référence :
         // son menu y porte Find Usages — la carte liste chaque
         // occurrence, le choix y navigue)
         if (!wordAtCaret().isEmpty()) {
-            navigation.add(new OverflowCard.Row("Usages de « "
-                    + wordAtCaret() + " »…", this::showUsagesPopup));
+            navigation.add(new OverflowCard.Row(
+                    popupStrings.usagesRow(wordAtCaret()),
+                    this::showUsagesPopup));
         }
         // LA LISTE DES PROBLÈMES (la liste des problèmes) : les diagnostics du document
         // y parcourent (le choix y navigue)
         if (!problemsOfDocument().isEmpty()) {
-            navigation.add(new OverflowCard.Row("Liste des problèmes…",
+            navigation.add(new OverflowCard.Row(popupStrings.problemsRow(),
                     this::showProblemsPopup));
         }
         // L'ALLER AU SYMBOLE / FICHIER (l'aller au symbole du rapport) : le
@@ -6367,17 +6500,18 @@ public final class EditorView extends View {
         // rend les symboles de l'espace de travail, l'hôte ses
         // fichiers)
         if (gotoProvider != null) {
-            navigation.add(new OverflowCard.Row("Aller au symbole…",
+            navigation.add(new OverflowCard.Row(popupStrings.gotoSymbolRow(),
                     () -> showGotoPopup(gotoProvider.get())));
         }
         // LES FICHIERS RÉCENTS (les fichiers récents du rapport) : la
         // mémoire vivante seule y propose (les fichiers et les
         // emplacements d'avant)
         if (!recentFiles.isEmpty()) {
-            navigation.add(new OverflowCard.Row("Fichiers récents…",
+            navigation.add(new OverflowCard.Row(popupStrings.recentFilesRow(),
                     this::showRecentFilesPopup));
         }
-        families.add(new OverflowCard.Section("Navigation", navigation));
+        families.add(new OverflowCard.Section(popupStrings.navigation(),
+                navigation));
         // LE REGISTRE DES ACTIONS D'ÉDITION (R-A) : la MÊME
         // définition que la carte d'actions rapides — l'étage se
         // construit tel quel (la disponibilité y vit au registre)
@@ -6385,22 +6519,25 @@ public final class EditorView extends View {
         for (ActionRegistry.Action action : editActions.live()) {
             edition.add(new OverflowCard.Row(action.label(), action::run));
         }
-        families.add(new OverflowCard.Section("Édition", edition));
+        families.add(new OverflowCard.Section(popupStrings.edition(), edition));
         // LE PRESSE-PAPIERS et SON HISTORIQUE (l'historique du presse-papiers — les dernières
         // copies s'y reprennent, le collage d'avant renaît au
         // doigt : la copie posée l'y propose)
         List<OverflowCard.Row> papiers = new ArrayList<>();
-        papiers.add(new OverflowCard.Row("Couper", this::cutSelection));
-        papiers.add(new OverflowCard.Row("Tout sélectionner", this::selectAll));
-        papiers.add(new OverflowCard.Row("Quitter la sélection", this::clearSelection));
+        papiers.add(new OverflowCard.Row(popupStrings.cutRow(), this::cutSelection));
+        papiers.add(new OverflowCard.Row(popupStrings.selectAllRow(),
+                this::selectAll));
+        papiers.add(new OverflowCard.Row(popupStrings.quitSelectionRow(),
+                this::clearSelection));
         if (!clipboardHistory.isEmpty()) {
-            papiers.add(new OverflowCard.Row("Historique du presse-papiers…",
+            papiers.add(new OverflowCard.Row(popupStrings.clipboardHistoryRow(),
                     this::showClipboardHistoryPopup));
         }
-        families.add(new OverflowCard.Section("Presse-papiers", papiers));
+        families.add(new OverflowCard.Section(popupStrings.clipboardFamily(),
+                papiers));
         if (hasSelection()) {
-            families.add(new OverflowCard.Section("Historique", List.of(
-                    new OverflowCard.Row("Historique de la sélection",
+            families.add(new OverflowCard.Section(popupStrings.historyFamily(),
+                    List.of(new OverflowCard.Row(popupStrings.selectionHistoryRow(),
                             this::showHistoryPopup))));
         }
         List<OverflowCard.Row> hosts = new ArrayList<>();
@@ -6408,7 +6545,7 @@ public final class EditorView extends View {
             hosts.add(new OverflowCard.Row(action.label(), action.action()));
         }
         if (!hosts.isEmpty()) {
-            families.add(new OverflowCard.Section("Hôte", hosts));
+            families.add(new OverflowCard.Section(popupStrings.hostFamily(), hosts));
         }
         overflowCard.openSections(families);
         invalidate();
@@ -6806,6 +6943,7 @@ public final class EditorView extends View {
         }
         if (targetCard == null) {
             targetCard = new TargetCard(dp(1));
+            targetCard.setStrings(popupStrings);
             targetCard.bind(this);
             popups.register(targetCard, PopupHost.Role.FLOATING,
                     targetCard::close, targetCard::isShown);
@@ -6846,6 +6984,7 @@ public final class EditorView extends View {
         }
         if (problemsCard == null) {
             problemsCard = new ProblemsCard(dp(1));
+            problemsCard.setStrings(popupStrings);
             problemsCard.bind(this);
             popups.register(problemsCard, PopupHost.Role.FLOATING,
                     problemsCard::close, problemsCard::isShown);
@@ -6874,6 +7013,7 @@ public final class EditorView extends View {
         }
         if (clipboardCard == null) {
             clipboardCard = new ClipboardCard(dp(1));
+            clipboardCard.setStrings(popupStrings);
             popups.register(clipboardCard, PopupHost.Role.FLOATING,
                     clipboardCard::close, clipboardCard::isShown);
         }
@@ -6917,6 +7057,7 @@ public final class EditorView extends View {
         }
         if (structureCard == null) {
             structureCard = new StructureCard(dp(1));
+            structureCard.setStrings(popupStrings);
             structureCard.bind(this);
             popups.register(structureCard, PopupHost.Role.KEYBOARD,
                     structureCard::close, structureCard::isShown);
@@ -6950,6 +7091,7 @@ public final class EditorView extends View {
         }
         if (importBubbleCard == null) {
             importBubbleCard = new ImportBubbleCard(dp(1));
+            importBubbleCard.setStrings(popupStrings);
             importBubbleCard.bind(this);
             popups.register(importBubbleCard, PopupHost.Role.FLOATING,
                     importBubbleCard::close, importBubbleCard::isShown);
@@ -6980,6 +7122,7 @@ public final class EditorView extends View {
         }
         if (previewCard == null) {
             previewCard = new PreviewCard(dp(1));
+            previewCard.setStrings(popupStrings);
             previewCard.bind(this);
             popups.register(previewCard, PopupHost.Role.FLOATING,
                     previewCard::close, previewCard::isShown);
@@ -7024,6 +7167,7 @@ public final class EditorView extends View {
         }
         if (gotoCard == null) {
             gotoCard = new GotoCard(dp(1));
+            gotoCard.setStrings(popupStrings);
             gotoCard.bind(this);
             popups.register(gotoCard, PopupHost.Role.KEYBOARD,
                     gotoCard::close, gotoCard::isShown);
@@ -7052,6 +7196,7 @@ public final class EditorView extends View {
         }
         if (recentCard == null) {
             recentCard = new RecentCard(dp(1));
+            recentCard.setStrings(popupStrings);
             recentCard.bind(this);
             popups.register(recentCard, PopupHost.Role.FLOATING,
                     recentCard::close, recentCard::isShown);
@@ -7089,6 +7234,7 @@ public final class EditorView extends View {
         }
         if (renamePreviewCard == null) {
             renamePreviewCard = new RenamePreviewCard(dp(1));
+            renamePreviewCard.setStrings(popupStrings);
             renamePreviewCard.bind(this, retained -> {
                 // les remplacements retenus se posent EN UNE unité
                 // d'annulation (la leçon du protocole : le renommage
@@ -7128,6 +7274,7 @@ public final class EditorView extends View {
         }
         if (surroundCard == null) {
             surroundCard = new SurroundCard(dp(1));
+            surroundCard.setStrings(popupStrings);
             surroundCard.bind(this);
             popups.register(surroundCard, PopupHost.Role.FLOATING,
                     surroundCard::close, surroundCard::isShown);
@@ -7260,6 +7407,7 @@ public final class EditorView extends View {
         }
         if (snippetCard == null) {
             snippetCard = new SnippetCard(dp(1));
+            snippetCard.setStrings(popupStrings);
             snippetCard.bind(this, this::insertSnippet);
             popups.register(snippetCard, PopupHost.Role.FLOATING,
                     snippetCard::close, snippetCard::isShown);

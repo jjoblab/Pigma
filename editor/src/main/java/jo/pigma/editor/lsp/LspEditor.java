@@ -1367,30 +1367,34 @@ public final class LspEditor {
         if (session == null || uri == null) {
             return actions;
         }
+        // les libellés y vivent à la SOURCE UNIQUE des chaînes de la
+        // vue (la localisation de l'hôte y passe — les défauts portent
+        // le français courant)
         if (capabilities.definition()) {
             actions.add(new QuickActionCard.Entry(
-                    "Aller à la définition", this::requestDefinition));
+                    view.popupStrings().definitionEntry(), this::requestDefinition));
             // L'APERÇU DE LA DÉFINITION (la définition en aperçu) :
             // lire la déclaration SANS quitter la position (le bouton «
             // Ouvrir » y saute)
             actions.add(new QuickActionCard.Entry(
-                    "Aperçu de la définition", this::requestDefinitionPreview));
+                    view.popupStrings().definitionPreviewEntry(),
+                    this::requestDefinitionPreview));
         }
         if (capabilities.references()) {
             actions.add(new QuickActionCard.Entry(
-                    "Trouver les usages", view::showUsagesPopup));
+                    view.popupStrings().referencesEntry(), view::showUsagesPopup));
         }
         if (capabilities.rename()) {
             actions.add(new QuickActionCard.Entry(
-                    "Renommer le symbole", this::requestRename));
+                    view.popupStrings().renameEntry(), this::requestRename));
         }
         if (capabilities.formatting()) {
             actions.add(new QuickActionCard.Entry(
-                    "Formater le document", this::formatDocument));
+                    view.popupStrings().formatEntry(), this::formatDocument));
         }
         if (capabilities.documentSymbol()) {
             actions.add(new QuickActionCard.Entry(
-                    "Les symboles du document", this::showSymbolsCard));
+                    view.popupStrings().symbolsEntry(), this::showSymbolsCard));
         }
         if (capabilities.codeAction()) {
             actions.addAll(codeActionsAt(line));
@@ -1454,7 +1458,7 @@ public final class LspEditor {
                                     () -> view.applyTextEdits(action.edits())));
                         } else {
                             codeActionsCache.add(new QuickActionCard.Entry(
-                                    "Correctif : " + action.title(),
+                                    view.popupStrings().fixTitle(action.title()),
                                     () -> view.applyTextEdits(action.edits())));
                         }
                     }

@@ -217,7 +217,7 @@ public final class ClipboardCard extends ListCard {
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, borderPaint);
         float headerBaseline = poseY + dp(HEADER_DP) * 0.66f;
-        canvas.drawText("Presse-papiers", poseX + dp(14), headerBaseline,
+        canvas.drawText(strings.clipboard(), poseX + dp(14), headerBaseline,
                 titlePaint);
         drawCross(canvas, poseX + cardW - dp(24), poseY + dp(HEADER_DP) / 2.0f,
                 glyphPaint);
@@ -255,8 +255,7 @@ public final class ClipboardCard extends ListCard {
 
     /** Le pied de carte : le compte des copies. */
     private void drawFooter(Canvas canvas) {
-        String count = rows.size() == 1
-                ? "1 copie" : rows.size() + " copies";
+        String count = strings.copiesCount(rows.size());
         float countW = footerPaint.measureText(count);
         canvas.drawText(count, poseX + cardW - dp(14) - countW,
                 poseY + cardH - dp(FOOTER_DP) / 2.0f, footerPaint);

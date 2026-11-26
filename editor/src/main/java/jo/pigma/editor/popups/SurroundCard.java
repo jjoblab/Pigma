@@ -213,7 +213,7 @@ public final class SurroundCard extends ListCard {
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, borderPaint);
         float headerBaseline = poseY + dp(HEADER_DP) * 0.66f;
-        canvas.drawText("Entourer de", poseX + dp(14), headerBaseline,
+        canvas.drawText(strings.surround(), poseX + dp(14), headerBaseline,
                 titlePaint);
         drawCross(canvas, poseX + cardW - dp(24), poseY + dp(HEADER_DP) / 2.0f,
                 glyphPaint);
@@ -246,8 +246,7 @@ public final class SurroundCard extends ListCard {
 
     /** Le pied de carte : le compte des patrons. */
     private void drawFooter(Canvas canvas) {
-        String count = choices.size() == 1
-                ? "1 patron" : choices.size() + " patrons";
+        String count = strings.patternsCount(choices.size());
         float countW = footerPaint.measureText(count);
         canvas.drawText(count, poseX + cardW - dp(14) - countW,
                 poseY + cardH - dp(FOOTER_DP) / 2.0f, footerPaint);
@@ -273,7 +272,7 @@ public final class SurroundCard extends ListCard {
 
     /** La largeur qu'il faut pour le plus large patron, respirée. */
     private float measuredWidth() {
-        float widest = titlePaint.measureText("Entourer de");
+        float widest = titlePaint.measureText(strings.surround());
         for (Choice choice : choices) {
             widest = Math.max(widest, namePaint.measureText(
                     choice.name() == null ? "" : choice.name())
@@ -295,7 +294,33 @@ public final class SurroundCard extends ListCard {
         return dp(style.rowHeightDp() - 6);
     }
 
+    /** Le libellé d'une rangée (le service qui parle la lit). */
+    @Override
+    protected String virtualRowLabelAt(int at) {
+        if (at < 0 || at >= choices.size()) {
+            return "";
+        }
+        Choice choice = choices.get(at);
+        return (choice.name() == null ? "" : choice.name()) + ", "
+                + (choice.preview() == null ? "" : choice.preview());
+    }
+
+    /** L'action d'une rangée (le service qui parle la joue au doigt du lecteur). */
+    @Override
+    protected boolean virtualRowPlay(int at) {
+        if (at < 0 || at >= choices.size()) {
+            return false;
+        }
+        Choice chosen = choices.get(at);
+        close();
+        if (chosen != null && chosen.apply() != null && editor != null) {
+            editor.post(chosen.apply());
+        }
+        return true;
+    }
+
     /** L'ordonnée du centre d'une rangée (le harnais y vise le doigt). */
+    @Override
     public float rowCenterY(int index) {
         if (index < topRow || index >= topRow + visibleRows) {
             return -1.0f;

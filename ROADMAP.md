@@ -71,7 +71,7 @@ popups manquantes `M*` — la table suit son §9.
 | 90 | Popups, l'étape 3 : PopupHost (le gestionnaire — un seul état « popup active », l'exclusion mutuelle, la fermeture au changement de contexte, la fin des 23 fermetures manuelles et du popup fantôme) ; CardBase/ListCard (la pose, le style, le défilement, la croix) ; migration d'une carte à la fois (UsageCard et DiagnosticCard d'abord) | D-P4, R-E, R-F | **fait** | `docs/chantiers/90.md` | `f945ac0` |
 | 91 | Popups, l'étape 4 — les P1 manquantes : le CHOIX DE CIBLES (plusieurs définitions), la STRUCTURE DU FICHIER (l'arbre des symboles, le filtre à la frappe), la LISTE DES PROBLÈMES (parcourir les erreurs), l'HISTORIQUE DU PRESSE-PAPIERS ; la suggestion d'IMPORT (M14) part à l'étape suivante (le serveur de démo Lua n'en rend aucun correctif — l'éprouver y serait mensonge) | M1, M2, M13, M20, D-P3, R-D | **fait** | `docs/chantiers/91.md` | `d046c97` |
 | 92 | Popups, l'étape 5 — les P2 ET LA SUGGESTION D'IMPORT (M14, la bulle « Importer x.y.Z ? » — les correctifs du serveur s'y surfacent) : la définition en APERÇU, l'aller au symbole/fichier, les fichiers récents, l'APERÇU du renommage, l'entourer de, les extraits | M3–M5, M14, M15, M18, M21 | **fait** | `docs/chantiers/92.md` | `cbae5dc` |
-| 93 | Popups, l'étape 6 : l'ACCESSIBILITÉ des cartes (annonce à l'ouverture, rangées en nœuds virtuels, cible ≥ 48 dp) et les chaînes LOCALISÉES (PopupStrings posé par l'hôte) | D-P8, D-P9 | prévu | — | — |
+| 93 | Popups, l'étape 6 : l'ACCESSIBILITÉ des cartes (annonce à l'ouverture — la source unique du gestionnaire —, rangées en NŒUDS VIRTUEUX, cible ≥ 48 dp) et les chaînes LOCALISÉES (PopupStrings posé par l'hôte — la source unique, les quatorze cartes migrées) | D-P8, D-P9 | **fait** | `docs/chantiers/93.md` | à pousser |
 
 
 ## Déjà couvert avant cette feuille (constaté au code, au 2026-11-26)
@@ -89,6 +89,17 @@ popups manquantes `M*` — la table suit son §9.
   corrigent en passant).
 
 ## Journal des mises à jour
+
+- 2026-11-27 — chantier 93 fermé : la sixième étape du plan des
+  popups, la dernière — D-P8 réglé (PopupStrings : la source unique
+  des chaînes posée par l'hôte, immuable au bâtisseur — les
+  quatorze cartes à libellés fixes y vivent, les entrées de la
+  façade du serveur aussi ; sans consigne, rien ne change), D-P9
+  réglé (les rangées en NŒUDS VIRTUELS : le contrat VirtualRows sur
+  la base des listes, le fournisseur de nœuds à la vue, la carte
+  vivante s'y lit et s'y joue ; la cible tactile auditée à
+  48 dp — la bulle d'import et le pied de l'aperçu grandissent).
+  LE PLAN DES POPUPS DU RAPPORT SE REFERME (88–93).
 
 - 2026-11-27 — chantier 92 fermé : la cinquième étape du plan des
   popups — M14 réglé (la bulle de la suggestion d'import : compacte

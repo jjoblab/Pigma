@@ -76,6 +76,9 @@ public final class QuickActionCard {
 
     private PopupStyle style = PopupStyle.defaults();
 
+    /** Les chaînes posées par l'hôte (le titre localisé — la source unique). */
+    private PopupStrings strings = PopupStrings.defaults();
+
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint headerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -110,6 +113,15 @@ public final class QuickActionCard {
     /** Le style courant (le harnais le lit). */
     public PopupStyle style() {
         return style;
+    }
+
+    /**
+     * Pose les chaînes de l'hôte (le titre localisé — la source unique).
+     *
+     * @param fresh les chaînes posées, null pour celles par défaut
+     */
+    public void setStrings(PopupStrings fresh) {
+        strings = fresh == null ? PopupStrings.defaults() : fresh;
     }
 
     /** Reconfigure les pinceaux au style courant. */
@@ -228,7 +240,7 @@ public final class QuickActionCard {
         float rowH = rowHeight();
         float headerH = dp(style.headerHeightDp());
         float rowsTop = poseY + dp(PAD_DP);
-        canvas.drawText("Actions rapides · ligne " + (line + 1),
+        canvas.drawText(strings.quickActionsAt(line),
                 poseX + dp(14), rowsTop + headerH * 0.72f, headerPaint);
         canvas.drawLine(poseX + dp(12), rowsTop + headerH - dp(2),
                 poseX + cardW - dp(12), rowsTop + headerH - dp(2), rulePaint);

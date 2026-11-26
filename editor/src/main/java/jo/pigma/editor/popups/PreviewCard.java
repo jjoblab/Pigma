@@ -30,8 +30,9 @@ public final class PreviewCard extends CardBase {
     /** La hauteur de l'en-tête (dp). */
     private static final int HEADER_DP = 46;
 
-    /** La hauteur du pied (dp) — le bouton « Ouvrir » y vit. */
-    private static final int FOOTER_DP = 44;
+    /** La hauteur du pied (dp) — le bouton « Ouvrir » y vit (la cible
+     * tactile y tient à 48 dp au moins — le pied l'englobe). */
+    private static final int FOOTER_DP = 52;
 
     /** La hauteur d'une ligne de code (dp). */
     private static final int CODE_LINE_DP = 24;
@@ -254,9 +255,9 @@ public final class PreviewCard extends CardBase {
         canvas.drawText(ellipsizeTail(preview.title(), titlePaint,
                 cardW - dp(150)),
                 poseX + dp(14), headerBaseline, titlePaint);
-        String where = (preview.file() == null || preview.file().isEmpty()
-                ? "" : preview.file() + " · ") + "ligne "
-                + (preview.line() + 1);
+        String where = strings.fileLineAt(
+                preview.file() == null ? "" : preview.file(),
+                preview.line());
         float whereW = wherePaint.measureText(where);
         canvas.drawText(ellipsizeTail(where, wherePaint, cardW - dp(96)),
                 poseX + cardW - dp(40) - whereW, headerBaseline, wherePaint);
@@ -295,10 +296,10 @@ public final class PreviewCard extends CardBase {
     private void drawFooter(Canvas canvas) {
         float footerBaseline = poseY + cardH - dp(FOOTER_DP) / 2.0f;
         int lines = preview.lines().size();
-        String count = lines == 1 ? "1 ligne" : lines + " lignes";
+        String count = strings.bodyLinesCount(lines);
         canvas.drawText(count, poseX + dp(14), footerBaseline, footerPaint);
         // le bouton « Ouvrir » : la puce à l'accent (l'action s'y lit)
-        String label = "Ouvrir";
+        String label = strings.open();
         float labelW = chipTextPaint.measureText(label);
         float chipW = labelW + dp(24);
         float chipLeft = poseX + cardW - dp(14) - chipW;

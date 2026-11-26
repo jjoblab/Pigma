@@ -261,8 +261,8 @@ public final class TargetCard extends ListCard {
         canvas.drawText(ellipsizeTail(name, textPaint,
                 cardW - dp(ICON_DP) - 3 * dp(14)),
                 poseX + dp(14) + dp(ICON_DP), baseline, textPaint);
-        String where = (target.file() == null || target.file().isEmpty()
-                ? "" : target.file() + " · ") + "ligne " + (target.line() + 1);
+        String where = strings.fileLineAt(
+                target.file() == null ? "" : target.file(), target.line());
         float whereW = detailPaint.measureText(where);
         canvas.drawText(ellipsizeTail(where, detailPaint, cardW - dp(28)),
                 poseX + cardW - dp(14) - whereW, baseline, detailPaint);
@@ -280,8 +280,7 @@ public final class TargetCard extends ListCard {
 
     /** Le pied de carte : le compte des cibles. */
     private void drawFooter(Canvas canvas) {
-        String count = targets.size() == 1
-                ? "1 cible" : targets.size() + " cibles";
+        String count = strings.targetsCount(targets.size());
         float countW = footerPaint.measureText(count);
         canvas.drawText(count, poseX + cardW - dp(14) - countW,
                 poseY + cardH - dp(FOOTER_DP) / 2.0f, footerPaint);
@@ -309,8 +308,8 @@ public final class TargetCard extends ListCard {
     private float measuredWidth() {
         float widest = titlePaint.measureText(title);
         for (Target target : targets) {
-            String where = (target.file() == null || target.file().isEmpty()
-                    ? "" : target.file() + " · ") + "ligne " + (target.line() + 1);
+            String where = strings.fileLineAt(
+                    target.file() == null ? "" : target.file(), target.line());
             widest = Math.max(widest,
                     textPaint.measureText(target.name() == null
                             ? "" : target.name())
@@ -331,7 +330,35 @@ public final class TargetCard extends ListCard {
         return dp(style.rowHeightDp() - 6);
     }
 
+    /** Le libellé d'une rangée (le service qui parle la lit). */
+    @Override
+    protected String virtualRowLabelAt(int at) {
+        if (at < 0 || at >= targets.size()) {
+            return "";
+        }
+        Target target = targets.get(at);
+        return (target.name() == null ? "" : target.name()) + ", "
+                + strings.fileLineAt(
+                        target.file() == null ? "" : target.file(),
+                        target.line());
+    }
+
+    /** L'action d'une rangée (le service qui parle la joue au doigt du lecteur). */
+    @Override
+    protected boolean virtualRowPlay(int at) {
+        if (at < 0 || at >= targets.size()) {
+            return false;
+        }
+        Target chosen = targets.get(at);
+        close();
+        if (chosen != null && chosen.go() != null && editor != null) {
+            editor.post(chosen.go());
+        }
+        return true;
+    }
+
     /** L'ordonnée du centre d'une rangée (le harnais y vise le doigt). */
+    @Override
     public float rowCenterY(int index) {
         if (index < topRow || index >= topRow + visibleRows) {
             return -1.0f;

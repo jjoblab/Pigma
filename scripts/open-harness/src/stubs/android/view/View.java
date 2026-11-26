@@ -429,6 +429,11 @@ public class View {
     }
 
     /** Le remplissage du nœud (la vue y écrit sa description). */
+    /** Le fournisseur de nœuds virtuels (les rangées — le vrai cadre y vit, la nullité suffit). */
+    public android.view.accessibility.AccessibilityNodeProvider getAccessibilityNodeProvider() {
+        return null;
+    }
+
     public void onInitializeAccessibilityNodeInfo(
             android.view.accessibility.AccessibilityNodeInfo node) {
     }

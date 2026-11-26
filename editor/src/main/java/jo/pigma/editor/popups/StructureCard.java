@@ -353,7 +353,7 @@ public final class StructureCard extends ListCard implements KeyboardCard {
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, borderPaint);
         float headerBaseline = poseY + dp(HEADER_DP) * 0.66f;
-        canvas.drawText("Structure", poseX + dp(14), headerBaseline,
+        canvas.drawText(strings.structure(), poseX + dp(14), headerBaseline,
                 titlePaint);
         // LE FILTRE TAPÉ vit en tête (les lettres resserrent la
         // liste — l'invite « … » quand rien n'y vit)
@@ -428,10 +428,9 @@ public final class StructureCard extends ListCard implements KeyboardCard {
 
     /** Le pied de carte : le compte des symboles (le filtre se dit). */
     private void drawFooter(Canvas canvas) {
-        String count = filtered.size() == 1
-                ? "1 symbole" : filtered.size() + " symboles";
+        String count = strings.symbolsCount(filtered.size());
         if (!filter.isEmpty() && filtered.size() != symbols.size()) {
-            count += " sur " + symbols.size();
+            count = strings.filteredCount(filtered.size(), symbols.size());
         }
         float countW = footerPaint.measureText(count);
         canvas.drawText(count, poseX + cardW - dp(14) - countW,
@@ -479,7 +478,33 @@ public final class StructureCard extends ListCard implements KeyboardCard {
         return dp(style.rowHeightDp() - 6);
     }
 
+    /** Le libellé d'une rangée (le service qui parle la lit). */
+    @Override
+    protected String virtualRowLabelAt(int at) {
+        if (at < 0 || at >= filtered.size()) {
+            return "";
+        }
+        Symbol symbol = filtered.get(at);
+        return (symbol.name() == null ? "" : symbol.name()) + ", "
+                + strings.lineAt(symbol.line());
+    }
+
+    /** L'action d'une rangée (le service qui parle la joue au doigt du lecteur). */
+    @Override
+    protected boolean virtualRowPlay(int at) {
+        if (at < 0 || at >= filtered.size()) {
+            return false;
+        }
+        Symbol chosen = filtered.get(at);
+        close();
+        if (chosen != null && chosen.go() != null) {
+            chosen.go().run();
+        }
+        return true;
+    }
+
     /** L'ordonnée du centre d'une rangée (le harnais y vise le doigt). */
+    @Override
     public float rowCenterY(int index) {
         if (index < topRow || index >= topRow + visibleRows) {
             return -1.0f;

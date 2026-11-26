@@ -26,6 +26,7 @@ import org.robolectric.annotation.Config;
 import jo.pigma.editor.EditorView;
 import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.editor.popups.GotoCard;
+import jo.pigma.editor.popups.PopupStrings;
 import jo.pigma.editor.popups.ImportBubbleCard;
 import jo.pigma.editor.popups.PreviewCard;
 import jo.pigma.editor.popups.RenamePreviewCard;
@@ -119,6 +120,7 @@ public final class RobolectricHarness {
         popupContextLost();
         popupsP1();
         popupsP2();
+        popupsStringsAndVirtualRows();
         stateSaveRestore();
         assertTrue(failures + " vérification(s) en échec", failures == 0);
         System.out.println("résumé harnais réel : " + scenarios
@@ -778,7 +780,140 @@ public final class RobolectricHarness {
         frame();
     }
 
+    
     /**
+     * LES CHAÎNES LOCALISÉES et LES RANGÉES VIRTUELLES (le plan des
+     * popups du rapport) : l'hôte pose SES chaînes (la source unique —
+     * les libellés du débordement et les compteurs y passent, les
+     * défauts portent le français courant), le service qui parle lit
+     * les RANGÉES de la carte vivante (le nœud virtuel porte son
+     * libellé, le clic y joue la MÊME action que le doigt), la cible
+     * tactile tient à 48 dp au moins.
+     *
+     * @throws InterruptedException si l'attente du fond s'interrompt
+     */
+    private void popupsStringsAndVirtualRows() throws InterruptedException {
+        begin("popups : chaînes localisées et rangées virtuelles");
+        String original = editor.getBuffer().toString();
+        // L'HÔTE POSE SES CHAÎNES : les libellés du débordement y
+        // passent (la preuve au vrai débordement — une sélection vit)
+        editor.setPopupStrings(PopupStrings.builder()
+                .gotoLineRow("Go to line…")
+                .searchRow("Find…")
+                .cutRow("Cut")
+                .surroundRow("Surround with…")
+                .build());
+        int graine = original.indexOf("graine");
+        editor.setSelection(graine, graine + "graine".length());
+        frame();
+        editor.showOverflowMenu();
+        frame();
+        java.util.List<String> overflowRows = editor.overflowCard().labels();
+        check("la chaîne de l'hôte vit au débordement (l'aller à la ligne)",
+                overflowRows.contains("Go to line…"));
+        check("la chaîne de l'hôte vit au débordement (la recherche)",
+                overflowRows.contains("Find…"));
+        check("la chaîne de l'hôte vit au débordement (couper)",
+                overflowRows.contains("Cut"));
+        // la carte d'entourage porte la chaîne de l'hôte
+        editor.showSurroundPopup();
+        frame();
+        check("la carte d'entourage vit",
+                editor.surroundCard() != null && editor.surroundCard().isShown());
+        if (editor.surroundCard() != null && editor.surroundCard().isShown()) {
+            float surroundY = editor.surroundCard().rowCenterY(0);
+            if (surroundY > 0.0f) {
+                tap(editor.surroundCard().poseX() + 40.0f, surroundY);
+                idle();
+                frame();
+            }
+            check("l'entourage se joue (les chaînes n'y cassent rien)",
+                    editor.getBuffer().toString().contains("(graine)")
+                            || editor.getBuffer().toString().equals(original));
+            while (!editor.getBuffer().toString().equals(original)
+                    && editor.getUndoStack().canUndo()) {
+                editor.getUndoStack().undo();
+            }
+        }
+        // LES DÉFAUTS REVIENT (la consigne nulle rend le français — le
+        // débordement d'avant se rabat d'abord, la puce y bascule)
+        editor.setPopupStrings(null);
+        if (editor.overflowCard().isShown()) {
+            editor.showOverflowMenu();
+            frame();
+        }
+        editor.showOverflowMenu();
+        frame();
+        overflowRows = editor.overflowCard().labels();
+        check("les défauts portent le français courant",
+                overflowRows.contains("Aller à la ligne…")
+                        && overflowRows.contains("Rechercher…"));
+        // LES RANGÉES VIRTUELLES : la carte de l'aller vit, le service
+        // qui parle y lit ses rangées (le fournisseur du nœud porte le
+        // libellé, le clic y joue la MÊME action)
+        editor.setGotoProvider(() -> java.util.Arrays.asList(
+                new GotoCard.GotoRow("total", CompletionCard.KIND_FUNCTION,
+                        "ligne 8", () -> editor.caretTo(original.indexOf("total"))),
+                new GotoCard.GotoRow("graine", CompletionCard.KIND_FIELD,
+                        "ligne 14", () -> editor.caretTo(graine))));
+        editor.showGotoPopup(java.util.Arrays.asList(
+                new GotoCard.GotoRow("total", CompletionCard.KIND_FUNCTION,
+                        "ligne 8", () -> editor.caretTo(original.indexOf("total"))),
+                new GotoCard.GotoRow("graine", CompletionCard.KIND_FIELD,
+                        "ligne 14", () -> editor.caretTo(graine))));
+        frame();
+        check("la carte de l'aller vit",
+                editor.gotoCard() != null && editor.gotoCard().isShown());
+        if (editor.gotoCard() != null && editor.gotoCard().isShown()) {
+            // la carte à rangées s'y lit
+            check("les rangées de la carte se comptent",
+                    editor.gotoCard().virtualRowCount() == 2);
+            check("le libellé de la rangée se lit",
+                    "total, ligne 8".equals(
+                            editor.gotoCard().virtualRowLabel(0)));
+            // LE FOURNISSEUR DES NŒUDS vit : la carte vivante y porte
+            // ses rangées (le nœud virtuel du service qui parle)
+            check("la carte vivante se lit au fournisseur",
+                    editor.activeVirtualRows() == editor.gotoCard());
+            // l'activation joue la MÊME action que le doigt (le
+            // service qui parle navigue au lecteur d'écran)
+            editor.caretTo(0);
+            frame();
+            check("l'activation de la rangée navigue (le doigt du lecteur)",
+                    editor.gotoCard().virtualRowActivate(0));
+            idle();
+            frame();
+            check("la navigation y vit (le curseur va au symbole)",
+                    "total".equals(editor.wordAtCaret()));
+            check("la carte se range après le jeu",
+                    editor.gotoCard() == null || !editor.gotoCard().isShown());
+        }
+        // LA CIBLE TACTILE tient à 48 dp au moins : la rangée de la
+        // carte vit (l'espacement des centres se lit)
+        editor.showGotoPopup(java.util.Arrays.asList(
+                new GotoCard.GotoRow("total", CompletionCard.KIND_FUNCTION,
+                        "ligne 8", () -> { }),
+                new GotoCard.GotoRow("graine", CompletionCard.KIND_FIELD,
+                        "ligne 14", () -> { }),
+                new GotoCard.GotoRow("Lot", CompletionCard.KIND_CLASS,
+                        "ligne 4", () -> { })));
+        frame();
+        if (editor.gotoCard() != null && editor.gotoCard().isShown()) {
+            float firstRow = editor.gotoCard().virtualRowCenterY(0);
+            float secondRow = editor.gotoCard().virtualRowCenterY(1);
+            check("la cible tactile tient à 48 dp (l'espacement des rangées)",
+                    secondRow - firstRow >= 48.0f);
+        }
+        // le texte revient à l'original (les gestes d'entourage se défont)
+        while (!editor.getBuffer().toString().equals(original)
+                && editor.getUndoStack().canUndo()) {
+            editor.getUndoStack().undo();
+        }
+        check("le texte revient à l'original",
+                editor.getBuffer().toString().equals(original));
+    }
+
+/**
      * L'état sauvegardé : la sauvegarde et la restauration du VRAI
      * cadre (BaseSavedState) — le défaut du rapport y était invisible
      * aux stubs : le vrai cadre l'a épinglé, le correctif vit.

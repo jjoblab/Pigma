@@ -145,7 +145,7 @@ public final class RecentCard extends ListCard {
     public void open(RecentFiles memory, long now) {
         List<Row> built = new java.util.ArrayList<>();
         if (!memory.files().isEmpty()) {
-            built.add(new Row("Fichiers", null, null, null, true));
+            built.add(new Row(strings.filesFamily(), null, null, null, true));
             for (RecentFiles.RecentFile file : memory.files()) {
                 built.add(new Row(file.name(), null,
                         RecentFiles.ageOf(file.when(), now), file.open(),
@@ -153,10 +153,10 @@ public final class RecentCard extends ListCard {
             }
         }
         if (!memory.locations().isEmpty()) {
-            built.add(new Row("Emplacements", null, null, null, true));
+            built.add(new Row(strings.placesFamily(), null, null, null, true));
             for (RecentFiles.RecentLocation place : memory.locations()) {
-                built.add(new Row(place.file() + " · ligne "
-                        + (place.line() + 1), place.excerpt(),
+                built.add(new Row(strings.fileLineAt(place.file(),
+                        place.line()), place.excerpt(),
                         RecentFiles.ageOf(place.when(), now), place.go(),
                         false));
             }
@@ -250,7 +250,8 @@ public final class RecentCard extends ListCard {
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, borderPaint);
         float headerBaseline = poseY + dp(HEADER_DP) * 0.66f;
-        canvas.drawText("Récents", poseX + dp(14), headerBaseline, titlePaint);
+        canvas.drawText(strings.recents(), poseX + dp(14), headerBaseline,
+                titlePaint);
         drawCross(canvas, poseX + cardW - dp(24), poseY + dp(HEADER_DP) / 2.0f,
                 glyphPaint);
         canvas.drawLine(poseX + dp(12), poseY + dp(HEADER_DP) - dp(2),
@@ -329,7 +330,7 @@ public final class RecentCard extends ListCard {
         boolean inFiles = false;
         for (Row row : rows) {
             if (row.group()) {
-                inFiles = "Fichiers".equals(row.title());
+                inFiles = strings.filesFamily().equals(row.title());
                 continue;
             }
             if (inFiles) {
@@ -338,9 +339,7 @@ public final class RecentCard extends ListCard {
                 places++;
             }
         }
-        String count = files + (files > 1 ? " fichiers" : " fichier")
-                + " · " + places + (places > 1 ? " emplacements"
-                        : " emplacement");
+        String count = strings.recentsCount(files, places);
         float countW = footerPaint.measureText(count);
         canvas.drawText(count, poseX + cardW - dp(14) - countW,
                 poseY + cardH - dp(FOOTER_DP) / 2.0f, footerPaint);
@@ -366,7 +365,7 @@ public final class RecentCard extends ListCard {
 
     /** La largeur qu'il faut pour la plus large rangée, respirée. */
     private float measuredWidth() {
-        float widest = titlePaint.measureText("Récents");
+        float widest = titlePaint.measureText(strings.recents());
         for (Row row : rows) {
             widest = Math.max(widest,
                     textPaint.measureText(row.title() == null ? ""
@@ -389,7 +388,39 @@ public final class RecentCard extends ListCard {
         return dp(style.rowHeightDp() - 6);
     }
 
+    /** Le libellé d'une rangée (le service qui parle la lit). */
+    @Override
+    protected String virtualRowLabelAt(int at) {
+        if (at < 0 || at >= rows.size()) {
+            return "";
+        }
+        Row row = rows.get(at);
+        String label = row.title() == null ? "" : row.title();
+        if (row.detail() != null && !row.detail().trim().isEmpty()) {
+            label += " — " + row.detail().trim();
+        }
+        return label;
+    }
+
+    /** L'action d'une rangée (le service qui parle la joue — l'étiquette n'agit pas). */
+    @Override
+    protected boolean virtualRowPlay(int at) {
+        if (at < 0 || at >= rows.size()) {
+            return false;
+        }
+        Row chosen = rows.get(at);
+        if (chosen.group() || chosen.go() == null) {
+            return false;
+        }
+        close();
+        if (editor != null) {
+            editor.post(chosen.go());
+        }
+        return true;
+    }
+
     /** L'ordonnée du centre d'une rangée (le harnais y vise le doigt). */
+    @Override
     public float rowCenterY(int index) {
         if (index < topRow || index >= topRow + visibleRows) {
             return -1.0f;
