@@ -17,6 +17,8 @@ import jo.pigma.editor.EditorView;
 import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.editor.popups.DiagnosticCard;
 import jo.pigma.editor.popups.QuickActionCard;
+import jo.pigma.editor.popups.StructureCard;
+import jo.pigma.editor.popups.TargetCard;
 import jo.pigma.editor.popups.UsageCard;
 import jo.pigma.editor.selection.SelectionState;
 import jo.pigma.lsp.LspCapabilities;
@@ -866,7 +868,8 @@ public final class LspEditor {
         }
         LspPosition position = caretPosition();
         session.definition(uri, position).whenComplete((places, failure) ->
-                view.post(() -> navigateTo(places, "définition")));
+                view.post(() -> navigateTo(places, view.wordAtCaret(),
+                        "définition")));
     }
 
     /**
@@ -1040,43 +1043,103 @@ public final class LspEditor {
     }
 
     /**
-     * Les places reçues y naviguent : la première place du MÊME
-     * document fait sauter le curseur (borné au texte), les places
-     * d'un AUTRE document partent à l'écouteur de l'hôte (il tient
-     * plusieurs documents, lui) ; aucune place y dit « non trouvé »
-     * — l'aller-à d'Android Studio parle pareil.
+     * Les places reçues y naviguent : la place UNIQUE du MÊME
+     * document fait sauter le curseur (borné au texte), celle d'un
+     * AUTRE document part à l'écouteur de l'hôte (il tient plusieurs
+     * documents, lui) ; aucune place y dit « non trouvé » —
+     * l'aller-à d'Android Studio parle pareil. LE CHOIX DE CIBLES
+     * (le choix de cibles — D-P3 du rapport des popups) : le serveur qui renvoie
+     * PLUSIEURS places ne saute plus à la première, AVEUGLE aux
+     * autres — la carte des cibles s'y ouvre (une rangée par cible,
+     * l'extrait s'y lit, le choix y navigue).
      *
      * @param places  les places du serveur, null sans réponse
+     * @param symbol le symbole questionné (le titre le dit)
      * @param quoi    le nom de la chose cherchée (le message le dit)
      */
-    private void navigateTo(List<LspLocation> places, String quoi) {
+    private void navigateTo(List<LspLocation> places, String symbol, String quoi) {
         if (places == null || places.isEmpty()) {
             sayAtCaret("aucune " + quoi + " trouvée");
             return;
         }
-        boolean jumped = false;
-        List<LspLocation> external = new ArrayList<>();
-        String externalUri = null;
+        if (places.size() > 1) {
+            showTargetsCard(places, symbol, quoi);
+            return;
+        }
+        jumpTo(places.get(0));
+    }
+
+    /**
+     * LA CARTE DU CHOIX DE CIBLES (le choix de cibles) : une rangée par place — le
+     * symbole, le fichier et sa ligne à droite, l'EXTRAIT de la
+     * ligne dessous (le code de la cible se lit dans la carte — le
+     * choix y navigue).
+     */
+    private void showTargetsCard(List<LspLocation> places, String symbol,
+            String quoi) {
+        TextBuffer buffer = view.getBuffer();
+        String name = symbol == null ? "" : symbol;
+        List<TargetCard.Target> rows = new ArrayList<>();
         for (LspLocation place : places) {
-            if (uri.equals(place.uri())) {
-                if (!jumped) {
-                    view.caretTo(offsetOf(view.getBuffer(), place.range().start()));
-                    jumped = true;
-                }
-            } else {
-                if (externalUri == null) {
-                    externalUri = place.uri();
-                }
-                if (place.uri().equals(externalUri)) {
-                    external.add(place);
-                }
+            if (place == null || place.range() == null) {
+                continue;
             }
+            int offset = offsetOf(buffer, place.range().start());
+            int line = buffer.lineOfOffset(
+                    Math.min(Math.max(0, offset), buffer.length()));
+            String file = "";
+            String excerpt = "";
+            if (uri != null && uri.equals(place.uri())) {
+                String lineText = buffer.getText(buffer.getLineStart(line),
+                        buffer.getLineEnd(line)).toString();
+                excerpt = lineText.length() > 80
+                        ? lineText.substring(0, 80) : lineText;
+            } else {
+                file = fileNameOf(place.uri());
+            }
+            final LspLocation target = place;
+            rows.add(new TargetCard.Target(name, file, line, excerpt,
+                    () -> jumpTo(target)));
         }
-        if (!jumped && navigationListener != null && externalUri != null) {
-            navigationListener.onExternalPlaces(externalUri, List.copyOf(external));
-        } else if (!jumped && navigationListener == null && externalUri != null) {
-            sayAtCaret("la " + quoi + " vit dans un autre document");
+        if (rows.isEmpty()) {
+            sayAtCaret("aucune " + quoi + " trouvée");
+            return;
         }
+        view.showTargetPopup(capitalized(quoi) + "s de « " + name + " »", rows);
+    }
+
+    /** Le saut à une place : le document courant y reçoit le curseur,
+     * un autre document part à l'écouteur de l'hôte. */
+    private void jumpTo(LspLocation place) {
+        if (place == null) {
+            return;
+        }
+        if (uri != null && uri.equals(place.uri())) {
+            view.caretTo(offsetOf(view.getBuffer(), place.range().start()));
+            return;
+        }
+        if (navigationListener != null) {
+            navigationListener.onExternalPlaces(place.uri(), List.of(place));
+        } else {
+            sayAtCaret("la cible vit dans un autre document");
+        }
+    }
+
+    /** Le nom de fichier d'un URI (le queue après le dernier slash). */
+    private static String fileNameOf(String fileUri) {
+        if (fileUri == null) {
+            return "";
+        }
+        int slash = fileUri.lastIndexOf('/');
+        return slash >= 0 ? fileUri.substring(slash + 1) : fileUri;
+    }
+
+    /** La première lettre en majuscule (le titre de la carte le dit). */
+    private static String capitalized(String word) {
+        if (word == null || word.isEmpty()) {
+            return "Cible";
+        }
+        return Character.toUpperCase(word.charAt(0)) + word.substring(1);
     }
 
     /**
@@ -1840,14 +1903,27 @@ public final class LspEditor {
             sayAtCaret("aucun symbole (le serveur n'a rien dit)");
             return;
         }
-        List<QuickActionCard.Entry> rows = new ArrayList<>();
+        // LA TABLE DES MATIÈRES DÉDIÉE (la structure du fichier — le détournement d'avant,
+        // R-D : la structure vivait DANS la carte d'actions rapides,
+        // « nom · ligne N » sans icône ni filtre, mêlée aux actions) :
+        // chaque symbole y vit en rangée — l'icône de SA nature (les
+        // glyphes partagés de la complétion), le symbole COURANT au
+        // gras, le FILTRE à la frappe (la carte reçoit le clavier,
+        // le tampon ne bouge pas)
+        List<StructureCard.Symbol> rows = new ArrayList<>();
+        TextBuffer buffer = view.getBuffer();
         for (LspDocumentSymbol symbol : symbols) {
-            rows.add(new QuickActionCard.Entry(
-                    symbol.name() + " · ligne "
-                            + (symbol.selectionRange().start().line() + 1),
+            if (symbol == null || symbol.name() == null) {
+                continue;
+            }
+            int line = buffer.lineOfOffset(Math.min(Math.max(0,
+                    offsetOf(buffer, symbol.selectionRange().start())),
+                    buffer.length()));
+            rows.add(new StructureCard.Symbol(symbol.name(),
+                    kindOf(symbol.kind()), line,
                     () -> view.caretTo(offsetOf(view.getBuffer(),
                             symbol.selectionRange().start()))));
         }
-        view.openQuickActions(rows);
+        view.showStructurePopup(rows);
     }
 }

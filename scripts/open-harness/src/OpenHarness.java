@@ -3100,10 +3100,12 @@ public final class OpenHarness {
         check("le pli du serveur se déplie", editor.hiddenLineCount() == 0);
         editor.setServerFoldRegions(java.util.List.of());
 
-        // la table des matières à l'ampoule : l'entrée « Les symboles du
-        // document » y vit (la capacité se négocie), son choix ouvre la
-        // carte des symboles — chaque rangée porte le nom et sa ligne,
-        // le choix y fait sauter le curseur à la déclaration
+        // LA TABLE DES MATIÈRES DÉDIÉE (la structure du fichier — R-D réglé : la structure
+        // ne vit PLUS dans la carte d'actions rapides) : l'entrée «
+        // Les symboles du document » y vit (la capacité se
+        // négocie), son choix ouvre LA CARTE DE STRUCTURE — chaque
+        // rangée porte l'icône de sa nature, le nom, sa ligne, le
+        // symbole COURANT se détache, le FILTRE s'y vit à la frappe
         editor.caretTo(text.getLineStart(maxLine));
         frame();
         check("la carte d'actions s'ouvre", editor.openQuickActionsAtLine(maxLine));
@@ -3118,35 +3120,48 @@ public final class OpenHarness {
         if (symbolsEntry != null) {
             symbolsEntry.action().run();
             frame();
-            java.util.List<QuickActionCard.Entry> rows =
-                    editor.quickActionCard().entries();
+            check("la CARTE DE STRUCTURE s'ouvre (le détournement d'avant meurt)",
+                    editor.structureCard() != null
+                            && editor.structureCard().isShown());
             boolean maxRow = false;
             boolean totalRow = false;
-            for (QuickActionCard.Entry row : rows) {
-                if (("MAX · ligne " + (maxLine + 1)).equals(row.label())) {
+            for (jo.pigma.editor.popups.StructureCard.Symbol row
+                    : editor.structureCard().filtered()) {
+                if ("MAX".equals(row.name()) && row.line() == maxLine) {
                     maxRow = true;
                 }
-                if (row.label().startsWith("total · ligne ")) {
+                if ("total".equals(row.name())) {
                     totalRow = true;
                 }
             }
-            check("la carte des symboles porte la constante", maxRow);
-            check("la carte des symboles porte la méthode", totalRow);
-            // le choix d'une rangée y fait sauter le curseur : « MAX »
-            // mène à sa déclaration
-            for (QuickActionCard.Entry row : rows) {
-                if (("MAX · ligne " + (maxLine + 1)).equals(row.label())) {
-                    row.action().run();
-                    frame();
-                    break;
-                }
-            }
-            check("le choix du symbole y saute le curseur",
-                    editor.caretLine() == maxLine);
+            check("la structure porte la constante", maxRow);
+            check("la structure porte la méthode", totalRow);
+            // LE FILTRE À LA FRAPPE : les lettres tapées resserrent
+            // la liste — le tampon ne bouge pas
+            String beforeFilter = editor.getBuffer().toString();
+            connection.commitText("tot", 1);
+            View.harnessDrain(400L);
+            frame();
+            check("le filtre se pose à la frappe (la carte reçoit le clavier)",
+                    "tot".equals(editor.structureCard().filter()));
+            check("la liste se resserre au filtre", editor.structureCard()
+                    .filtered().size() < editor.structureCard().symbols().size());
+            check("le tampon ne bouge pas (les lettres vont au filtre)",
+                    editor.getBuffer().toString().equals(beforeFilter));
+            // la validation VA au symbole mis en évidence (le filtre y
+            // descend, Entrée y va) — la carte se range
+            pressKey(KeyEvent.KEYCODE_DPAD_DOWN);
+            pressKey(KeyEvent.KEYCODE_ENTER);
+            frame();
+            check("la validation va au symbole mis en évidence",
+                    "total".equals(editor.wordAtCaret())
+                            || editor.getBuffer().toString().contains("total"));
+            check("la carte se range après le saut",
+                    editor.structureCard() != null
+                            && !editor.structureCard().isShown());
         }
-        // la carte se range (le choix réel la referme — l'éprouve y
-        // referme aussi : la carte ne survit pas au scénario, le
-        // geste du scénario suivant vit sa vie)
+        // la carte d'actions se range (le geste du scénario suivant
+        // vit sa vie)
         editor.quickActionCard().close();
         frame();
 

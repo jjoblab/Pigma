@@ -37,6 +37,11 @@ import jo.pigma.editor.internal.touch.PinchController;
 import jo.pigma.editor.internal.touch.TouchController;
 import jo.pigma.editor.popups.PopupMetrics;
 import jo.pigma.editor.popups.PopupHost;
+import jo.pigma.editor.popups.ProblemsCard;
+import jo.pigma.editor.popups.ClipboardCard;
+import jo.pigma.editor.popups.ClipboardHistory;
+import jo.pigma.editor.popups.StructureCard;
+import jo.pigma.editor.popups.TargetCard;
 import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.editor.popups.OverflowCard;
@@ -465,6 +470,31 @@ public final class EditorView extends View {
 
     /** La carte d'actions rapides — l'ampoule de la gouttière. */
     private QuickActionCard quickActionCard;
+
+    /**
+     * La carte du CHOIX DE CIBLES (le choix de cibles — l'aller-à à plusieurs
+     * résultats) : paresseuse — le serveur de langage l'ouvre.
+     */
+    private TargetCard targetCard;
+
+    /** La carte de la LISTE DES PROBLÈMES (la liste des problèmes) — paresseuse. */
+    private ProblemsCard problemsCard;
+
+    /**
+     * La carte de l'HISTORIQUE DU PRESSE-PAPIERS (l'historique du presse-papiers) et sa
+     * mémoire — paresseuse.
+     */
+    private ClipboardCard clipboardCard;
+
+    /** La mémoire des copies (l'historique du presse-papiers — plafonnée, dédupliquée). */
+    private final ClipboardHistory clipboardHistory = new ClipboardHistory();
+
+    /**
+     * La carte de la STRUCTURE DU FICHIER (la structure du fichier — la table des
+     * matières, le filtre à la frappe) : paresseuse — le serveur de
+     * langage l'ouvre.
+     */
+    private StructureCard structureCard;
 
     /**
      * LE GESTIONNAIRE DES POPUPS (D-P4 du rapport : 23 fermetures
@@ -1291,6 +1321,18 @@ public final class EditorView extends View {
         }
         if (gotoBar != null) {
             gotoBar.setStyle(popupStyle);
+        }
+        if (targetCard != null) {
+            targetCard.setStyle(popupStyle);
+        }
+        if (problemsCard != null) {
+            problemsCard.setStyle(popupStyle);
+        }
+        if (clipboardCard != null) {
+            clipboardCard.setStyle(popupStyle);
+        }
+        if (structureCard != null) {
+            structureCard.setStyle(popupStyle);
         }
         invalidate();
     }
@@ -2712,6 +2754,18 @@ public final class EditorView extends View {
         if (card == renameBar) {
             return "Renommer le symbole ouvert";
         }
+        if (card == targetCard) {
+            return "Choix de cibles ouvert";
+        }
+        if (card == problemsCard) {
+            return "Liste des problèmes ouverte";
+        }
+        if (card == clipboardCard) {
+            return "Historique du presse-papiers ouvert";
+        }
+        if (card == structureCard) {
+            return "Structure du fichier ouverte";
+        }
         return "Carte ouverte";
     }
 
@@ -2729,6 +2783,12 @@ public final class EditorView extends View {
         }
         if (renameBar != null && renameBar.isShown()) {
             return renameBar;
+        }
+        // la STRUCTURE (la structure du fichier) reçoit le clavier pareillement : le
+        // FILTRE s'y vit à la frappe (les lettres tapées y
+        // resserrent la liste, le tampon ne bouge pas)
+        if (structureCard != null && structureCard.isShown()) {
+            return structureCard;
         }
         return null;
     }
@@ -3302,11 +3362,34 @@ public final class EditorView extends View {
                     && colorPickerCard.isShown()
                     && colorPickerCard.onTouchArea(event.getX(),
                             event.getY(), event.getActionMasked());
+            boolean caretOnTarget = targetCard != null && targetCard.isShown()
+                    && targetCard.onTouchArea(event.getX(), event.getY());
+            boolean caretOnProblems = problemsCard != null
+                    && problemsCard.isShown()
+                    && problemsCard.onTouchArea(event.getX(), event.getY());
+            boolean caretOnClipboard = clipboardCard != null
+                    && clipboardCard.isShown()
+                    && clipboardCard.onTouchArea(event.getX(), event.getY());
+            boolean caretOnStructure = structureCard != null
+                    && structureCard.isShown()
+                    && structureCard.onTouchArea(event.getX(), event.getY());
             if (!caretOnUsage) {
                 popups.dismiss(usageCard);
             }
             if (!caretOnPicker) {
                 popups.dismiss(colorPickerCard);
+            }
+            if (!caretOnTarget) {
+                popups.dismiss(targetCard);
+            }
+            if (!caretOnProblems) {
+                popups.dismiss(problemsCard);
+            }
+            if (!caretOnClipboard) {
+                popups.dismiss(clipboardCard);
+            }
+            if (!caretOnStructure) {
+                popups.dismiss(structureCard);
             }
             boolean touchedSearch = searchBar != null && searchBar.isShown()
                     && searchBar.onTouchArea(event.getX(), event.getY());
@@ -3333,6 +3416,14 @@ public final class EditorView extends View {
                     || (colorPickerCard != null && colorPickerCard.isShown()
                             && colorPickerCard.onTouchArea(event.getX(),
                                     event.getY(), event.getActionMasked()))
+                    || (targetCard != null && targetCard.isShown()
+                            && targetCard.onTouchArea(event.getX(), event.getY()))
+                    || (problemsCard != null && problemsCard.isShown()
+                            && problemsCard.onTouchArea(event.getX(), event.getY()))
+                    || (clipboardCard != null && clipboardCard.isShown()
+                            && clipboardCard.onTouchArea(event.getX(), event.getY()))
+                    || (structureCard != null && structureCard.isShown()
+                            && structureCard.onTouchArea(event.getX(), event.getY()))
                     || (diagnosticCard != null && diagnosticCard.isShown()
                             && diagnosticCard.onTouchArea(event.getX(), event.getY()))
                     || (quickActionCard != null && quickActionCard.isShown()
@@ -3366,6 +3457,24 @@ public final class EditorView extends View {
                     || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
                 if (usageCard != null) {
                     usageCard.onRelease();
+                }
+                if (targetCard != null) {
+                    targetCard.onRelease();
+                }
+                if (problemsCard != null) {
+                    problemsCard.onRelease();
+                }
+                if (structureCard != null) {
+                    structureCard.onRelease();
+                }
+                if (clipboardCard != null && clipboardCard.onRelease()) {
+                    // la copie choisie se COLLE au caret (l'historique du presse-papiers — le
+                    // collage d'avant renaît au doigt)
+                    String paste = clipboardCard.pendingPaste();
+                    clipboardCard.takePendingPaste();
+                    pendingEditLabel = "collage (historique)";
+                    int caret = Math.min(selection.caret(), buffer.length());
+                    applyEdit(caret, caret, paste == null ? "" : paste);
                 }
                 downOnCard = false;
             }
@@ -4029,6 +4138,42 @@ public final class EditorView extends View {
                     + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
             usageCard.draw(canvas, caretTop, caretTop + lineHeight,
                     popupMetrics());
+        }
+        // les QUATRE nouvelles (le choix de cibles/la liste des problèmes/l'historique du presse-papiers/la structure du fichier du rapport) : posées au
+        // caret pareillement — le choix de cibles, la liste des
+        // problèmes, l'historique du presse-papiers, la structure (sa
+        // ligne courante se lit au caret)
+        if (targetCard != null && targetCard.isShown()) {
+            int caretLineIndex = buffer.lineOfOffset(
+                    Math.min(selection.caret(), buffer.length()));
+            float caretTop = getPaddingTop()
+                    + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            targetCard.draw(canvas, caretTop, caretTop + lineHeight,
+                    popupMetrics());
+        }
+        if (problemsCard != null && problemsCard.isShown()) {
+            int caretLineIndex = buffer.lineOfOffset(
+                    Math.min(selection.caret(), buffer.length()));
+            float caretTop = getPaddingTop()
+                    + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            problemsCard.draw(canvas, caretTop, caretTop + lineHeight,
+                    popupMetrics());
+        }
+        if (clipboardCard != null && clipboardCard.isShown()) {
+            int caretLineIndex = buffer.lineOfOffset(
+                    Math.min(selection.caret(), buffer.length()));
+            float caretTop = getPaddingTop()
+                    + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            clipboardCard.draw(canvas, caretTop, caretTop + lineHeight,
+                    popupMetrics());
+        }
+        if (structureCard != null && structureCard.isShown()) {
+            int caretLineIndex = buffer.lineOfOffset(
+                    Math.min(selection.caret(), buffer.length()));
+            float caretTop = getPaddingTop()
+                    + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            structureCard.draw(canvas, caretTop, caretTop + lineHeight,
+                    caretLineIndex, popupMetrics());
         }
         // le sélecteur de couleur, par-dessus tout : posé au littéral
         // #RRGGBB du caret, la teinte y vit sous le doigt
@@ -5936,6 +6081,12 @@ public final class EditorView extends View {
             navigation.add(new OverflowCard.Row("Usages de « "
                     + wordAtCaret() + " »…", this::showUsagesPopup));
         }
+        // LA LISTE DES PROBLÈMES (la liste des problèmes) : les diagnostics du document
+        // y parcourent (le choix y navigue)
+        if (!problemsOfDocument().isEmpty()) {
+            navigation.add(new OverflowCard.Row("Liste des problèmes…",
+                    this::showProblemsPopup));
+        }
         families.add(new OverflowCard.Section("Navigation", navigation));
         // LE REGISTRE DES ACTIONS D'ÉDITION (R-A) : la MÊME
         // définition que la carte d'actions rapides — l'étage se
@@ -5945,10 +6096,18 @@ public final class EditorView extends View {
             edition.add(new OverflowCard.Row(action.label(), action::run));
         }
         families.add(new OverflowCard.Section("Édition", edition));
-        families.add(new OverflowCard.Section("Presse-papiers", List.of(
-                new OverflowCard.Row("Couper", this::cutSelection),
-                new OverflowCard.Row("Tout sélectionner", this::selectAll),
-                new OverflowCard.Row("Quitter la sélection", this::clearSelection))));
+        // LE PRESSE-PAPIERS et SON HISTORIQUE (l'historique du presse-papiers — les dernières
+        // copies s'y reprennent, le collage d'avant renaît au
+        // doigt : la copie posée l'y propose)
+        List<OverflowCard.Row> papiers = new ArrayList<>();
+        papiers.add(new OverflowCard.Row("Couper", this::cutSelection));
+        papiers.add(new OverflowCard.Row("Tout sélectionner", this::selectAll));
+        papiers.add(new OverflowCard.Row("Quitter la sélection", this::clearSelection));
+        if (!clipboardHistory.isEmpty()) {
+            papiers.add(new OverflowCard.Row("Historique du presse-papiers…",
+                    this::showClipboardHistoryPopup));
+        }
+        families.add(new OverflowCard.Section("Presse-papiers", papiers));
         if (hasSelection()) {
             families.add(new OverflowCard.Section("Historique", List.of(
                     new OverflowCard.Row("Historique de la sélection",
@@ -5975,6 +6134,20 @@ public final class EditorView extends View {
     private boolean selectionBarAlive() {
         return hasSelection() && !touch.isHandleDragging()
                 && !touch.isTextDragging() && !touch.isDragging();
+    }
+
+    /**
+     * Les problèmes du document (la liste des problèmes) : le débordement y lit sa
+     * disponibilité (la liste ne s'y propose qu'à un document qui
+     * porte des problèmes).
+     */
+    private List<DiagnosticCard.Entry> problemsOfDocument() {
+        List<DiagnosticCard.Entry> found = new ArrayList<>();
+        int lastLine = buffer.getLineCount() - 1;
+        for (int line = 0; line <= lastLine; line++) {
+            found.addAll(diagnosticsOfLine(line));
+        }
+        return found;
     }
 
     private void updateSelectionBar() {
@@ -6327,6 +6500,149 @@ public final class EditorView extends View {
     }
 
     /**
+     * La carte du CHOIX DE CIBLES (le choix de cibles du rapport des popups —
+     * l'aller-à à plusieurs résultats) : le serveur y renvoie
+     * PLUSIEURS places (des surcharges, des implémentations, des
+     * interfaces) — une rangée par cible, l'extrait s'y lit, le choix
+     * y navigue. Le défaut d'avant (D-P3) : l'aller-à SAUTAIT à la
+     * première cible, aveugle aux autres.
+     *
+     * @param what  la chose cherchée (« Définitions de « x » »)
+     * @param found les cibles, jamais null
+     */
+    public void showTargetPopup(String what, List<TargetCard.Target> found) {
+        if (found == null || found.isEmpty()) {
+            return;
+        }
+        if (targetCard == null) {
+            targetCard = new TargetCard(dp(1));
+            targetCard.bind(this);
+            popups.register(targetCard, PopupHost.Role.FLOATING,
+                    targetCard::close, targetCard::isShown);
+        }
+        targetCard.setStyle(popupStyle);
+        targetCard.open(what, found);
+        popups.shown(targetCard);
+        invalidate();
+    }
+
+    /** La carte du choix de cibles, null si jamais ouverte (le harnais la lit). */
+    public TargetCard targetCard() {
+        return targetCard;
+    }
+
+    /**
+     * La LISTE DES PROBLÈMES du document (la liste des problèmes du rapport des
+     * popups — la fenêtre Problems de l'atelier) : chaque diagnostic
+     * du document y vit en rangée — les familles se groupent (les
+     * erreurs d'abord), le choix d'une rangée y fait sauter le
+     * curseur. La liste vide ne l'ouvre pas (le document propre se
+     * dit à l'invite de commande).
+     */
+    public void showProblemsPopup() {
+        List<ProblemsCard.Problem> found = new ArrayList<>();
+        int lastLine = buffer.getLineCount() - 1;
+        for (int line = 0; line <= lastLine; line++) {
+            for (DiagnosticCard.Entry entry : diagnosticsOfLine(line)) {
+                final int problemLine = line;
+                found.add(new ProblemsCard.Problem(entry.severity(),
+                        entry.message(), line,
+                        () -> caretTo(buffer.getLineStart(
+                                Math.min(problemLine, buffer.getLineCount() - 1)))));
+            }
+        }
+        if (found.isEmpty()) {
+            return;
+        }
+        if (problemsCard == null) {
+            problemsCard = new ProblemsCard(dp(1));
+            problemsCard.bind(this);
+            popups.register(problemsCard, PopupHost.Role.FLOATING,
+                    problemsCard::close, problemsCard::isShown);
+        }
+        problemsCard.setStyle(popupStyle);
+        problemsCard.open(found);
+        popups.shown(problemsCard);
+        invalidate();
+    }
+
+    /** La carte de la liste des problèmes, null si jamais ouverte (le harnais la lit). */
+    public ProblemsCard problemsCard() {
+        return problemsCard;
+    }
+
+    /**
+     * L'HISTORIQUE DU PRESSE-PAPIERS (l'historique du presse-papiers du rapport des popups —
+     * « Coller depuis l'historique ») : les dernières copies de
+     * l'éditeur y vivent en rangée (l'aperçu tronqué, l'ancienneté à
+     * droite), le choix d'une rangée y COLLE le texte au caret. La
+     * mémoire vide n'ouvre rien.
+     */
+    public void showClipboardHistoryPopup() {
+        if (clipboardHistory.isEmpty()) {
+            return;
+        }
+        if (clipboardCard == null) {
+            clipboardCard = new ClipboardCard(dp(1));
+            popups.register(clipboardCard, PopupHost.Role.FLOATING,
+                    clipboardCard::close, clipboardCard::isShown);
+        }
+        clipboardCard.setStyle(popupStyle);
+        clipboardCard.open(clipboardHistory.entries(),
+                android.os.SystemClock.uptimeMillis());
+        popups.shown(clipboardCard);
+        invalidate();
+    }
+
+    /** La carte de l'historique du presse-papiers, null si jamais ouverte. */
+    public ClipboardCard clipboardCard() {
+        return clipboardCard;
+    }
+
+    /** La mémoire des copies (le harnais la lit). */
+    public ClipboardHistory clipboardHistory() {
+        return clipboardHistory;
+    }
+
+    /**
+     * La STRUCTURE DU FICHIER (la structure du fichier du rapport des popups — la table
+     * des matières) : chaque symbole du document y vit en rangée —
+     * l'icône de sa nature (les glyphes partagés de la complétion),
+     * son nom, sa ligne — le symbole courant s'y détache (le gras :
+     * la structure se lit depuis le curseur). LE FILTRE s'y vit à
+     * la frappe : la carte reçoit le clavier (elle ne prend jamais
+     * le focus), les lettres tapées y resserrent la liste — le
+     * tampon ne bouge pas.
+     *
+     * <p>Elle REMPLACE le détournement d'avant (R-D du rapport : la
+     * table vivait dans la carte d'actions rapides — « nom · ligne
+     * N » sans icône ni filtre, mêlée aux actions).</p>
+     *
+     * @param symbols les symboles (les natures à l'échelle de la
+     *                complétion), jamais null
+     */
+    public void showStructurePopup(List<StructureCard.Symbol> symbols) {
+        if (symbols == null || symbols.isEmpty()) {
+            return;
+        }
+        if (structureCard == null) {
+            structureCard = new StructureCard(dp(1));
+            structureCard.bind(this);
+            popups.register(structureCard, PopupHost.Role.KEYBOARD,
+                    structureCard::close, structureCard::isShown);
+        }
+        structureCard.setStyle(popupStyle);
+        structureCard.open(symbols);
+        popups.shown(structureCard);
+        invalidate();
+    }
+
+    /** La carte de structure, null si jamais ouverte (le harnais la lit). */
+    public StructureCard structureCard() {
+        return structureCard;
+    }
+
+    /**
      * Ouvre le SÉLECTEUR DE COULEUR au littéral du caret (la leçon
      * de la référence : son picker s'ouvre sur le littéral, la teinte y
      * vit sous le doigt, l'application remplace le littéral EN
@@ -6506,6 +6822,11 @@ public final class EditorView extends View {
                 ? text.toString().substring(0, MAX_CLIPBOARD_CHARS)
                 : text.toString();
         manager.setPrimaryClip(ClipData.newPlainText(label, bounded));
+        // la copie se pose à L'HISTORIQUE (l'historique du presse-papiers — « Coller depuis
+        // l'historique ») : la plus récente au sommet, la même chaîne
+        // consécutive ne se duplique pas, le plafond tient
+        clipboardHistory.record(bounded,
+                android.os.SystemClock.uptimeMillis());
     }
 
     /**

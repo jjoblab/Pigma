@@ -905,6 +905,20 @@ public final class CompletionCard {
     }
 
     /**
+     * L'icône de NATURE d'un symbole, PARTAGÉE (R-F — la carte de
+     * structure y dessine les mêmes glyphes que la complétion) : la
+     * nature se peint à sa couleur, à la colonne demandée.
+     *
+     * @param canvas le canevas de la vue
+     * @param kind   la nature, une des constantes KIND_
+     * @param left   le bord gauche de l'icône (px)
+     * @param cy     le centre vertical (px)
+     */
+    public void drawKindIcon(Canvas canvas, int kind, float left, float cy) {
+        drawIcon(canvas, kind, left, cy);
+    }
+
+    /**
      * L'icône de nature : un carré arrondi teinté par la nature, une
      * lettre au centre (f pour une méthode, C pour un type…) ; la
      * nature neutre garde le carré vide et pâle.

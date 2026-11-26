@@ -25,6 +25,8 @@ import org.robolectric.annotation.Config;
 
 import jo.pigma.editor.EditorView;
 import jo.pigma.editor.popups.CompletionCard;
+import jo.pigma.editor.popups.StructureCard;
+import jo.pigma.editor.popups.TargetCard;
 import jo.pigma.syntax.SyntaxDocument;
 
 /**
@@ -106,6 +108,7 @@ public final class RobolectricHarness {
         markdownPopupScrolls();
         popupMutualExclusion();
         popupContextLost();
+        popupsP1();
         stateSaveRestore();
         assertTrue(failures + " vérification(s) en échec", failures == 0);
         System.out.println("résumé harnais réel : " + scenarios
@@ -1104,6 +1107,142 @@ public final class RobolectricHarness {
         frame();
         check("la carte des usages ne renaît pas au retour (le fantôme est mort)",
                 !editor.usageCard().isShown());
+    }
+
+    /**
+     * LES QUATRE POPUPS P1 du rapport (le choix de cibles, la liste des problèmes, l'historique du presse-papiers, la structure du fichier) : le choix
+     * de cibles (l'aller-à à plusieurs résultats — le choix y
+     * navigue), la liste des problèmes (les familles se groupent, le
+     * choix navigue), l'historique du presse-papiers (la copie
+     * d'avant se colle au caret), la structure du fichier (le filtre
+     * à la frappe resserre la liste, le tampon ne bouge pas).
+     */
+    private void popupsP1() throws InterruptedException {
+        begin("popups P1 : cibles, problèmes, presse-papiers, structure");
+        String original = editor.getBuffer().toString();
+        // un diagnostic vit au document (la parenthèse orpheline)
+        editor.setSelection(original.length(), original.length());
+        connection.commitText(")", 1);
+        try {
+            Thread.sleep(400);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        frame();
+        idle();
+        frame();
+        idle();
+        // LA LISTE DES PROBLÈMES (la liste des problèmes) : les familles se groupent (les
+        // erreurs d'abord, l'étiquette coiffe), le choix navigue
+        editor.showProblemsPopup();
+        frame();
+        check("la liste des problèmes vit",
+                editor.problemsCard() != null && editor.problemsCard().isShown());
+        check("les problèmes se lisent (la parenthèse orpheline)",
+                !editor.problemsCard().problems().isEmpty());
+        if (editor.problemsCard() != null && editor.problemsCard().isShown()) {
+            int problemLine = editor.problemsCard().problems().get(0).line();
+            // la rangée VISIBLE première (l'étiquette du groupe coiffe la
+            // famille — la rangée du problème vit dessous)
+            float rowY = editor.problemsCard().rowCenterY(1);
+            if (rowY > 0.0f) {
+                tap(editor.problemsCard().poseX() + 40.0f, rowY);
+                idle();
+                frame();
+                check("le choix du problème navigue",
+                        editor.caretLine() == problemLine);
+            }
+        }
+        // LE CHOIX DE CIBLES (le choix de cibles — D-P3) : l'aller-à à plusieurs
+        // résultats — une rangée par cible, l'extrait s'y lit, le
+        // choix y navigue
+        int firstLine = 0;
+        int fifthLine = 5;
+        editor.showTargetPopup("Définitions de « total »",
+                java.util.Arrays.asList(
+                        new TargetCard.Target("total", "", firstLine,
+                                "l'extrait de la première", () ->
+                                editor.caretTo(original.indexOf("graine"))),
+                        new TargetCard.Target("total", "Autre.java", fifthLine,
+                                "l'extrait de la seconde", () ->
+                                editor.caretTo(original.indexOf("graine") + 6))));
+        frame();
+        check("la carte du choix de cibles vit",
+                editor.targetCard() != null && editor.targetCard().isShown());
+        float targetY = editor.targetCard().rowCenterY(0);
+        if (targetY > 0.0f) {
+            tap(editor.targetCard().poseX() + 40.0f, targetY);
+            idle();
+            frame();
+            check("le choix de la cible navigue (la première, non plus le saut aveugle)",
+                    editor.caretLine() == bufferLineOf(original.indexOf("graine")));
+        }
+        // L'HISTORIQUE DU PRESSE-PAPIERS (l'historique du presse-papiers) : la copie se pose, la
+        // carte s'ouvre, le choix COLLE au caret
+        editor.caretTo(original.indexOf("graine") + 3);
+        frame();
+        editor.clipboardHistory().record("graine copiée", 1_000L);
+        editor.showClipboardHistoryPopup();
+        frame();
+        check("l'historique du presse-papiers vit",
+                editor.clipboardCard() != null && editor.clipboardCard().isShown());
+        float copyY = editor.clipboardCard().rowCenterY(0);
+        if (copyY > 0.0f) {
+            tap(editor.clipboardCard().poseX() + 40.0f, copyY);
+            idle();
+            frame();
+            check("la copie d'avant se colle au caret",
+                    editor.getBuffer().toString().contains("graine copiée"));
+        }
+        // le retour au texte propre (les collages et la parenthèse se défont)
+        while (!editor.getBuffer().toString().equals(original)
+                && editor.getUndoStack().canUndo()) {
+            editor.getUndoStack().undo();
+        }
+        check("le texte revient à l'original",
+                editor.getBuffer().toString().equals(original));
+        // LA STRUCTURE DU FICHIER (la structure du fichier — R-D réglé) : la table des
+        // matières dédiée — le FILTRE à la frappe resserre la liste,
+        // le tampon ne bouge pas, la validation va au symbole
+        editor.showStructurePopup(java.util.Arrays.asList(
+                new StructureCard.Symbol("graine", CompletionCard.KIND_FIELD, 0,
+                        () -> editor.caretTo(0)),
+                new StructureCard.Symbol("Pigma", CompletionCard.KIND_CLASS, 2,
+                        () -> editor.caretTo(original.indexOf("Pigma"))),
+                new StructureCard.Symbol("total", CompletionCard.KIND_FUNCTION, 5,
+                        () -> editor.caretTo(original.indexOf("total")))));
+        frame();
+        check("la carte de structure vit (le détournement d'avant meurt)",
+                editor.structureCard() != null && editor.structureCard().isShown());
+        // LE FILTRE À LA FRAPPE : la carte reçoit le clavier — les
+        // lettres tapées resserrent la liste, le tampon ne bouge pas
+        String beforeFilter = editor.getBuffer().toString();
+        connection.commitText("tot", 1);
+        idle(400L);
+        frame();
+        check("le filtre se pose à la frappe (la carte reçoit le clavier)",
+                editor.structureCard() != null
+                        && "tot".equals(editor.structureCard().filter()));
+        check("la liste se resserre au filtre",
+                editor.structureCard().filtered().size() == 1);
+        check("le tampon ne bouge pas (les lettres vont au filtre)",
+                editor.getBuffer().toString().equals(beforeFilter));
+        // la validation VA au symbole mis en évidence — la carte se range
+        editor.structureCard().onArrow(1);
+        editor.structureCard().onEnter();
+        frame();
+        check("la validation va au symbole filtré",
+                "total".equals(editor.wordAtCaret()));
+        check("la carte se range après le saut",
+                editor.structureCard() != null
+                        && !editor.structureCard().isShown());
+    }
+
+    /**
+     * La ligne d'un offset au tampon (le scénario la calcule).
+     */
+    private int bufferLineOf(int offset) {
+        return editor.getBuffer().lineOfOffset(offset);
     }
 
     /**

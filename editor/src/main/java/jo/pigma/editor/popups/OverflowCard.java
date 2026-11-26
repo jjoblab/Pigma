@@ -37,7 +37,7 @@ public final class OverflowCard {
     private static final int PAD_Y_DP = 4;
 
     /** Le plafond de rangées visibles (la fenêtre défile au-delà). */
-    private static final int MAX_VISIBLE_ROWS = 12;
+    private static final int MAX_VISIBLE_ROWS = 14;
 
     /** Une action repliée : son libellé et ce qu'elle fait. */
     public record Row(String label, Runnable action) {
