@@ -256,7 +256,35 @@ public final class LspSession {
         Objects.requireNonNull(process);
         LspSession session = over(process.getInputStream(),
                 process.getOutputStream(), listener);
-        session.toClose.add(process::destroy);
+        // LE STDERR SE DRAINE (D8) : un serveur bavard sur son erreur
+        // remplit le tuyau, l'écriture s'y bloque, le serveur se fige
+        // — le fil de vidange le jette au journal, le processus respire
+        Thread stderrDrain = new Thread(() -> {
+            try {
+                process.getErrorStream().transferTo(System.err);
+            } catch (Exception drainFailed) {
+                // le processus peut mourir avant le fil : le vidage
+                // s'arrête de soi
+            }
+        }, "pigma-lsp-stderr");
+        stderrDrain.setDaemon(true);
+        stderrDrain.start();
+        // L'ARRÊT EN DEUX TEMPS (D8) : le shutdown/exit du protocole
+        // est déjà parti (la fermeture ordonnée de la façade) — le
+        // processus reçoit sa grâce, puis le tue-loup borné
+        session.toClose.add(() -> {
+            try {
+                if (!process.waitFor(500L, TimeUnit.MILLISECONDS)) {
+                    process.destroy();
+                    if (!process.waitFor(500L, TimeUnit.MILLISECONDS)) {
+                        process.destroyForcibly();
+                    }
+                }
+            } catch (InterruptedException waitInterrupted) {
+                Thread.currentThread().interrupt();
+                process.destroyForcibly();
+            }
+        });
         return session;
     }
 

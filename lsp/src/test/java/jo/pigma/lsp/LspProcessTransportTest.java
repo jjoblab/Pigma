@@ -56,4 +56,43 @@ public class LspProcessTransportTest {
         assertTrue("le sous-processus meurt à l'arrêt",
                 process.waitFor(10, TimeUnit.SECONDS));
     }
+
+    /**
+     * Le serveur bavard (D8) : 512 Ko sur l'erreur AVANT d'écouter —
+     * sans vidange du tuyau d'erreur côté client, l'écriture s'y
+     * bloque et le protocole se fige. Le drain du raccordement laisse
+     * le serveur répondre, puis l'arrêt en deux temps le ferme.
+     *
+     * @throws Exception si le sous-processus ne répond pas dans le délai
+     */
+    @Test
+    public void chattyServerStillServesThroughTheDrainedStderr()
+            throws Exception {
+        String classpath = System.getProperty("java.class.path");
+        String javaHome = System.getProperty("java.home");
+        String java = javaHome + File.separator + "bin" + File.separator + "java";
+        Process process = new ProcessBuilder(java,
+                "-Djo.pigma.test.chatty=true",
+                "-cp", classpath, "jo.pigma.lsp.TestServerMain").start();
+        LspSession session = LspSession.overProcess(process, null);
+        // le bavard a vidé ses 512 Ko : l'initialisation répond quand
+        // même (le fil de vidange tient le tuyau libre)
+        org.eclipse.lsp4j.InitializeResult capabilities =
+                session.initialize("pigma-chatty-test")
+                        .get(20, TimeUnit.SECONDS);
+        assertEquals(Boolean.TRUE, capabilities.getCapabilities()
+                .getHoverProvider().getLeft());
+        String hover = session.hover("file:///demo.java", new LspPosition(0, 0))
+                .get(20, TimeUnit.SECONDS);
+        assertEquals("réponse du sous-processus", hover);
+        // l'arrêt en deux temps : la grâce puis le tue-loup, le
+        // processus meurt sans destroyForcibly dans le cas ordinaire
+        long begin = System.nanoTime();
+        session.shutdown();
+        assertTrue("le bavard meurt à l'arrêt",
+                process.waitFor(10, TimeUnit.SECONDS));
+        long stopNanos = System.nanoTime() - begin;
+        assertTrue("l'arrêt se borne (la grâce de 500 ms puis le tue-loup)",
+                stopNanos < TimeUnit.SECONDS.toNanos(3));
+    }
 }

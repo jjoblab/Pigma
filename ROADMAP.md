@@ -43,7 +43,7 @@ qu'il propose.
 | 73 | Binaires natifs : le .so x86_64 sort du dépôt (7,9 Mo), provenance consignée au arm64 | D12 | **fait** | `docs/chantiers/73.md` | à pousser |
 | 74 | Pont IME complet : getTextBefore/AfterCursor, setComposingRegion, getCursorCapsMode | D2, R3 | **fait** | `docs/chantiers/74.md` | à pousser |
 | 75 | Appariement par type de signes : BracketMatcher (isOpening/closerOf/closes), les deux marches et les diagnostics typés | B1 | **fait** | `docs/chantiers/75.md` | à pousser |
-| 76 | Processus LSP : stderr drainé, arrêt en deux temps | D8 | prévu | — | — |
+| 76 | Processus LSP : stderr drainé (fil de vidange), arrêt en deux temps (grâce 500 ms puis tue-loup) | D8 | **fait** | `docs/chantiers/76.md` | à pousser |
 | 77 | Accessibilité bibliothèque : AccessibilityNodeInfo, actions, événements | D5 | prévu | — | — |
 | 78 | Historique local et usages repensés (versions, diffs, extraits) | B7 | prévu | — | — |
 | 79 | Chaîne d'approvisionnement : verification-metadata, versions épinglées | D11 | prévu | — | — |
@@ -73,6 +73,10 @@ amputé de ce qui est déjà fait.
 - 2026-11-26 — création ; historique des 113 commits réattribué à
   `jjoblab <olson12jb@gmail.com>` et poussé (force) — les 3 commits
   « Z User » de la période des vagues 44-46 rewriting.
+- 2026-11-26 — chantier 76 fermé : D8 réglé — le stderr du serveur
+  se vide au fil de fond (un serveur bavard ne fige plus le tuyau),
+  l'arrêt accorde sa grâce puis son tue-loup ; le test du serveur
+  bavard (512 Ko) l'éprouve.
 - 2026-11-26 — chantier 75 fermé : B1 réglé — le contrôle de type
   vit dans BracketMatcher (syntax), les marches avant/arrière de
   l'encadrement le vérifient, les diagnostics portent la pile des

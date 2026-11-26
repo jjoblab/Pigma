@@ -46,6 +46,16 @@ public final class TestServerMain {
      * @param args aucun argument attendu
      */
     public static void main(String[] args) {
+        // LE MODE BAVARD (l'essai du drain) : 512 Ko sur l'erreur
+        // avant d'écouter — sans vidange côté client, le tuyau se
+        // remplit et le serveur se fige sur son écriture
+        if (Boolean.getBoolean("jo.pigma.test.chatty")) {
+            byte[] noise = new byte[8192];
+            for (int round = 0; round < 64; round++) {
+                System.err.write(noise, 0, noise.length);
+                System.err.flush();
+            }
+        }
         Server server = new Server();
         org.eclipse.lsp4j.jsonrpc.Launcher<LanguageClient> launcher =
                 LSPLauncher.createServerLauncher(server, System.in, System.out);
