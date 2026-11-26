@@ -55,6 +55,36 @@ public class SymbolsAndDiagnosticsTest {
         syntax.detach();
     }
 
+    /**
+     * Le fermant du mauvais genre se signale (B1) : « (foo] » porte
+     * son diagnostic propre — l'ouvrant attendu s'y nomme.
+     */
+    @Test
+    public void diagnosticsRefuseTheWrongCloserType() {
+        TextBuffer buffer = TextBuffer.create("int f() { g(foo]; }\n");
+        SyntaxDocument syntax = SyntaxDocument.open(buffer, Languages.JAVA);
+        StructureDocument structure = StructureDocument.open(buffer, syntax);
+        DiagnosticsDocument diagnostics = DiagnosticsDocument.of(
+                buffer, syntax, structure);
+        List<DiagnosticsDocument.Diagnostic> found = diagnostics.diagnostics();
+        // le « ] » fautif se dit ; le « } » qui suit hérite de la
+        // faute en chaîne (le « ( » fautive demeure au sommet) ; les
+        // ouvrants restants se disent en queue
+        assertEquals(2, found.size());
+        assertEquals(']', buffer.getText(found.get(0).start(),
+                found.get(0).end()).charAt(0));
+        assertTrue("le fermant du mauvais genre se dit",
+                found.get(0).message().startsWith("fermant inattendu"));
+        assertTrue("l'ouvrant fautif s'y nomme",
+                found.get(0).message().contains("« ( »"));
+        assertEquals('}', buffer.getText(found.get(1).start(),
+                found.get(1).end()).charAt(0));
+        assertTrue("le « } » hérite de la faute en chaîne",
+                found.get(1).message().startsWith("fermant inattendu"));
+        structure.detach();
+        syntax.detach();
+    }
+
     @Test
     public void diagnosticsLocateOrphanAndUnclosed() {
         // un fermant orphelin en tête, un ouvrant jamais refermé en

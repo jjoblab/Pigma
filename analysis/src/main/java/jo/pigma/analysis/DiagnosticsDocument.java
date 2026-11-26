@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Objects;
 
 import jo.pigma.core.TextBuffer;
+import jo.pigma.syntax.BracketMatcher;
 import jo.pigma.syntax.SyntaxDocument;
 import jo.pigma.syntax.StructureDocument;
 
@@ -105,8 +106,10 @@ public final class DiagnosticsDocument {
                         continue;
                     }
                     int at = lineStart + entry.startAt(token);
-                    if (c == '(' || c == '{' || c == '[') {
-                        openers.add(new int[] {line, entry.startAt(token)});
+                    if (BracketMatcher.isOpening(c)) {
+                        // la pile porte le SIGNE (B1) : le fermant du
+                        // mauvais type doit se signaler, pas se fondre
+                        openers.add(new int[] {line, entry.startAt(token), c});
                         depth++;
                     } else if (depth == 0) {
                         // la profondeur tolérante refuse de passer sous
@@ -115,8 +118,25 @@ public final class DiagnosticsDocument {
                                 "fermant orphelin : « " + c + " » sans ouvrant"));
                     } else {
                         depth--;
+                        char opening = BracketMatcher.openerOf(c);
                         if (!openers.isEmpty()) {
-                            openers.remove(openers.size() - 1);
+                            int[] top = openers.get(openers.size() - 1);
+                            if (top[2] == opening) {
+                                openers.remove(openers.size() - 1);
+                            } else {
+                                // LE TYPE SE VÉRIFIE (B1) : le fermant ne
+                                // referme pas l'ouvrant au sommet — le
+                                // document le dit, l'ouvrant attendu se
+                                // nomme dans le message
+                                found.add(new Diagnostic(at, at + 1,
+                                        "fermant inattendu : « " + c
+                                                + " » referme « " + (char) top[2]
+                                                + " »"));
+                                // le fermant fautif se consomme : la
+                                // pile demeure, l'ouvrant attendra son
+                                // vrai fermant
+                                continue;
+                            }
                         }
                     }
                 }
@@ -139,7 +159,8 @@ public final class DiagnosticsDocument {
                 for (int[] opener : openers) {
                     int at = buffer.getLineStart(opener[0]) + opener[1];
                     all.add(new Diagnostic(at, at + 1,
-                            "ouvrant non fermé : la pile ne se referme pas"));
+                            "ouvrant non fermé : « " + (char) opener[2]
+                                    + " » attend son fermant"));
                 }
             }
             return new DiagnosticsDocument(buffer, all);

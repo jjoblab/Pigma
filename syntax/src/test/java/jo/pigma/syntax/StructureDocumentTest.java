@@ -2,6 +2,7 @@ package jo.pigma.syntax;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -276,6 +277,29 @@ public class StructureDocumentTest {
         }
         assertTrue("le corpus s'apparie presque partout (" + paired + "/"
                 + examined + ")", paired > examined * 9 / 10);
+        structure.detach();
+        syntax.detach();
+    }
+
+    /**
+     * Le type se vérifie (B1) : « (foo] » n'est pas une paire — la
+     * marche ne l'encadre pas, le fermant du mauvais genre ne referme
+     * jamais l'ouvrant.
+     */
+    @Test
+    public void pairAtRefusesTheWrongCloserType() {
+        TextBuffer buffer = TextBuffer.create("int f() { g(foo]; }\n");
+        SyntaxDocument syntax = SyntaxDocument.open(buffer, Languages.JAVA);
+        StructureDocument structure = StructureDocument.open(buffer, syntax);
+        // l'ouvrant « ( » à la colonne 10 : le « ] » ne le referme pas
+        assertNull("« (foo] » ne s'encadre pas (B1)",
+                structure.pairAt(11));
+        // le fermant « ] » : sa marche arrière ne trouve pas son « [ »
+        assertNull("le fermant orphelin de mauvais genre reste seul",
+                structure.pairAt(15));
+        // l'accolade du corps, elle, se referme normalement
+        assertNotNull("les paires valides demeurent",
+                structure.pairAt(9));
         structure.detach();
         syntax.detach();
     }

@@ -527,7 +527,7 @@ public final class StructureDocument {
                 sign = c;
                 break;
             }
-            if (c == '(' || c == '{' || c == '[') {
+            if (BracketMatcher.isOpening(c)) {
                 depth++;
             } else if (depth > 0) {
                 depth--;
@@ -536,7 +536,7 @@ public final class StructureDocument {
         if (signIndex < 0) {
             return null;
         }
-        if (sign == '(' || sign == '{' || sign == '[') {
+        if (BracketMatcher.isOpening(sign)) {
             return matchForward(line, rel, signIndex, depth);
         }
         if (depth == 0) {
@@ -557,11 +557,17 @@ public final class StructureDocument {
      */
     private BracketPair matchForward(int line, int rel, int signIndex,
             int depthAtSign) {
+        // le fermant attendu : celui de l'ouvrant examiné (B1 — le
+        // type se vérifie à chaque décroissance)
+        char opening = openingCharAt(line, signIndex);
+        if (!BracketMatcher.isOpening(opening)) {
+            return null;
+        }
         int count = buffer.getLineCount();
         int limit = Math.min(line + MATCH_WALK_MAX_LINES, count);
         for (int m = line; m < limit; m++) {
             ensureAnalyzed(m + 1);
-            int column = closerColumn(m, line, signIndex, depthAtSign);
+            int column = closerColumn(m, line, signIndex, depthAtSign, opening);
             if (column >= 0) {
                 return new BracketPair(line, rel, m, column);
             }
@@ -582,6 +588,8 @@ public final class StructureDocument {
     private BracketPair matchBackward(int line, int rel, int signIndex) {
         int bound = Math.max(line - MATCH_WALK_MAX_LINES, -1);
         int counter = 0;
+        // le signe fermant examiné : l'ouvrant trouvé doit le refermer
+        char closingChar = openingCharAt(line, signIndex);
         for (int m = line; m > bound; m--) {
             SyntaxDocument.LineTokens entry = syntax.lineTokens(m);
             CharSequence text = buffer.getText(
@@ -592,9 +600,16 @@ public final class StructureDocument {
                 if (c == 0) {
                     continue;
                 }
-                if (c == '(' || c == '{' || c == '[') {
+                if (BracketMatcher.isOpening(c)) {
                     if (counter == 0) {
-                        return new BracketPair(line, rel, m, entry.startAt(at));
+                        // LE TYPE SE VÉRIFIE (B1) : l'ouvrant qui vide
+                        // la file doit être de la famille du fermant
+                        // examiné — la marche arrière tient le signe
+                        if (BracketMatcher.closes(c, closingChar)) {
+                            return new BracketPair(line, rel, m,
+                                    entry.startAt(at));
+                        }
+                        return null;
                     }
                     counter--;
                 } else {
@@ -612,7 +627,7 @@ public final class StructureDocument {
      * ailleurs, la profondeur de départ vient de L2.
      */
     private int closerColumn(int matchLine, int openerLine, int openerIndex,
-            int depthAtSign) {
+            int depthAtSign, char opening) {
         boolean sameLine = matchLine == openerLine;
         int from = sameLine ? openerIndex + 1 : 0;
         int running = sameLine
@@ -626,11 +641,15 @@ public final class StructureDocument {
             if (c == 0) {
                 continue;
             }
-            if (c == '(' || c == '{' || c == '[') {
+            if (BracketMatcher.isOpening(c)) {
                 running++;
             } else if (running > 0) {
                 running--;
-                if (running == depthAtSign) {
+                // LE TYPE SE VÉRIFIE (B1) : la décroissance ne suffit
+                // pas — « (foo] » n'est pas une paire, le fermant doit
+                // être celui de l'ouvrant attendu au sommet
+                if (running == depthAtSign
+                        && BracketMatcher.closes(opening, c)) {
                     return entry.startAt(at);
                 }
             }
@@ -643,6 +662,17 @@ public final class StructureDocument {
      * n'est pas un signe (une parenthèse dans une chaîne ou un
      * commentaire vit dans un jeton plus long, elle n'apparie pas).
      */
+    /**
+     * Le caractère ouvrant d'un jeton simple (l'attendu de la marche
+     * s'y lit — 0 si le jeton n'ouvre pas).
+     */
+    private char openingCharAt(int line, int signIndex) {
+        SyntaxDocument.LineTokens entry = syntax.lineTokens(line);
+        CharSequence text = buffer.getText(
+                buffer.getLineStart(line), buffer.getLineEnd(line));
+        return singleSign(entry, signIndex, text);
+    }
+
     private static char singleSign(SyntaxDocument.LineTokens entry, int at,
             CharSequence text) {
         if (entry.endAt(at) - entry.startAt(at) != 1) {
