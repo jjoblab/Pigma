@@ -15,10 +15,12 @@ import jo.pigma.editor.popups.PopupStyle;
  * du document) ; le doigt y navigue (le tap pose le curseur à la
  * ligne visée, le glissé suit le doigt).
  *
- * <p>Le panneau vit au bord droit de la vue, coiffé de LA SECTION
- * ANNULER/RÉTABLIR (deux pastilles carrées — la demande : les deux boutons en haut de la région de la
- * minimap, comme la barre d'outils de la référence au-dessus de sa
- * carte).</p>
+ * <p>Le panneau vit au bord droit de la vue, COIFFÉ de la barre
+ * annuler/rétablir (la demande d'origine, enfin tenue : les deux
+ * boutons EN HAUT de la région de la minimap, l'un à côté de
+ * l'autre, comme la barre d'outils de la référence AU-DESSUS de sa
+ * carte — la carte du document vit dessous, du filet au bas de la
+ * vue).</p>
  */
 public final class Minimap {
 
@@ -28,14 +30,20 @@ public final class Minimap {
     /** La largeur de la bande (dp). */
     private static final int WIDTH_DP = 42;
 
-    /** Le côté d'une pastille annuler/rétablir (dp). */
-    private static final int BUTTON_DP = 30;
+    /** Le côté dessiné d'une pastille annuler/rétablir (dp) — deux
+     * pastilles DE FRONT dans la bande. */
+    private static final int BUTTON_DP = 17;
 
     /** L'écart entre les pastilles (dp). */
-    private static final int BUTTON_GAP_DP = 6;
+    private static final int BUTTON_GAP_DP = 4;
 
-    /** La hauteur de la section des pastilles (dp) — la colonne À CÔTÉ de la bande. */
+    /** La hauteur de la barre des pastilles (dp) — la barre COIFFE la
+     * carte, la carte vit dessous. */
     private static final int BAR_DP = 40;
+
+    /** La respiration de la barre (dp) — la zone tactile y déborde
+     * du bouton dessiné (le doigt vise large). */
+    private static final int BAR_PAD_DP = 4;
 
     /** L'alpha du cadre de la fenêtre courante. */
     private static final float VIEWPORT_ALPHA = 0.16f;
@@ -154,9 +162,10 @@ public final class Minimap {
     }
 
     /**
-     * Le doigt est-il sur une PASTILLE — et laquelle ? La colonne des
-     * pastilles vit à GAUCHE de la bande (annuler en haut, rétablir
-     * dessous — la carte du document garde TOUTE sa hauteur).
+     * Le doigt est-il sur une PASTILLE — et laquelle ? La barre des
+     * pastilles COIFFE la bande (annuler à gauche, rétablir à droite —
+     * la zone tactile de chacune prend sa MOITIÉ de la bande, le
+     * doigt vise large sur un bouton dessiné plus étroit).
      *
      * @param x l'abscisse du doigt (px, coordonnées de la vue)
      * @param y l'ordonnée du doigt (px, coordonnées de la vue)
@@ -166,22 +175,22 @@ public final class Minimap {
         if (actions == null) {
             return -1;
         }
-        float columnCx = viewWidth - width() - columnWidth() / 2.0f;
-        if (y >= dp(6) && y < dp(6) + dp(BUTTON_DP)
-                && Math.abs(x - columnCx) <= dp(BUTTON_DP) / 2.0f + dp(2)) {
-            return 0;
+        float left = viewWidth - width();
+        if (y < dp(BAR_PAD_DP) || y >= barHeight() - dp(BAR_PAD_DP)
+                || x < left + dp(BAR_PAD_DP)
+                || x >= viewWidth - dp(BAR_PAD_DP)) {
+            return -1;
         }
-        if (y >= dp(6) + dp(BUTTON_DP) + dp(BUTTON_GAP_DP)
-                && y < dp(6) + 2 * dp(BUTTON_DP) + dp(BUTTON_GAP_DP)
-                && Math.abs(x - columnCx) <= dp(BUTTON_DP) / 2.0f + dp(2)) {
-            return 1;
-        }
-        return -1;
+        return x < left + width() / 2.0f ? 0 : 1;
     }
 
-    /** La largeur de la colonne des pastilles (dp) — elle vit à gauche de la bande. */
-    public float columnWidth() {
-        return dp(BUTTON_DP) + dp(8);
+    /**
+     * La hauteur de la BARRE au-dessus de la carte (px) — la carte du
+     * document commence sous elle (zéro quand l'hôte n'a pas branché
+     * ses pastilles : la carte prend alors toute la hauteur).
+     */
+    public float barHeight() {
+        return actions != null ? dp(BAR_DP) : 0.0f;
     }
 
     /**
@@ -208,11 +217,11 @@ public final class Minimap {
 
     /**
      * Dessine la carte du document : la bande au bord droit (le
-     * panneau translucide), chaque ligne visible du DOCUMENT en un
-     * tiret (la largeur du tiret suit la longueur de la ligne), le
-     * cadre de la fenêtre courante par-dessus, puis LA SECTION DES
-     * PASTILLES en tête (annuler, rétablir — vives quand leurs piles
-     * vivent, éteintes sinon).
+     * panneau translucide), LA BARRE DES PASTILLES EN TÊTE (annuler à
+     * gauche, rétablir à droite — vives quand leurs piles vivent,
+     * éteintes sinon, le filet dessous), puis chaque ligne du
+     * DOCUMENT en un tiret (la largeur du tiret suit la longueur de
+     * la ligne), le cadre de la fenêtre courante par-dessus.
      *
      * @param canvas        le canevas de la trame
      * @param viewHeight    la hauteur de la vue (px)
@@ -228,13 +237,29 @@ public final class Minimap {
             LineLength lineLength) {
         float left = viewWidth - width();
         float top = 0.0f;
-        // la carte du document prend TOUTE la hauteur (les pastilles
-        // vivent À CÔTÉ, dans leur colonne à gauche — plus de section
-        // en tête)
-        float mapTop = 0.0f;
+        // LA CARTE commence SOUS LA BARRE des pastilles (la barre
+        // COIFFE la région — la demande d'origine : les deux boutons
+        // EN HAUT, la carte du document dessous, à la barre d'outils
+        // de la référence au-dessus de sa carte)
+        float mapTop = barHeight();
         float mapH = Math.max(1.0f, viewHeight - mapTop);
         canvas.drawRect(left, top, viewWidth, viewHeight, panelPaint);
         canvas.drawLine(left, top, left, viewHeight, borderPaint);
+        if (actions != null) {
+            lastCanUndo = actions.canUndo();
+            lastCanRedo = actions.canRedo();
+            float side = dp(BUTTON_DP);
+            float gap = dp(BUTTON_GAP_DP);
+            float rowY = (dp(BAR_DP) - side) / 2.0f;
+            float pairW = 2.0f * side + gap;
+            float firstX = left + (width() - pairW) / 2.0f;
+            drawUndoButton(canvas, firstX + side / 2.0f, rowY, true);
+            drawUndoButton(canvas, firstX + side + gap + side / 2.0f,
+                    rowY, false);
+            // le filet sous la barre : la séparation de la barre
+            // d'outils et de la carte
+            canvas.drawLine(left, mapTop, viewWidth, mapTop, borderPaint);
+        }
         // la carte se resserre au document ENTIER (chaque ligne y
         // tient sa rangée — le document plus haut que la carte s'y
         // comprime, la fenêtre s'y cadre au prorata)
@@ -261,21 +286,11 @@ public final class Minimap {
         float vpBottom = mapTop + (lastLine + 1) * rowH * scaleY;
         canvas.drawRect(left, vpTop, viewWidth,
                 Math.min(viewHeight, vpBottom), viewportPaint);
-        // LA COLONNE DES PASTILLES (annuler, rétablir) À GAUCHE de la
-        // bande : deux carrés arrondis empilés, la flèche recourbée à
-        // la référence (annuler : la flèche revient ; rétablir : elle
-        // repart) — éteinte quand sa pile est morte
-        if (actions != null) {
-            lastCanUndo = actions.canUndo();
-            lastCanRedo = actions.canRedo();
-            float cx = viewWidth - width() - columnWidth() / 2.0f;
-            drawUndoButton(canvas, cx, dp(6), true);
-            drawUndoButton(canvas, cx, dp(6) + dp(BUTTON_DP) + dp(BUTTON_GAP_DP),
-                    false);
-        }
     }
 
-    /** La pastille d'annulation ou de rétablissement (la flèche recourbée). */
+    /** La pastille d'annulation ou de rétablissement (la flèche recourbée) :
+     * le carré arrondi posé au CENTRE donné (le cx transmis est le
+     * centre de la pastille, la vue y calcule sa pose). */
     private void drawUndoButton(Canvas canvas, float cx, float top,
             boolean undo) {
         float side = dp(BUTTON_DP);
@@ -325,33 +340,35 @@ public final class Minimap {
     }
 
     /**
-     * La ligne du document au doigt (le tap de la vue y convertit —
-     * le curseur y saute).
-     *
-     * @param y          l'ordonnée du doigt (px, coordonnées de la vue)
-     * @param viewHeight la hauteur de la vue (px)
-     * @param lineCount  le compte de lignes du document
-     * @return l'indice de ligne visé, borné
-     */
-    /**
-     * Le bas de la carte dessinée : le document rendu s'y arrête (un
-     * document court ne peint rien au-dessous — la zone tactile s'y
-     * borne, le doigt y retombe sur le texte).
+     * Le bas de la carte dessinée : le document rendu s'y arrête, la
+     * barre comprise (un document court ne peint rien au-dessous — la
+     * zone tactile s'y borne, le doigt y retombe sur le texte).
      *
      * @param viewHeight la hauteur de la vue
      * @param lineCount  le nombre de lignes du document
      * @return l'ordonnée du bas du document rendu
      */
     public float mapBottom(float viewHeight, int lineCount) {
-        float mapH = Math.max(1.0f, viewHeight);
+        float mapTop = barHeight();
+        float mapH = Math.max(1.0f, viewHeight - mapTop);
         float rowH = Math.min(ROW_PX, mapH / Math.max(1, lineCount));
         float scaleY = lineCount * rowH > mapH
                 ? mapH / (lineCount * rowH) : 1.0f;
-        return Math.min(viewHeight, lineCount * rowH * scaleY);
+        return Math.min(viewHeight, mapTop + lineCount * rowH * scaleY);
     }
 
+    /**
+     * La ligne du document au doigt (le tap de la vue y convertit —
+     * le curseur y saute) : la carte vit SOUS LA BARRE, l'ordonnée s'y
+     * convertit.
+     *
+     * @param y          l'ordonnée du doigt (px, coordonnées de la vue)
+     * @param viewHeight la hauteur de la vue (px)
+     * @param lineCount  le compte de lignes du document
+     * @return l'indice de ligne visé, borné
+     */
     public int lineAt(float y, float viewHeight, int lineCount) {
-        float mapTop = 0.0f;
+        float mapTop = barHeight();
         float mapH = Math.max(1.0f, viewHeight - mapTop);
         float rowH = Math.min(ROW_PX, mapH / Math.max(1, lineCount));
         float scaleY = lineCount * rowH > mapH

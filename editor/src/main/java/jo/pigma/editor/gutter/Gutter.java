@@ -41,10 +41,10 @@ public final class Gutter {
 
     private static final int MAX_DIGITS = 4;
 
-    /** Le code du marqueur d'erreur (le rond rouge barré). */
+    /** Le code du marqueur d'erreur (le cercle barré, rouge au trait). */
     public static final int MARKER_ERROR = 1;
 
-    /** Le code du marqueur d'avertissement (le triangle ambre). */
+    /** Le code du marqueur d'avertissement (le triangle, ambre au trait). */
     public static final int MARKER_WARNING = 2;
 
     /** Le code du marqueur d'ampoule (les actions rapides de la ligne). */
@@ -52,6 +52,13 @@ public final class Gutter {
 
     /** Le code du marqueur de point d'arrêt (le rond plein de la ligne). */
     public static final int MARKER_BREAKPOINT = 4;
+
+    /**
+     * Le code du marqueur d'INFORMATION (le « i » au trait, à
+     * l'accent) — la ligne qui ne porte qu'un renseignement, la
+     * gouttière ne l'effraie plus d'un triangle.
+     */
+    public static final int MARKER_INFO = 6;
 
     /**
      * Le code du marqueur d'APERÇU (la leçon de la référence : son
@@ -117,6 +124,11 @@ public final class Gutter {
 
     /** Le style des popups porte les teintes des marqueurs. */
     private PopupStyle style = PopupStyle.defaults();
+
+    /** Les glyphes de sévérité au trait (la référence : rouge, ambre,
+     * accent — l'erreur et l'avertissement de la gouttière). */
+    private final jo.pigma.editor.popups.SeverityIcon severityIcon =
+            new jo.pigma.editor.popups.SeverityIcon();
 
     private float density = 1.0f;
 
@@ -299,6 +311,7 @@ public final class Gutter {
     private void applyStyle() {
         markerPaint.setStyle(Paint.Style.FILL);
         markerGlyph.setColor(0xFFFFFFFF);
+        severityIcon.setStyle(style);
     }
 
     /**
@@ -349,10 +362,11 @@ public final class Gutter {
     }
 
     /**
-     * Dessine le marqueur d'une ligne visible : le rond rouge barré
-     * de l'erreur, le triangle ambre de l'avertissement (le point
-     * d'exclamation y vit), l'ampoule jaune des actions rapides —
-     * centré sur la colonne des marqueurs, à la hauteur de la ligne.
+     * Dessine le marqueur d'une ligne visible : l'icône de sévérité
+     * AU TRAIT de la référence (le cercle barré rouge de l'erreur,
+     * le triangle ambre de l'avertissement, le « i » d'accent de
+     * l'information), l'ampoule jaune des actions rapides — centré
+     * sur la colonne des marqueurs, à la hauteur de la ligne.
      *
      * @param canvas le canevas de la trame
      * @param kind   le code du marqueur (MARKER_)
@@ -361,15 +375,17 @@ public final class Gutter {
      */
     public void drawMarker(Canvas canvas, int kind, float cx, float cy) {
         if (kind == MARKER_ERROR) {
-            markerPaint.setColor(style.errorArgb());
-            float radius = dp(MARKER_SIDE_DP) / 2.0f;
-            canvas.drawCircle(cx, cy, radius, markerPaint);
-            float s = dp(MARKER_SIDE_DP) * 0.22f;
-            canvas.drawLine(cx - s, cy - s, cx + s, cy + s, markerGlyph);
-            canvas.drawLine(cx - s, cy + s, cx + s, cy - s, markerGlyph);
+            severityIcon.draw(canvas,
+                    jo.pigma.editor.popups.SeverityIcon.SEVERITY_ERROR,
+                    cx, cy, dp(MARKER_SIDE_DP));
         } else if (kind == MARKER_WARNING) {
-            markerPaint.setColor(style.warningArgb());
-            drawTriangleMarker(canvas, cx, cy, true);
+            severityIcon.draw(canvas,
+                    jo.pigma.editor.popups.SeverityIcon.SEVERITY_WARNING,
+                    cx, cy, dp(MARKER_SIDE_DP));
+        } else if (kind == MARKER_INFO) {
+            severityIcon.draw(canvas,
+                    jo.pigma.editor.popups.SeverityIcon.SEVERITY_INFO,
+                    cx, cy, dp(MARKER_SIDE_DP));
         } else if (kind == MARKER_LIGHTBULB) {
             drawLightbulbMarker(canvas, cx, cy);
         } else if (kind == MARKER_BREAKPOINT) {
@@ -406,26 +422,6 @@ public final class Gutter {
             bolt.lineTo(cx, cy - half * 0.05f);
             bolt.close();
             canvas.drawPath(bolt, markerPaint);
-        }
-    }
-
-    /**
-     * Le triangle d'avertissement (le point d'exclamation au centre)
-     * ou celui de l'ampoule éteinte.
-     */
-    private void drawTriangleMarker(Canvas canvas, float cx, float cy,
-            boolean exclamation) {
-        float side = dp(MARKER_SIDE_DP);
-        Path triangle = new Path();
-        triangle.moveTo(cx, cy - side * 0.55f);
-        triangle.lineTo(cx + side * 0.62f, cy + side * 0.48f);
-        triangle.lineTo(cx - side * 0.62f, cy + side * 0.48f);
-        triangle.close();
-        canvas.drawPath(triangle, markerPaint);
-        if (exclamation) {
-            float s = side * 0.22f;
-            canvas.drawLine(cx, cy - s, cx, cy + s * 0.4f, markerGlyph);
-            canvas.drawPoint(cx, cy + s * 1.1f, markerGlyph);
         }
     }
 

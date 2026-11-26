@@ -1288,12 +1288,14 @@ public final class OpenHarness {
         frame();
         check("l'édition vit (le bouton annuler aura de quoi)",
                 !editor.getBuffer().toString().equals(original));
-        // la pastille ANNULER vit dans sa COLONNE à gauche de la
-        // bande (annuler en haut, rétablir dessous)
-        // la colonne des pastilles : cx = largeur - bande(42dp) -
-        // colonne(38dp/2), la pastille ANNULER en tête (y ~ dp(6)+15)
-        float undoX = editor.getWidth() - 42.0f * DENSITY - 19.0f * DENSITY;
-        tap(undoX, 6.0f * DENSITY + 15.0f * DENSITY);
+        // la BARRE des pastilles COIFFE la bande (annuler à GAUCHE,
+        // rétablir à DROITE — la demande d'origine : les deux boutons
+        // EN HAUT de la région, comme la barre d'outils de la
+        // référence au-dessus de sa carte) : la pastille ANNULER vit
+        // à la moitié gauche de la barre (la bande fait 42 dp, la
+        // barre 40 dp de haut, le bouton s'y centre)
+        float bandLeft = editor.getWidth() - 42.0f * DENSITY;
+        tap(bandLeft + 10.5f * DENSITY, 20.0f * DENSITY);
         frame();
         check("la pastille ANNULER de la minimap défait l'édition",
                 editor.getBuffer().toString().equals(original));

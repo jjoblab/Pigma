@@ -111,6 +111,16 @@ public class Paint {
         SQUARE
     }
 
+    public void setStrokeJoin(Join join) {
+    }
+
+    /** Le raccord de traits (le ROUND des polygones). */
+    public enum Join {
+        ROUND,
+        BEVEL,
+        MITER
+    }
+
     public void setStyle(Style style) {
         this.style = style;
     }

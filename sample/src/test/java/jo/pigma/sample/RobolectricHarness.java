@@ -407,10 +407,13 @@ public final class RobolectricHarness {
     /**
      * La minimap : la zone tactile se borne à ce qui se dessine (un
      * document court ne peint rien au bas de la bande — le défaut du
-     * terrain y avalait les taps du vide), et l'hôte peut la retirer.
+     * terrain y avalait les taps du vide), la BARRE
+     * annuler/rétablir COIFFE la région (les deux boutons EN HAUT —
+     * le tap sur chaque moitié y joue la pile) et l'hôte peut la
+     * retirer.
      */
     private void minimapTouchZone() {
-        begin("minimap : la zone tactile bornée, le retrait de l'hôte");
+        begin("minimap : la barre en tête, la zone bornée, le retrait");
         // le document court (18 lignes) : la carte s'arrête au bas du
         // document rendu — un tap AU-DESSOUS de la carte tombe sur le
         // TEXTE (le caret y va), pas sur la navigation minimap
@@ -422,6 +425,41 @@ public final class RobolectricHarness {
         check("le tap sous la carte tombe sur le texte (B2)",
                 editor.getCaretOffset() != caretBefore
                         || editor.getCaretOffset() == 0);
+        // LA BARRE COIFFE LA RÉGION : les deux boutons vivent EN HAUT
+        // de la bande, l'un à côté de l'autre — le tap sur la moitié
+        // GAUCHE annule, la moitié DROITE rétablit (la demande
+        // d'origine : « les deux boutons en haut de la région de la
+        // minimap, comme la barre d'outils de la référence au-dessus
+        // de sa carte »)
+        float density = editor.getContext().getResources()
+                .getDisplayMetrics().density;
+        float bandWidth = 42.0f * density;
+        float bandLeft = editor.getWidth() - bandWidth;
+        float barMid = bandLeft + bandWidth / 2.0f;
+        float barY = 20.0f * density;
+        String original = editor.getBuffer().toString();
+        editor.setSelection(original.length(), original.length());
+        connection.commitText("X", 1);
+        check("l'édition vit avant l'annulation",
+                !editor.getBuffer().toString().equals(original));
+        // le tap DANS LA BARRE ne déplace PAS le curseur (la barre
+        // consomme, la carte vit dessous)
+        int beforeBarTap = editor.getCaretOffset();
+        tap(barMid, barY);
+        check("le tap sur la barre ne déplace pas le curseur",
+                editor.getCaretOffset() == beforeBarTap);
+        // la moitié GAUCHE annule
+        tap(bandLeft + bandWidth * 0.25f, barY);
+        check("le bouton annuler de la barre joue la pile",
+                editor.getBuffer().toString().equals(original));
+        // la moitié DROITE rétablit
+        tap(bandLeft + bandWidth * 0.75f, barY);
+        check("le bouton rétablir de la barre joue la pile",
+                !editor.getBuffer().toString().equals(original));
+        // le retour au propre : l'annulation retire l'essai
+        editor.getUndoStack().undo();
+        check("le texte revient à l'original",
+                editor.getBuffer().toString().equals(original));
         // le retrait : l'hôte décide (un écran étroit s'en passe)
         editor.setMinimapEnabled(false);
         check("le retrait se lit", !editor.isMinimapEnabled());

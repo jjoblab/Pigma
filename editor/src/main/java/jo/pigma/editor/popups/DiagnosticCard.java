@@ -20,6 +20,13 @@ import java.util.List;
  * referme (le message se lit), le reste de la carte consomme sans
  * agir ; hors d'elle le geste poursuit sa vie vers l'éditeur, qui y
  * range la carte (un nouvel appui la ferme).</p>
+ *
+ * <p>La naissance y vit en POP (la leçon de la référence, étudiée
+ * dans {@code docs/etude-codeassist.md} : sa popup d'erreur y
+ * apparaît par un ressort — l'échelle part de 0,96, la carte monte
+ * de 5 dp, l'opacité suit) — l'entrée d'une carte fermée y joue,
+ * la carte qui se REMPLIT (les correctifs du serveur arrivent)
+ * reste posée.</p>
  */
 public final class DiagnosticCard {
 
@@ -108,17 +115,22 @@ public final class DiagnosticCard {
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint footerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint rulePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint errorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint warningPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint infoPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint glyphPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint scrollbarPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-    /** L'ampoule d'un correctif (l'étage des correctifs la porte). */
+    /** L'icône de sévérité au trait (la référence) — rouge, ambre,
+     * accent — la gouttière et la pastille la portent pareillement. */
+    private final SeverityIcon severityIcon = new SeverityIcon();
+
+    /** Le pop d'entrée de la carte (la référence : échelle 0,96,
+     * montée de 5 dp, fondu — le ressort y joue à l'ouverture). */
+    private final PopupAnimation animation = new PopupAnimation();
+
+    /** L'ampoule d'un correctif (l'étage des correctifs la porte) — au
+     * trait à l'accent, comme la référence. */
     private final Paint fixPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     /** Le titre d'un correctif (l'encre d'action de la référence). */
     private final Paint fixTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint scrollbarPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     /**
      * Une carte neuve, ses pinceaux au style par défaut.
@@ -160,16 +172,11 @@ public final class DiagnosticCard {
         footerPaint.setColor(style.secondaryArgb());
         footerPaint.setTextSize((style.secondarySizeSp() - 2.0f) * density);
         rulePaint.setColor(style.borderArgb());
-        errorPaint.setColor(style.errorArgb());
-        errorPaint.setStyle(Paint.Style.FILL);
-        warningPaint.setColor(style.warningArgb());
-        warningPaint.setStyle(Paint.Style.FILL);
-        infoPaint.setColor(style.accentArgb());
-        infoPaint.setStyle(Paint.Style.FILL);
-        glyphPaint.setColor(0xFFFFFFFF);
-        glyphPaint.setStyle(Paint.Style.STROKE);
-        glyphPaint.setStrokeWidth(1.6f * density);
+        severityIcon.setStyle(style);
         fixPaint.setColor(style.accentArgb());
+        fixPaint.setStyle(Paint.Style.STROKE);
+        fixPaint.setStrokeCap(Paint.Cap.ROUND);
+        fixPaint.setStrokeWidth(1.4f * density);
         fixTextPaint.setColor(style.accentArgb());
         fixTextPaint.setTextSize((style.textSizeSp() - 3.0f) * density);
         scrollbarPaint.setColor(0x66B5B5B5);
@@ -177,7 +184,10 @@ public final class DiagnosticCard {
 
     /**
      * Ouvre la carte sur les diagnostics d'une ligne — la liste vide
-     * range la carte.
+     * range la carte. La NAISSANCE se joue en pop (l'échelle et la
+     * montée de la référence) : une carte DÉJÀ VIVANTE qui se
+     re-remplit — les correctifs du serveur qui arrivent — reste
+     * POSE, sans rejouer le ressort.
      *
      * @param shownLine la ligne ancrée
      * @param items     les diagnostics de la ligne, jamais null
@@ -190,9 +200,13 @@ public final class DiagnosticCard {
                 alive.add(item);
             }
         }
+        boolean wasShown = isShown();
         entries = List.copyOf(alive);
         line = shownLine;
         topRow = 0;
+        if (isShown() && !wasShown) {
+            animation.open();
+        }
     }
 
     /** Range la carte (le choix, un nouvel appui, l'édition). */
@@ -201,6 +215,12 @@ public final class DiagnosticCard {
         line = -1;
         topRow = 0;
         visibleRows = 0;
+    }
+
+    /** L'animation d'entrée vit-elle (la vue y réclame la trame
+     * suivante tant que le ressort joue). */
+    public boolean isAnimating() {
+        return animation.isRunning();
     }
 
     /** La carte vit-elle ? */
@@ -273,21 +293,27 @@ public final class DiagnosticCard {
     /** Le bas des rangées de messages (l'étage des correctifs y naît). */
     private float rowsBottomCached;
 
-    /** Une rangée de correctif : la petite ampoule, le titre à l'accent. */
+    /** Une rangée de correctif : la petite ampoule AU TRAIT à la
+     * COLONNE FIXE des icônes (le retour du terrain : elle vivait à
+     * l'ABSCISSE DU CENTRE VERTICAL de sa rangée — elle dérivait à
+     * chaque rangée, hors du cadre), le titre à l'accent. */
     private void drawFix(Canvas canvas, Fix fix, float top) {
         float rowH = fixRowHeight();
         float cy = top + rowH / 2.0f;
         float baseline = top + rowH * 0.68f;
-        // l'ampoule de la taille d'une icône de sévérité (le correctif
-        // se lit du même œil que le message qu'il corrige)
-        float side = dp(ICON_DP) * 0.7f;
-        fixPaint.setStyle(Paint.Style.STROKE);
-        fixPaint.setStrokeWidth(1.4f * density);
-        canvas.drawCircle(cy, cy, side * 0.32f, fixPaint);
-        canvas.drawLine(cy - side * 0.16f, cy + side * 0.42f,
-                cy + side * 0.16f, cy + side * 0.42f, fixPaint);
-        canvas.drawLine(cy - side * 0.08f, cy + side * 0.55f,
-                cy + side * 0.08f, cy + side * 0.55f, fixPaint);
+        // la COLONNE DES ICÔNES — LA MÊME pour les messages et les
+        // correctifs (le correctif se lit du même œil que le message
+        // qu'il corrige), FIXE dans le cadre
+        float ix = poseX + dp(14) + dp(ICON_DP) / 2.0f;
+        float side = dp(ICON_DP) * 0.72f;
+        // l'ampoule au trait : le corps en cercle, le culot en deux
+        // barres (la référence y dessine son icône au trait, les
+        // caps arrondis)
+        canvas.drawCircle(ix, cy - side * 0.08f, side * 0.34f, fixPaint);
+        canvas.drawLine(ix - side * 0.18f, cy + side * 0.30f,
+                ix + side * 0.18f, cy + side * 0.30f, fixPaint);
+        canvas.drawLine(ix - side * 0.12f, cy + side * 0.44f,
+                ix + side * 0.12f, cy + side * 0.44f, fixPaint);
         // le titre du correctif RESTE DANS LE CADRE (le retour du
         // terrain : « Corriger : … » y débordait) : la largeur
         // disponible se mesure au pinceau du correctif, l'ellipsize
@@ -305,6 +331,9 @@ public final class DiagnosticCard {
      * ancrée (au-dessus sans la place) —, puis le titre coiffant les
      * rangées (l'icône de sévérité, le message replié), la barre de
      * défilement si la fenêtre cache des rangées, le pied qui compte.
+     * La NAISSANCE s'y joue : l'échelle part de 0,96 au CENTRE de la
+     * carte, la montée de 5 dp, le fondu — le pop d'entrée de la
+     * référence.
      *
      * @param canvas      le canevas de la vue
      * @param anchorTop   le bord haut de la ligne ancrée (px, vue)
@@ -318,6 +347,23 @@ public final class DiagnosticCard {
             return;
         }
         place(anchorTop, anchorBottom, metrics);
+        // le pop d'entrée (la référence) : montée, échelle au centre,
+        // fondu — la carte pose, ferme
+        float alpha = animation.alphaFactor();
+        float scale = animation.scaleFactor();
+        int save = canvas.save();
+        canvas.translate(0.0f, animation.shiftPx(density));
+        if (scale != 1.0f) {
+            float pivotX = poseX + cardW / 2.0f;
+            float pivotY = poseY + cardH / 2.0f;
+            canvas.translate(pivotX, pivotY);
+            canvas.scale(scale, scale);
+            canvas.translate(-pivotX, -pivotY);
+        }
+        canvas.saveLayerAlpha(poseX - dp(2), poseY - dp(2),
+                poseX + cardW + dp(2), poseY + cardH + dp(2),
+                Math.max(0, Math.min(255,
+                        (int) (alpha * 255.0f))));
         float radius = dp(style.cornerRadiusDp());
         canvas.drawRoundRect(poseX, poseY, poseX + cardW, poseY + cardH,
                 radius, radius, cardPaint);
@@ -357,6 +403,8 @@ public final class DiagnosticCard {
         }
         drawScrollbar(canvas, rowsTop + headerH, rowsBottom);
         drawFooter(canvas, Math.max(rowsBottom, fixesBottom));
+        canvas.restore();
+        canvas.restore();
     }
 
     /** L'abscisse posée (le harnais la lit). */
@@ -459,60 +507,17 @@ public final class DiagnosticCard {
         return widest + dp(ICON_DP) + dp(16) + 2 * dp(14);
     }
 
-    /** Une rangée : l'icône de sévérité, le message replié. */
+    /** Une rangée : l'icône de sévérité au trait, le message replié. */
     private void drawEntry(Canvas canvas, Entry entry, float top) {
         float rowH = rowHeight();
         float cy = top + rowH / 2.0f;
         float baseline = top + rowH * 0.68f;
-        drawSeverityIcon(canvas, entry.severity(),
-                poseX + dp(14) + dp(ICON_DP) / 2.0f, cy);
+        severityIcon.draw(canvas, entry.severity(),
+                poseX + dp(14) + dp(ICON_DP) / 2.0f, cy, dp(ICON_DP));
         String message = ellipsize(entry.message(), textPaint,
                 cardW - dp(ICON_DP) - 3 * dp(14));
         canvas.drawText(message, poseX + dp(14) + dp(ICON_DP) + dp(8),
                 baseline, textPaint);
-    }
-
-    /**
-     * L'icône de sévérité : le rond rouge barré de l'erreur, le
-     * triangle ambre de l'avertissement (le point d'exclamation y
-     * vit), le rond bleu de l'information (le « i » y vit).
-     */
-    private void drawSeverityIcon(Canvas canvas, int severity,
-            float cx, float cy) {
-        float side = dp(ICON_DP);
-        Paint fill = severity == SEVERITY_ERROR ? errorPaint
-                : severity == SEVERITY_WARNING ? warningPaint : infoPaint;
-        if (severity == SEVERITY_WARNING) {
-            // le triangle ambre, le point d'exclamation au centre
-            float half = side / 2.0f;
-            float topY = cy - half * 0.75f;
-            canvas.drawPath(trianglePath(cx, topY, side * 0.9f), fill);
-            canvas.drawLine(cx, cy - side * 0.18f, cx, cy + side * 0.08f,
-                    glyphPaint);
-            canvas.drawPoint(cx, cy + side * 0.26f, glyphPaint);
-            return;
-        }
-        float radius = side / 2.0f;
-        canvas.drawCircle(cx, cy, radius, fill);
-        if (severity == SEVERITY_ERROR) {
-            float s = side * 0.24f;
-            canvas.drawLine(cx - s, cy - s, cx + s, cy + s, glyphPaint);
-            canvas.drawLine(cx - s, cy + s, cx + s, cy - s, glyphPaint);
-        } else {
-            float s = side * 0.22f;
-            canvas.drawPoint(cx, cy + s * 1.4f, glyphPaint);
-            canvas.drawLine(cx, cy - s * 0.6f, cx, cy + s * 0.4f, glyphPaint);
-        }
-    }
-
-    /** Le chemin du triangle d'avertissement, pointe en haut. */
-    private android.graphics.Path trianglePath(float cx, float topY, float width) {
-        android.graphics.Path path = new android.graphics.Path();
-        path.moveTo(cx, topY);
-        path.lineTo(cx + width / 2.0f, topY + width * 0.55f);
-        path.lineTo(cx - width / 2.0f, topY + width * 0.55f);
-        path.close();
-        return path;
     }
 
     /**

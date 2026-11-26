@@ -22,6 +22,8 @@ import jo.pigma.editor.popups.ColorPickerCard;
 import jo.pigma.editor.popups.InfoPopup;
 import jo.pigma.editor.popups.LocalHistory;
 import jo.pigma.editor.popups.DiagnosticCard;
+import jo.pigma.editor.popups.SeverityIcon;
+import jo.pigma.editor.popups.BadgePop;
 import jo.pigma.editor.popups.PopupStyle;
 import jo.pigma.editor.popups.QuickActionCard;
 import jo.pigma.editor.popups.RenameCard;
@@ -491,12 +493,18 @@ public final class EditorView extends View {
     /** La colonne du signe diagnostiqué (le diagnostic y survit à la re-construction). */
     private int diagnosticBadgeColumn;
 
-    /**
-     * Le pinceau de la pastille d'erreur (B4) : l'ampoule de l'étage
-     * des correctifs, au trait rouge — la même que la carte de
-     * diagnostic y dessine, à la couleur d'erreur près.
-     */
-    private final Paint badgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    /** La sévérité de la pastille vivante (rouge pour l'erreur, ambre
+     * pour l'avertissement, accent pour le renseignement — l'icône au
+     * trait de la référence y suit sa couleur). */
+    private int diagnosticBadgeSeverity = DiagnosticCard.SEVERITY_ERROR;
+
+    /** L'icône de sévérité de la pastille (au trait, la référence). */
+    private final SeverityIcon badgeIcon = new SeverityIcon();
+
+    /** Le pop de naissance de la pastille (le ressort de la référence :
+     * l'échelle part de la moitié, ancrée à la ligne — elle monte vers
+     * le mot, l'opacité suit). */
+    private final BadgePop badgePop = new BadgePop();
 
     /** La carte d'actions rapides — l'ampoule de la gouttière. */
     private QuickActionCard quickActionCard;
@@ -775,10 +783,6 @@ public final class EditorView extends View {
         diagnosticPaint.setStyle(Paint.Style.STROKE);
         diagnosticPaint.setStrokeWidth(dp(2));
         diagnosticPaint.setColor(0xFFFF3B30);
-        // la pastille d'erreur du tap : au trait, la couleur d'erreur
-        badgePaint.setStyle(Paint.Style.STROKE);
-        badgePaint.setStrokeWidth(dp(2));
-        badgePaint.setColor(0xFFFF3B30);
         completionCard = new CompletionCard(dp(1));
         completionCard.bind(this);
         signatureCard = new SignatureCard(dp(1));
@@ -796,8 +800,8 @@ public final class EditorView extends View {
         gutter = new Gutter(dp(1));
         // le panneau de la gouttière part à la teinte du fond courant
         gutter.setPanelColor(themeBackground);
-        // la minimap au bord droit : la carte du document, ses
-        // pastilles d'annulation en tête (la pile y se branche)
+        // la minimap au bord droit : la carte du document, sa BARRE
+        // d'annulation/rétablissement en tête (la pile y se branche)
         minimap = new Minimap(dp(1));
         minimap.setUndoRedoActions(new Minimap.UndoRedoActions() {
             @Override
@@ -829,7 +833,7 @@ public final class EditorView extends View {
         // COLONNE DES PLIS à la référence (EditorGutterComponentImpl y
         // pose ses chevrons APRÈS les numéros, dans le panneau —
         // jamais dans le corps du texte)
-        // le padding droit reste léger : la minimap et sa colonne de
+        // le padding droit reste léger : la minimap et sa BARRE de
         // pastilles FLOTTENT au-dessus du texte (à la référence — la
         // carte y recouvre le code, translucide) ; les lignes longues
         // peuvent glisser dessous, le débordement se calcule au texte
@@ -1129,6 +1133,7 @@ public final class EditorView extends View {
         diagnosticCard.setStyle(popupStyle);
         quickActionCard.setStyle(popupStyle);
         gutter.setStyle(popupStyle);
+        badgeIcon.setStyle(popupStyle);
         if (renameBar != null) {
             renameBar.setStyle(popupStyle);
         }
@@ -1473,10 +1478,14 @@ public final class EditorView extends View {
     }
 
     /**
-     * Pose la pastille d'erreur sur le mot diagnostiqué visé par le
-     * tap (B4) : la pastille vit trois secondes au-dessus du mot, le
-     * tap suivant sur elle ouvre la carte. Un offset sans diagnostic
-     * range la pastille vivante (le geste a déplacé l'attention).
+     * Pose la pastille du diagnostic sur le mot diagnostiqué visé par le
+     * tap (B4) : la pastille vit trois secondes à la colonne de
+     * l'icône, sa SÉVÉRITÉ y suit la pire de la ligne (rouge pour
+     * l'erreur, ambre pour l'avertissement — la leçon de la
+     * référence), et elle NAÎT par le ressort (le pop : l'échelle
+     * part de la moitié, ancrée à la ligne). Le tap suivant sur elle
+     * ouvre la carte. Un offset sans diagnostic range la pastille
+     * vivante (le geste a déplacé l'attention).
      *
      * @param offset l'offset visé par le doigt
      */
@@ -1503,10 +1512,48 @@ public final class EditorView extends View {
                     buffer.getLineEnd(line)) - buffer.getLineStart(line);
             diagnosticBadgeUntilNanos = System.nanoTime()
                     + BADGE_LIFETIME_NANOS;
+            // la SÉVÉRITÉ de la pastille : la PIRE de la ligne (les
+            // diagnostics internes — les paires — sont des erreurs,
+            // les entrées de l'hôte portent la leur : l'erreur domine
+            // l'avertissement, l'avertissement le renseignement)
+            diagnosticBadgeSeverity = onInternalDiagnostic(offset)
+                    ? DiagnosticCard.SEVERITY_ERROR
+                    : DiagnosticCard.SEVERITY_INFO;
+            if (diagnosticProvider != null) {
+                for (DiagnosticCard.Entry hosted
+                        : diagnosticsOfLine(line)) {
+                    if (hosted.severity() < diagnosticBadgeSeverity) {
+                        diagnosticBadgeSeverity = hosted.severity();
+                    }
+                }
+            }
+            if (diagnosticBadgeSeverity == DiagnosticCard.SEVERITY_INFO
+                    && (diagnosticsOfLine(line).isEmpty()
+                        || diagnosticProvider == null)) {
+                diagnosticBadgeSeverity = DiagnosticCard.SEVERITY_ERROR;
+            }
+            badgePop.born();
             postDelayed(this::invalidate, BADGE_LIFETIME_MS + 50);
         } else {
             diagnosticBadgeLine = -1;
+            badgePop.reset();
         }
+    }
+
+    /** Le diagnostic interne (la paire non fermée — toujours une
+     * ERREUR) vit-il sous l'offset ? */
+    private boolean onInternalDiagnostic(int offset) {
+        if (diagnostics == null || analysisRevision != buffer.getRevision()) {
+            return false;
+        }
+        int line = buffer.lineOfOffset(Math.min(offset, buffer.length()));
+        for (DiagnosticsDocument.Diagnostic diagnostic
+                : diagnostics.betweenLines(line, line)) {
+            if (diagnostic.start() <= offset && offset < diagnostic.end()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -3010,24 +3057,30 @@ public final class EditorView extends View {
                 touchDownNanos = System.nanoTime();
                 pinching = false;
                 pinchedThisGesture = false;
-                // LA MINIMAP ET SA COLONNE DE PASTILLES prennent leur
-                // geste au DOWN : les pastilles jouent au tap, la carte
-                // suit le doigt EN CONTINU (le drag y navigue — la vue
-                // saute à la ligne visée à chaque cran, le relâchement
-                // y reste). LA ZONE SE BORNE À CE QUI SE DESSINE : la
-                // carte ne couvre que la hauteur du document rendu (un
-                // document court ne peint rien au-dessous — le doigt y
-                // retombe sur le texte, le défaut du terrain où la
-                // bande avalait les taps du vide)
-                float minimapLeft = getWidth() - minimap.width()
-                        - minimap.columnWidth();
+                // LA MINIMAP ET SA BARRE D'ANNULER/RÉTABLIR prennent
+                // leur geste au DOWN : la barre COIFFE la région (les
+                // pastilles y jouent au tap), la carte du document
+                // dessous suit le doigt EN CONTINU (le drag y navigue —
+                // la vue saute à la ligne visée à chaque cran, le
+                // relâchement y reste). LA ZONE SE BORNE À CE QUI SE
+                // DESSINE : la carte ne couvre que la hauteur du
+                // document rendu (un document court ne peint rien
+                // au-dessous — le doigt y retombe sur le texte, le
+                // défaut du terrain où la bande avalait les taps du
+                // vide)
+                float minimapLeft = getWidth() - minimap.width();
                 float minimapBottom = minimap.mapBottom(getHeight(),
                         buffer.getLineCount());
                 if (minimapEnabled
                         && event.getX() > minimapLeft
                         && event.getY() < minimapBottom) {
                     if (minimap.buttonAt(
-                            event.getX(), event.getY(), getWidth()) < 0) {
+                            event.getX(), event.getY(), getWidth()) < 0
+                            && event.getY() >= minimap.barHeight()) {
+                        // la barre COIFFE la carte : le doigt SUR LA
+                        // BARRE (hors pastille) ne déplace PAS le
+                        // curseur — la barre d'outils consomme sans
+                        // naviguer, la carte vit dessous
                         minimapDragging = true;
                         int line = minimap.lineAt(event.getY(), getHeight(),
                                 buffer.getLineCount());
@@ -3222,18 +3275,22 @@ public final class EditorView extends View {
                     // marqueurs, le texte à son curseur
                     requestFocus();
                     lastTapNanos = 0L;
-                } else if (event.getX() > getWidth() - minimap.width()
-                        - minimap.columnWidth()) {
-                    // LA MINIMAP : ses pastilles d'annulation en tête
-                    // (le tap y joue la pile), la carte du document
-                    // sinon (le curseur y saute à la ligne visée — la
-                    // fenêtre suit, le clavier ne s'y ouvre pas)
+                } else if (event.getX() > getWidth() - minimap.width()) {
+                    // LA MINIMAP : sa barre d'annulation en tête (le tap
+                    // y joue la pile), la carte du document dessous (le
+                    // curseur y saute à la ligne visée — la fenêtre suit,
+                    // le clavier ne s'y ouvre pas) ; le tap SUR LA BARRE
+                    // hors pastille consomme sans naviguer
                     requestFocus();
                     int button = minimap.buttonAt(event.getX(), event.getY(),
                             getWidth());
                     if (button >= 0) {
                         minimap.pressButton(button);
                         clearComposing();
+                        lastTapNanos = 0L;
+                        break;
+                    }
+                    if (event.getY() < minimap.barHeight()) {
                         lastTapNanos = 0L;
                         break;
                     }
@@ -3655,13 +3712,14 @@ public final class EditorView extends View {
         // une animation de popup vit (ouverture ou sortie) : la trame
         // suivante se réclame — le fondu se joue trame après trame,
         // sans fil d'horloge (la trame portante anime)
-        if (completionCard.isAnimating() || infoPopup.isAnimating()) {
+        if (completionCard.isAnimating() || infoPopup.isAnimating()
+                || diagnosticCard.isAnimating()) {
             invalidate();
         }
         // LA MINIMAP par-dessus tout (la carte du document au bord
-        // droit — la fenêtre courante s'y cadre, ses pastilles
-        // d'annulation en tête) : les lignes du document entier y
-        // passent, une rangée fine chacune
+        // droit — la fenêtre courante s'y cadre, SA BARRE
+        // d'annulation/rétablissement en tête) : les lignes du
+        // document entier y passent, une rangée fine chacune
         int firstVisible = firstVisibleLine();
         int lastVisible = lineOfVisibleIndex(
                 (int) ((getHeight() - getPaddingTop() + scrollY) / lineHeight));
@@ -4057,8 +4115,13 @@ public final class EditorView extends View {
             }
             gutter.drawNumber(canvas, line, lineBaseline(line),
                     getPaddingLeft() - dp(28));
+            // la sévérité de la ligne — la PIRE y vit (l'erreur domine
+            // l'avertissement, l'avertissement domine le
+            // renseignement) : l'icône au trait de la référence y
+            // suit sa couleur (rouge, ambre, accent)
             boolean error = false;
             boolean warning = false;
+            boolean info = false;
             if (diagnostics != null && analysisRevision == buffer.getRevision()) {
                 for (DiagnosticsDocument.Diagnostic diagnostic
                         : diagnostics.betweenLines(line, line)) {
@@ -4073,17 +4136,22 @@ public final class EditorView extends View {
                         : diagnosticsOfLine(line)) {
                     if (hosted.severity() == DiagnosticCard.SEVERITY_ERROR) {
                         error = true;
-                    } else {
+                    } else if (hosted.severity()
+                            == DiagnosticCard.SEVERITY_WARNING) {
                         warning = true;
+                    } else {
+                        info = true;
                     }
                 }
             }
             float cy = lineBaseline(line)
                     + (fontMetrics.top + fontMetrics.bottom) / 2.0f;
             if (error) {
-                gutter.drawMarker(canvas, Gutter.MARKER_ERROR, markerCx(), cy);
+                gutter.drawMarker(canvas, Gutter.MARKER_ERROR, markerCx, cy);
             } else if (warning) {
                 gutter.drawMarker(canvas, Gutter.MARKER_WARNING, markerCx, cy);
+            } else if (info) {
+                gutter.drawMarker(canvas, Gutter.MARKER_INFO, markerCx, cy);
             }
             if (breakpoints.contains(line)) {
                 gutter.drawMarker(canvas, Gutter.MARKER_BREAKPOINT, markerCx, cy);
@@ -4619,11 +4687,15 @@ public final class EditorView extends View {
     }
 
     /**
-     * Dessine la pastille d'erreur vivante (B4) : L'AMPOULE ROUGE de
-     * l'étage des correctifs, posée dans la GOUTTIÈRE de la ligne du
-     * diagnostic — à l'alignement du carré d'erreur, elle ne cache
-     * plus une lettre du texte (le retour du terrain : le disque
-     * au-dessus du mot mangeait la ligne du dessus). Elle meurt à son
+     * Dessine la pastille du diagnostic : L'ICÔNE DE SÉVÉRITÉ au
+     * trait de la référence (le cercle barré rouge de l'erreur, le
+     * triangle ambre de l'avertissement, le « i » d'accent du
+     * renseignement) — dans la GOUTTIÈRE de la ligne du diagnostic,
+     * à l'écart des marqueurs (le retour du terrain : le disque
+     * au-dessus du mot mangeait la ligne du dessus). Elle NAÎT par
+     * le POP de la référence : l'échelle part de la MOITIÉ, ancrée
+     * au pied de la ligne (elle monte vers le mot), l'opacité suit —
+     * le ressort amorti y joue sa signature. Elle meurt à son
      * échéance, le dessin ne la rend plus.
      */
     private void drawDiagnosticBadge(Canvas canvas) {
@@ -4636,20 +4708,34 @@ public final class EditorView extends View {
         float cy = baseline
                 + (fontMetrics.top + fontMetrics.bottom) / 2.0f;
         float cx = markerCx();
-        float side = dp(10);
-        badgePaint.setStrokeWidth(dp(2));
-        // l'ampoule de la carte de diagnostic (drawFix), au trait
-        canvas.drawCircle(cx, cy, side * 0.32f, badgePaint);
-        canvas.drawLine(cx - side * 0.16f, cy + side * 0.42f,
-                cx + side * 0.16f, cy + side * 0.42f, badgePaint);
-        canvas.drawLine(cx - side * 0.08f, cy + side * 0.55f,
-                cx + side * 0.08f, cy + side * 0.55f, badgePaint);
+        float side = dp(18);
+        // le pop de naissance (la référence : l'échelle part de la
+        // moitié, ancrée AU PIED de la ligne — la pastille monte vers
+        // le mot), le fondu au-dessus
+        float scale = badgePop.scale();
+        float alpha = badgePop.alpha();
+        int save = canvas.save();
+        if (scale != 1.0f) {
+            float anchorY = baseline + fontMetrics.descent;
+            canvas.translate(cx, anchorY);
+            canvas.scale(scale, scale);
+            canvas.translate(-cx, -anchorY);
+        }
+        canvas.saveLayerAlpha(cx - side, cy - side, cx + side, cy + side,
+                Math.max(0, Math.min(255, (int) (alpha * 255.0f))));
+        badgeIcon.draw(canvas, diagnosticBadgeSeverity, cx, cy, side);
+        canvas.restore();
+        canvas.restore();
+        if (badgePop.isRunning()) {
+            invalidate();
+        }
     }
 
     /**
-     * L'abscisse du marqueur de la gouttière (le carré d'erreur,
-     * l'ampoule de la pastille) : la colonne des marqueurs, la même
-     * pour tout ce qui s'y dessine.
+     * L'abscisse du marqueur de la PASTILLE flottante (la colonne
+     * propre de l'aperçu — le carré d'erreur y vivait avant, le
+     * retour du terrain l'a rangé à la colonne des marqueurs) : la
+     * pastille du tap y vit, à l'écart des marqueurs de la ligne.
      *
      * @return l'abscisse en pixels, coordonnées de la vue
      */

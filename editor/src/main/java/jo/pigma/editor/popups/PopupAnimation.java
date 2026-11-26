@@ -25,8 +25,14 @@ public final class PopupAnimation {
     /** La durée de sortie (ms) — plus courte, l'effacement ne traîne pas. */
     private static final long CLOSE_MILLIS = 70L;
 
-    /** Le décalage de départ : la carte naît 3 dp plus près du caret. */
-    private static final float START_SHIFT_DP = 3.0f;
+    /** Le décalage de départ : la carte naît 5 dp plus près du caret
+     * (la référence : sa montée d'entrée y vit à 5 dp). */
+    private static final float START_SHIFT_DP = 5.0f;
+
+    /** L'échelle de départ : la carte naît à 96 pour cent (la
+     * référence : son entrée y vit de 0,96 à 1 — le pop discret du
+     * popover). */
+    private static final float START_SCALE = 0.96f;
 
     private long openStartedAt;
     private long closeStartedAt;
@@ -140,6 +146,21 @@ public final class PopupAnimation {
             return (closeProgress() - 1.0f) * span;
         }
         return 0.0f;
+    }
+
+    /**
+     * L'échelle courante de la carte (0,96 à la naissance, 1 à la
+     * pose — le pop d'entrée de la référence) : l'ouverture la gagne,
+     * la sortie la rend.
+     */
+    public float scaleFactor() {
+        if (isOpening()) {
+            return START_SCALE + (1.0f - START_SCALE) * openProgress();
+        }
+        if (isClosing()) {
+            return START_SCALE + (1.0f - START_SCALE) * closeProgress();
+        }
+        return 1.0f;
     }
 
     /**
