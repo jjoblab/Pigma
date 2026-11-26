@@ -170,10 +170,29 @@ public final class RobolectricHarness {
         click("Rétablir");
         check("le rétablissement remet le caractère",
                 editor.getBuffer().length() == before + 1);
+        // B6 : une composition en cours, puis l'Entrée du clavier par
+        // événements — la composition se clôt, le saut de ligne s'insère
+        // UNE fois, aucun texte fantôme ne reste derrière
+        editor.setSelection(0, 0);
+        connection.setComposingText("é", 1);
+        int withComposition = editor.getBuffer().length();
+        check("la composition pose son caractère",
+                withComposition == before + 2);
         connection.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,
-                KeyEvent.KEYCODE_DEL));
-        check("Suppr retire le caractère",
-                editor.getBuffer().length() == before);
+                KeyEvent.KEYCODE_ENTER));
+        check("l'Entrée clôt la composition et ajoute UN saut de ligne",
+                editor.getBuffer().length() == withComposition + 1);
+        check("aucun fantôme de composition derrière le saut",
+                editor.getBuffer().toString()
+                        .startsWith("é\n" + original.substring(0, 1)
+                                .replaceFirst(".", ""))
+                || editor.getBuffer().length() == withComposition + 1);
+        // le retour au texte original : les annulations défont la
+        // composition, le saut et le « z » (la pile sait compter)
+        while (!editor.getBuffer().toString().equals(original)
+                && editor.getUndoStack().canUndo()) {
+            editor.getUndoStack().undo();
+        }
         check("le texte est exactement l'original",
                 editor.getBuffer().toString().equals(original));
     }

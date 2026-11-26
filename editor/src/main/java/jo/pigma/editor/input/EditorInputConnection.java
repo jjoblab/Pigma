@@ -80,6 +80,12 @@ public final class EditorInputConnection extends BaseInputConnection {
                     return true;
                 case KeyEvent.KEYCODE_ENTER:
                 case KeyEvent.KEYCODE_NUMPAD_ENTER:
+                    // la composition se clôt D'ABORD (le défaut du
+                    // terrain : l'Entrée d'un clavier par événements
+                    // laissait le texte composé fantôme derrière le
+                    // saut de ligne — l'IME croyait sa composition
+                    // vivante)
+                    editor.clearComposing();
                     editor.applyEdit(editor.caret(), editor.caret(), "\n");
                     return true;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
@@ -103,10 +109,13 @@ public final class EditorInputConnection extends BaseInputConnection {
 
     /**
      * La touche action du clavier (Entrée) : un saut de ligne —
-     * l'éditeur ne déclare pas d'action spéciale.
+     * l'éditeur ne déclare pas d'action spéciale. La composition en
+     * cours se clôt d'abord (le même fantôme que l'Entrée par
+     * événements s'y posait).
      */
     @Override
     public boolean performEditorAction(int actionCode) {
+        editor.clearComposing();
         editor.applyEdit(editor.hasSelection()
                 ? editor.selectionStart() : editor.caret(),
                 editor.hasSelection() ? editor.selectionEnd() : editor.caret(),

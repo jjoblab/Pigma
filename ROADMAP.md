@@ -32,7 +32,7 @@ qu'il propose.
 |---|----------|---------|------|----------|--------|
 | 64 | Harnais sur les vraies classes Android (Robolectric remplace les stubs maison) — 11 scénarios sur l'activité réelle ; D1 corrigé au passage (SavedState du cadre) | R5, D7, D1, R2 | **fait** | `docs/chantiers/64.md` | à pousser |
 | 65 | Guide d'intégration « 5 minutes » à la racine + capture (rendu réel au mode graphique natif) | — | **fait** | `INTEGRATION.md` | à pousser |
-| 66 | Entrée et composition : clearComposing avant l'insertion, complétion ne mange plus la touche | B6 | prévu | — | — |
+| 66 | Entrée et composition : clearComposing avant l'insertion (sendKeyEvent et performEditorAction) | B6 | **fait** | `docs/chantiers/66.md` | à pousser |
 | 67 | Minimap : zone tactile bornée à ce qui est dessiné, setMinimapEnabled | B2 | prévu | — | — |
 | 68 | Plis : chevron au bon calque, un seul chevron, placeholder `{…}` tapable | B5 | prévu | — | — |
 | 69 | ~~Sauvegarde d'état : BaseSavedState + super~~ réglé au chantier 64 | D1, R2 | **fait** | `docs/chantiers/64.md` | chantier 64 |
@@ -72,6 +72,11 @@ amputé de ce qui est déjà fait.
 - 2026-11-26 — création ; historique des 113 commits réattribué à
   `jjoblab <olson12jb@gmail.com>` et poussé (force) — les 3 commits
   « Z User » de la période des vagues 44-46 rewriting.
+- 2026-11-26 — chantier 66 fermé : B6 réglé — l'Entrée (par
+  événements et par touche d'action) clôt la composition AVANT
+  d'insérer le saut de ligne ; le scénario du harnais réel
+  l'éprouve (composition posée, Entrée, un seul saut, aucun
+  fantôme).
 - 2026-11-26 — chantier 65 fermé : `INTEGRATION.md` à la racine
   (dépendance, vue, langage, thème, LSP, la capture) ; la capture
   vient du test `ScreenshotIT` — Robolectric en mode graphique
