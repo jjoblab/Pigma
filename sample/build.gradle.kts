@@ -55,6 +55,14 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            // Le bac à sable du dépôt bride Maven Central en vagues
+            // 429 : les jars « android-all » de Robolectric s'y
+            // cherchent sur le miroir Aliyun (propriété de test, hors
+            // du chemin de production ; un poste ordinaire garde le
+            // dépôt par défaut).
+            all { it.systemProperty("robolectric.dependency.repo.url",
+                    System.getProperty("robolectric.dependency.repo.url")
+                            ?: "https://repo1.maven.org/maven2/") }
         }
     }
 }

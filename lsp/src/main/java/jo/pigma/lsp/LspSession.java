@@ -609,10 +609,20 @@ public final class LspSession {
     private static Position positionIn(String text, int offset) {
         int line = 0;
         int lineStart = 0;
-        for (int at = 0; at < offset; at++) {
-            if (text.charAt(at) == '\n') {
+        int at = 0;
+        while (at < offset) {
+            char sign = text.charAt(at);
+            if (sign == '\r' && at + 1 < text.length()
+                    && text.charAt(at + 1) == '\n') {
+                line++;
+                lineStart = at + 2;
+                at += 2;
+            } else if (sign == '\n' || sign == '\r') {
                 line++;
                 lineStart = at + 1;
+                at++;
+            } else {
+                at++;
             }
         }
         return new Position(line, offset - lineStart);

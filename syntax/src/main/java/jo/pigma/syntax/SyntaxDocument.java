@@ -726,15 +726,23 @@ public final class SyntaxDocument implements TextListener {
     }
 
     /**
-     * Nombre de sauts de ligne du texte inséré par le remplacement :
-     * la fenêtre insérée commence à l'offset d'édition, pas au début
-     * de sa ligne (une insertion en milieu de ligne peut y introduire
-     * des sauts).
+     * Nombre de fins de ligne du texte inséré par le remplacement, au
+     * genre LSP ({@code '\n'}, la paire {@code "\r\n"}, {@code '\r'}
+     * solitaire — la paire compte UNE fin) : la fenêtre insérée
+     * commence à l'offset d'édition, pas au début de sa ligne (une
+     * insertion en milieu de ligne peut y introduire des sauts).
      */
     private int countBreaks(int start, int insertedLength) {
         int breaks = 0;
         for (int i = 0; i < insertedLength; i++) {
-            if (buffer.charAt(start + i) == '\n') {
+            char sign = buffer.charAt(start + i);
+            if (sign == '\r') {
+                breaks++;
+                if (i + 1 < insertedLength
+                        && buffer.charAt(start + i + 1) == '\n') {
+                    i++;
+                }
+            } else if (sign == '\n') {
                 breaks++;
             }
         }

@@ -55,13 +55,75 @@ public class TextBufferTest {
         assertEquals(3, buffer.getLineEnd(2));
     }
 
-    /** Un retour chariot seul est un caractère ordinaire, pas une fin de ligne. */
+    /**
+     * La règle LSP au repos : une paire {@code "\r\n"} est UN
+     * terminateur (la ligne suivante naît après ses deux unités), un
+     * {@code '\r'} solitaire aussi (une unité) — « a\r\rb » compte
+     * trois lignes, celle du milieu vide.
+     */
     @Test
-    public void carriageReturnIsNotALineBreak() {
-        TextBuffer buffer = TextBuffer.create("a\r\nb");
-        assertEquals(2, buffer.getLineCount());
-        assertEquals("a\r", buffer.getText(0, 2));
-        assertEquals("b", buffer.getText(3, 4));
+    public void crlfPairsAndLoneCrAreLineTerminators() {
+        TextBuffer pair = TextBuffer.create("a\r\nb");
+        assertEquals(2, pair.getLineCount());
+        assertEquals("a", pair.getText(0, pair.getLineEnd(0)));
+        assertEquals(3, pair.getLineStart(1));
+        assertEquals("b", pair.getText(3, 4));
+
+        TextBuffer lone = TextBuffer.create("a\rb");
+        assertEquals(2, lone.getLineCount());
+        assertEquals(1, lone.getLineEnd(0));
+        assertEquals(2, lone.getLineStart(1));
+
+        TextBuffer doubleCr = TextBuffer.create("a\r\rb");
+        assertEquals(3, doubleCr.getLineCount());
+        assertEquals(2, doubleCr.getLineStart(1));
+        assertEquals(3, doubleCr.getLineStart(2));
+        assertEquals(2, doubleCr.getLineEnd(1));
+    }
+
+    /**
+     * La règle LSP en édition : les paires coupées et recollées par un
+     * remplacement tiennent aux deux bords de la plage.
+     */
+    @Test
+    public void editionsHealAndBreakPairsAtBothEdges() {
+        // couper au bord gauche : '\r' avant la plage, '\n' ancien à
+        // start — l'insertion sans '\n' en tête dédouble : un début
+        // naît à start
+        TextBuffer cut = TextBuffer.create("a\r\nb");
+        cut.replace(2, 2, "x");
+        assertEquals("a\rx\nb", cut.toString());
+        assertEquals(3, cut.getLineCount());
+        assertEquals(2, cut.getLineStart(1));
+        assertEquals(4, cut.getLineStart(2));
+
+        // recoller au bord gauche : '\r' solitaire avant la plage,
+        // '\n' en tête d'insertion — le début porté par le '\r' meurt
+        // dans la paire neuve
+        TextBuffer heal = TextBuffer.create("a\rb");
+        heal.replace(2, 2, "\nz");
+        assertEquals("a\r\nzb", heal.toString());
+        assertEquals(2, heal.getLineCount());
+        assertEquals(3, heal.getLineStart(1));
+
+        // guérir au bord droit : l'inséré finit par '\r', l'ancien
+        // caractère à end est '\n' — la paire ne pose AUCUN début
+        // neuf, la queue décalée tombe juste
+        TextBuffer mend = TextBuffer.create("a\nb");
+        mend.replace(1, 1, "x\r");
+        assertEquals("ax\r\nb", mend.toString());
+        assertEquals(2, mend.getLineCount());
+        assertEquals(4, mend.getLineStart(1));
+
+        // couper au bord droit : l'inséré finit par '\n', l'ancien
+        // caractère à end est '\r' solitaire — un début naît entre
+        // les deux
+        TextBuffer split = TextBuffer.create("a\rb");
+        split.replace(1, 1, "z\n");
+        assertEquals("az\n\rb", split.toString());
+        assertEquals(3, split.getLineCount());
+        assertEquals(3, split.getLineStart(1));
+        assertEquals(4, split.getLineStart(2));
     }
 
     /** Les bornes invalides lèvent une exception avec un message clair. */

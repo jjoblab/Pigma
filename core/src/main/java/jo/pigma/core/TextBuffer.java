@@ -16,12 +16,14 @@ import java.util.List;
  * paire sont autorisés et ne la corrompent jamais : annulés, ils rendent le
  * texte exactement antérieur.</p>
  *
- * <p>L'index de lignes sépare sur le caractère {@code '\n'} seul ; un
- * retour chariot {@code '\r'} est un caractère ordinaire (les textes à
- * fins de ligne Windows portent deux lignes logiques par saut). Chaque
- * tampon compte une révision, incrémentée à chaque remplacement effectif :
- * un résultat calculé sur une révision donnée est périmé dès que la
- * révision avance.</p>
+ * <p>L'index de lignes suit la règle du protocole LSP : {@code '\n'},
+ * la paire {@code "\r\n"} (un SEUL terminateur) et {@code '\r'}
+ * solitaire séparent les lignes. Les textes à fins de ligne Windows
+ * portent ainsi une ligne logique par saut, comme à l'affichage, et
+ * les positions du protocole s'accordent au tampon sans conversion.
+ * Chaque tampon compte une révision, incrémentée à chaque
+ * remplacement effectif : un résultat calculé sur une révision donnée
+ * est périmé dès que la révision avance.</p>
  *
  * <p>Les écritures publiques passent par {@link TextTransaction} (voir
  * {@link UndoStack#newTransaction()}) ; le remplacement direct est réservé
@@ -73,19 +75,48 @@ public final class TextBuffer implements CharSequence {
         lineStarts = new int[Math.max(8, countLines(initialText) + 2)];
         lineCount = 1;
         for (int i = 0; i < textLength; i++) {
-            if (initialText.charAt(i) == '\n') {
+            if (isLineTerminatorAt(initialText, i)) {
                 if (lineCount == lineStarts.length) {
                     lineStarts = grow(lineStarts, lineCount + 8);
                 }
-                lineStarts[lineCount++] = i + 1;
+                lineStarts[lineCount++] = terminatorEnd(initialText, i);
             }
         }
+    }
+
+    /**
+     * Dit si l'unité à {@code index} ouvre un terminateur de ligne :
+     * {@code '\n'} seul, la paire {@code "\r\n"} (à son {@code '\r'})
+     * ou {@code '\r'} solitaire — la règle du protocole LSP, une seule
+     * source de vérité pour tout le tampon.
+     */
+    private static boolean isLineTerminatorAt(String text, int index) {
+        char sign = text.charAt(index);
+        if (sign == '\n') {
+            return true;
+        }
+        return sign == '\r' && (index + 1 >= text.length()
+                || text.charAt(index + 1) != '\n');
+    }
+
+    /**
+     * L'offset du premier caractère APRÈS le terminateur ouvert à
+     * {@code index} : la ligne suivante y commence (une paire
+     * {@code "\r\n"} tient deux unités).
+     */
+    private static int terminatorEnd(String text, int index) {
+        char sign = text.charAt(index);
+        if (sign == '\r' && index + 1 < text.length()
+                && text.charAt(index + 1) == '\n') {
+            return index + 2;
+        }
+        return index + 1;
     }
 
     private static int countLines(String text) {
         int count = 0;
         for (int i = 0; i < text.length(); i++) {
-            if (text.charAt(i) == '\n') {
+            if (isLineTerminatorAt(text, i)) {
                 count++;
             }
         }
@@ -240,16 +271,26 @@ public final class TextBuffer implements CharSequence {
     }
 
     /**
-     * Offset de fin de la ligne donnée, son saut de ligne final exclu : le
-     * contenu de la ligne est la plage
-     * {@code [getLineStart(line), getLineEnd(line))}.
+     * Offset de fin de la ligne donnée, son terminateur final exclu
+     * (une paire {@code "\r\n"} tient deux unités) : le contenu de la
+     * ligne est la plage {@code [getLineStart(line), getLineEnd(line))}.
      *
      * @param line numéro de ligne, entre 0 et {@link #getLineCount()} exclu
      * @return l'offset de fin, hors terminateur
      */
     public int getLineEnd(int line) {
         checkLine(line);
-        return line < lineCount - 1 ? lineStarts[line + 1] - 1 : textLength;
+        if (line >= lineCount - 1) {
+            return textLength;
+        }
+        int nextStart = lineStarts[line + 1];
+        // le terminateur s'étend jusqu'au début de la ligne suivante ;
+        // une paire "\r\n" y tient deux unités — le '\n' final précédé
+        // de son '\r' (le texte "a\r\rb" finit sur un '\r' solitaire,
+        // pas sur une paire : son '\r' ne doit pas être avalé)
+        boolean pair = nextStart >= 2
+                && charAt(nextStart - 1) == '\n' && charAt(nextStart - 2) == '\r';
+        return pair ? nextStart - 2 : nextStart - 1;
     }
 
     /**
@@ -288,17 +329,19 @@ public final class TextBuffer implements CharSequence {
     }
 
     /**
-     * Offset de la position donnée, avec contrôles de bornes : la colonne ne
-     * doit pas dépasser la longueur de la ligne.
+     * Offset de la position donnée, avec contrôles de bornes : la colonne
+     * peut désigner le contenu de la ligne ET son terminateur entier
+     * (une paire {@code "\r\n"} tient deux unités) — la ligne possède
+     * sa fin, comme l'offset rendu tombe sur l'unité adressée.
      *
      * @param line   numéro de ligne, entre 0 et {@link #getLineCount()} exclu
-     * @param column colonne, entre 0 et la longueur de la ligne
+     * @param column colonne, entre 0 et la longueur de la ligne terminateur compris
      * @return l'offset correspondant
      */
     public int offsetOfPosition(int line, int column) {
         int start = getLineStart(line);
-        int end = getLineEnd(line);
-        if (column < 0 || start + column > end) {
+        int bound = line < lineCount - 1 ? lineStarts[line + 1] : textLength;
+        if (column < 0 || start + column > bound) {
             throw new IndexOutOfBoundsException(
                     "column out of range: " + column + " for line " + line);
         }
@@ -452,17 +495,55 @@ public final class TextBuffer implements CharSequence {
 
     /**
      * Met à jour l'index de lignes pour le remplacement donné, en unités
-     * logiques (avant tout déplacement du trou).
+     * logiques (avant tout déplacement du trou) — les terminateurs y
+     * sont atomiques : une paire {@code "\r\n"} coupée ou recollée par
+     * le remplacement change les débuts aux deux bords de la plage.
      */
     private void updateLineStarts(int start, int end, int removed, int inserted, String text) {
         int from = firstLineStartAfter(start);
         int to = firstLineStartAfter(end);
         int destroyed = to - from;
         int delta = inserted - removed;
+        // bord gauche : le '\r' qui précède la plage peut perdre son '\n'
+        // (la paire coupée dédouble son début : un nouveau naît à start)
+        // ou en trouver un (le '\r' solitaire devient paire : le début
+        // qu'il portait meurt, fondu dans la paire neuve)
+        boolean leftCreated = false;
+        if (start > 0 && charAt(start - 1) == '\r') {
+            boolean wasPair = start < textLength && charAt(start) == '\n';
+            boolean nowStartsWithNewline = inserted > 0
+                    ? text.charAt(0) == '\n'
+                    : end < textLength && charAt(end) == '\n';
+            if (wasPair && !nowStartsWithNewline) {
+                leftCreated = true;
+            } else if (!wasPair && nowStartsWithNewline) {
+                if (from > 0 && lineStarts[from - 1] == start) {
+                    from--;
+                    destroyed++;
+                }
+            }
+        }
+        // les débuts neufs de la zone : le bord gauche d'abord, puis les
+        // terminateurs du texte inséré — un '\r' en DERNIERE position
+        // d'insertion suivi du '\n' ancien à end guérit en paire : rien
+        // à poser (le début qui suit la paire vient de la queue décalée,
+        // l'arithmétique du delta y tombe juste : l'ancre '\n' survit à
+        // start+inserted, le début suivant vaut ancre+1 des deux côtés)
+        int[] fresh = new int[inserted + 1];
         int newCount = 0;
+        if (leftCreated) {
+            fresh[newCount++] = start;
+        }
         for (int i = 0; i < inserted; i++) {
-            if (text.charAt(i) == '\n') {
-                newCount++;
+            char sign = text.charAt(i);
+            if (sign == '\r' && i + 1 < inserted && text.charAt(i + 1) == '\n') {
+                fresh[newCount++] = start + i + 2;
+                i++;
+            } else if (sign == '\r' && i + 1 == inserted
+                    && end < textLength && charAt(end) == '\n') {
+                // paire à cheval sur le bord droit : pas de début neuf
+            } else if (sign == '\n' || sign == '\r') {
+                fresh[newCount++] = start + i + 1;
             }
         }
         int newLineCount = lineCount - destroyed + newCount;
@@ -487,12 +568,7 @@ public final class TextBuffer implements CharSequence {
                 }
             }
         }
-        int index = from;
-        for (int i = 0; i < inserted; i++) {
-            if (text.charAt(i) == '\n') {
-                lineStarts[index++] = start + i + 1;
-            }
-        }
+        System.arraycopy(fresh, 0, lineStarts, from, newCount);
         lineCount = newLineCount;
     }
 

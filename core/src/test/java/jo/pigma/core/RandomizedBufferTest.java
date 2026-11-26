@@ -252,11 +252,21 @@ public class RandomizedBufferTest {
         int lineCount() {
             int count = 1;
             for (int i = 0; i < text.length(); i++) {
-                if (text.charAt(i) == '\n') {
+                if (terminates(i)) {
                     count++;
                 }
             }
             return count;
+        }
+
+        /** Le genre LSP : '\n', la paire "\r\n", ou '\r' solitaire. */
+        private boolean terminates(int i) {
+            char sign = text.charAt(i);
+            if (sign == '\n') {
+                return true;
+            }
+            return sign == '\r' && (i + 1 >= text.length()
+                    || text.charAt(i + 1) != '\n');
         }
 
         int lineStart(int line) {
@@ -265,9 +275,12 @@ public class RandomizedBufferTest {
             }
             int current = 0;
             for (int i = 0; i < text.length() && current < line; i++) {
-                if (text.charAt(i) == '\n') {
+                if (terminates(i)) {
                     current++;
                     if (current == line) {
+                        // une paire "\r\n" n'ancre que sur son '\n' (le
+                        // '\r' n'est jamais ancre) et un '\r' solitaire
+                        // avance d'une unité : i+1 dans tous les cas
                         return i + 1;
                     }
                 }
@@ -278,7 +291,7 @@ public class RandomizedBufferTest {
         int lineOfOffset(int offset) {
             int line = 0;
             for (int i = 0; i < offset; i++) {
-                if (text.charAt(i) == '\n') {
+                if (terminates(i)) {
                     line++;
                 }
             }

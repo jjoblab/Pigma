@@ -721,15 +721,24 @@ public final class StructureDocument {
     }
 
     /**
-     * Sauts de ligne du texte inséré par le remplacement : la fenêtre
-     * insérée commence à l'offset d'édition, pas au début de sa
-     * ligne (même règle que le lexeur).
+     * Fins de ligne du texte inséré par le remplacement, au genre LSP
+     * ({@code '\n'}, la paire {@code "\r\n"}, {@code '\r'} solitaire —
+     * la paire compte UNE fin) : la fenêtre insérée commence à
+     * l'offset d'édition, pas au début de sa ligne (même règle que le
+     * lexeur).
      */
     private int countBreaks(int start, int insertedLength) {
         CharSequence inserted = buffer.getText(start, start + insertedLength);
         int breaks = 0;
         for (int at = 0; at < inserted.length(); at++) {
-            if (inserted.charAt(at) == '\n') {
+            char sign = inserted.charAt(at);
+            if (sign == '\r') {
+                breaks++;
+                if (at + 1 < inserted.length()
+                        && inserted.charAt(at + 1) == '\n') {
+                    at++;
+                }
+            } else if (sign == '\n') {
                 breaks++;
             }
         }

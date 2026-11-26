@@ -47,8 +47,9 @@ qu'il propose.
 | 77 | Accessibilité : package editor.accessibility (nœud éditable, fenêtre de texte bornée, actions, événements de frappe et sélection) | D5 | **fait** | `docs/chantiers/77.md` | à pousser |
 | 78 | Historique local repensé : versions par geste (pause 2 s), plage occupée + texte d'avant, budget en caractères, restauration de plage exacte ; usages : extrait de la ligne par rangée | B7 | **fait** | `docs/chantiers/78.md` | à pousser |
 | 79 | Chaîne d'approvisionnement : verification-metadata.xml (401 composants, sha256+sha512), mode strict documenté | D11 | **fait** | `docs/chantiers/79.md` | à pousser |
-| 80 | Fins de ligne : CRLF au tampon et au protocole | D13 | prévu | — | — |
-| 81 | Découpage de EditorView par composants (LayoutModel d'abord) | D6, R1 | prévu | — | — |
+| 80 | Fins de ligne : CRLF au tampon et au protocole — la paire `"\r\n"` est UN terminateur (règle LSP), paires coupées/recollées aux deux bords de l'index incrémental, positionIn et countBreaks alignés | D13 | **fait** | `docs/chantiers/80.md` | à pousser |
+| 81 | Bugs d'usage résiduels : B6 (Entrée vs carte de complétion), B5 (placeholder de pli), B4 (pastille d'erreur au mot), B2/B3 en audit | B6, B5, B4, B2, B3 | prévu | — | — |
+| 82 | Découpage de EditorView par composants (LayoutModel d'abord) | D6, R1 | prévu | — | — |
 
 L'ordre suit le plan d'action du rapport (priorité 1 d'abord : les bugs
 d'usage B6/B2/B5, puis les défauts de haut risque D1/D3, puis le reste),
