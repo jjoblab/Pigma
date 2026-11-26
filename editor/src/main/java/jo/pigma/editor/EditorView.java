@@ -22,6 +22,7 @@ import jo.pigma.editor.popups.ColorPickerCard;
 import jo.pigma.editor.popups.InfoPopup;
 import jo.pigma.editor.popups.LocalHistory;
 import jo.pigma.editor.popups.DiagnosticCard;
+import jo.pigma.editor.popups.ActionRegistry;
 import jo.pigma.editor.popups.BulbIcon;
 import jo.pigma.editor.popups.BadgePop;
 import jo.pigma.editor.popups.PopupStyle;
@@ -460,6 +461,24 @@ public final class EditorView extends View {
 
     /** Le style des popups posé par l'hôte (fond translucide, tailles, forme). */
     private PopupStyle popupStyle = PopupStyle.defaults();
+
+    /**
+     * LE REGISTRE DES ACTIONS D'ÉDITION (R-A du rapport des popups) :
+     * la carte d'actions rapides et l'étage « Édition » du
+     * débordement servaient les MÊMES cinq actions, chacune SA liste —
+     * la dérive y était garantie (une action ajoutée à l'une manquait
+     * à l'autre). La définition vit ICI, UNE SEULE FOIS (le libellé,
+     * la course, la disponibilité — le commentaire exige un langage
+     * qui commente, la casse une sélection vivante) ; les DEUX cartes
+     * y mènent leurs rangées.
+     */
+    private final ActionRegistry editActions = new ActionRegistry()
+            .add("Commenter / décommenter", this::toggleLineComment,
+                    () -> !lineCommentPrefix().isEmpty())
+            .add("En majuscules", this::uppercaseSelection, this::hasSelection)
+            .add("En minuscules", this::lowercaseSelection, this::hasSelection)
+            .add("Dupliquer la ligne", this::duplicateLine, () -> true)
+            .add("Supprimer la ligne", this::deleteLines, () -> true);
 
     /** Le fournisseur de diagnostics de l'hôte (le LSP y monte ses erreurs). */
     private DiagnosticProvider diagnosticProvider;
@@ -1527,20 +1546,13 @@ public final class EditorView extends View {
      */
     public List<QuickActionCard.Entry> quickActionsOfLine(int line) {
         List<QuickActionCard.Entry> actions = new ArrayList<>();
-        if (!lineCommentPrefix().isEmpty()) {
+        // LE REGISTRE DES ACTIONS D'ÉDITION (R-A) : la MÊME définition
+        // que l'étage « Édition » du débordement — plus jamais deux
+        // listes à tenir à la main
+        for (ActionRegistry.Action action : editActions.live()) {
             actions.add(new QuickActionCard.Entry(
-                    "Commenter / décommenter", this::toggleLineComment));
+                    action.label(), action::run));
         }
-        if (hasSelection()) {
-            actions.add(new QuickActionCard.Entry(
-                    "En majuscules", this::uppercaseSelection));
-            actions.add(new QuickActionCard.Entry(
-                    "En minuscules", this::lowercaseSelection));
-        }
-        actions.add(new QuickActionCard.Entry(
-                "Dupliquer la ligne", this::duplicateLine));
-        actions.add(new QuickActionCard.Entry(
-                "Supprimer la ligne", this::deleteLines));
         if (quickActionProvider != null) {
             int caretOffset = Math.min(selection.caret(), buffer.length());
             int column = caretOffset - buffer.getLineStart(line);
@@ -2663,18 +2675,45 @@ public final class EditorView extends View {
      * reste au-dessus du protocole, elle ne connaît que la question
      * (où, quel mot) et la réponse (un texte, ou null pour dire
      * « je ne sais pas, demande à l'index local »).
+     *
+     * <p>Le contrat est ASYNCHRONE (D-P1 du rapport des popups) : la
+     * question NE BLOQUE JAMIS le fil d'interface — la popup vit
+     * immédiate (son corps dit « … »), la réponse la REMPLACE à son
+     * arrivée ; le retour null rend la place à l'index local. La
+     * réponse peut venir de N'IMPORTE QUEL fil : la vue y repasse le
+     * sien.</p>
      */
     public interface InfoPopupProvider {
 
         /**
-         * L'info du mot demandé.
+         * L'info du mot demandé — la réponse se rend à l'écouteur,
+         * jamais en retour (la question part, le fil d'interface
+         * n'attend pas).
          *
          * @param line   la ligne du doigt
          * @param column la colonne du doigt
          * @param word   le mot sous le doigt
-         * @return le texte à montrer, null pour retomber sur l'index
+         * @param answer l'écouteur de la réponse (le texte, ou null :
+         *               « je ne sais pas, demande à l'index local »)
          */
-        String infoFor(int line, int column, String word);
+        void infoFor(int line, int column, String word, InfoAnswer answer);
+    }
+
+    /**
+     * L'écouteur d'une réponse d'info (tardive ou non) — la vue la
+     * ramène à son fil avant d'agir, le fournisseur l'appelle du
+     * sien.
+     */
+    @FunctionalInterface
+    public interface InfoAnswer {
+
+        /**
+         * La réponse arrive.
+         *
+         * @param text le texte à montrer, null si le fournisseur ne
+         *             sait pas
+         */
+        void answer(String text);
     }
 
     /**
@@ -5505,17 +5544,13 @@ public final class EditorView extends View {
                     + wordAtCaret() + " »…", this::showUsagesPopup));
         }
         families.add(new OverflowCard.Section("Navigation", navigation));
+        // LE REGISTRE DES ACTIONS D'ÉDITION (R-A) : la MÊME
+        // définition que la carte d'actions rapides — l'étage se
+        // construit tel quel (la disponibilité y vit au registre)
         List<OverflowCard.Row> edition = new ArrayList<>();
-        if (!lineCommentPrefix().isEmpty()) {
-            edition.add(new OverflowCard.Row("Commenter / décommenter",
-                    this::toggleLineComment));
+        for (ActionRegistry.Action action : editActions.live()) {
+            edition.add(new OverflowCard.Row(action.label(), action::run));
         }
-        if (hasSelection()) {
-            edition.add(new OverflowCard.Row("En majuscules", this::uppercaseSelection));
-            edition.add(new OverflowCard.Row("En minuscules", this::lowercaseSelection));
-        }
-        edition.add(new OverflowCard.Row("Dupliquer la ligne", this::duplicateLine));
-        edition.add(new OverflowCard.Row("Supprimer la ligne", this::deleteLines));
         families.add(new OverflowCard.Section("Édition", edition));
         families.add(new OverflowCard.Section("Presse-papiers", List.of(
                 new OverflowCard.Row("Couper", this::cutSelection),
@@ -5761,23 +5796,99 @@ public final class EditorView extends View {
     }
 
     /**
-     * Ouvre la carte des USAGES du symbole au curseur (la leçon de la
-     * référence : Find Usages y liste chaque occurrence du mot, le
-     * choix y navigue) : les usages locaux d'abord (l'index des
-     * symboles — le mot se cherche dans le document), le fournisseur
-     * de l'hôte complète (un serveur de langage y voit tout
-     * l'espace de travail) ; chaque rangée y fait sauter le curseur.
-     * Sans symbole au curseur, la carte ne s'ouvre pas.
+     * LE FOURNISSEUR D'USAGES de l'hôte (R-C du rapport des popups) :
+     * un serveur de langage y voit l'espace de travail entier — les
+     * références SÉMANTIQUES (la déclaration, les lectures, les
+     * écritures) là où la recherche du document ne voit que son
+     * texte. La réponse peut être TARDIVE (le serveur répond à son
+     * rythme, de son fil) : la vue y repasse le sien.
+     */
+    public interface UsageProvider {
+
+        /**
+         * Les usages du symbole demandé.
+         *
+         * @param symbol le mot au curseur
+         * @param line   la ligne du curseur
+         * @param column la colonne du curseur
+         * @param answer l'écouteur de la réponse (les rangées, ou
+         *               null : le fournisseur ne sait pas — la
+         *               recherche du document tient la place)
+         */
+        void usagesFor(String symbol, int line, int column,
+                UsageAnswer answer);
+    }
+
+    /**
+     * L'écouteur d'une réponse d'usages (tardive ou non).
+     */
+    @FunctionalInterface
+    public interface UsageAnswer {
+
+        /**
+         * La réponse arrive.
+         *
+         * @param usages les rangées à montrer, null si le fournisseur
+         *               ne sait pas
+         */
+        void answer(List<UsageCard.Usage> usages);
+    }
+
+    /**
+     * Branche le fournisseur d'usages (null débranche : la recherche
+     * du document reprend la carte entière).
+     *
+     * @param provider le fournisseur, ou null
+     */
+    public void setUsageProvider(UsageProvider provider) {
+        usageProvider = provider;
+    }
+
+    private UsageProvider usageProvider;
+
+    /**
+     * Ouvre la carte des USAGES du symbole au curseur — LA COMMANDE
+     * UNIQUE (R-C du rapport des popups : deux moteurs y vivaient,
+     * deux résultats pour la MÊME intention — la recherche du document
+     * ouvrait la carte, le serveur sautait à la première occurrence).
+     * La carte vit immédiate aux occurrences du document (le REPLI —
+     * synchrone et local) ; le fournisseur de l'hôte (les références
+     * sémantiques du serveur) remplace la liste à son arrivée. Chaque
+     * rangée y fait sauter le curseur. Sans symbole au curseur, la
+     * carte ne s'ouvre pas.
      */
     public void showUsagesPopup() {
         String symbol = wordAtCaret();
         if (symbol.isEmpty()) {
             return;
         }
-        List<UsageCard.Usage> found = new ArrayList<>();
-        // les usages locaux : le document dit ses occurrences du mot
-        // (une fenêtre du tampon, jamais tout le document)
         int caret = Math.min(selection.caret(), buffer.length());
+        int line = buffer.lineOfOffset(caret);
+        // LE REPLI D'ABORD (la carte vit immédiate — la recherche du
+        // document est locale et synchrone) ; le fournisseur répondra
+        // s'il sait : sa réponse REMPLACE la liste (la présentation ne
+        // change JAMAIS : la carte des usages, toujours)
+        usageCard.open(symbol, localUsages(symbol, caret));
+        invalidate();
+        if (usageProvider != null) {
+            usageProvider.usagesFor(symbol, line,
+                    caret - buffer.getLineStart(line),
+                    usages -> post(() -> {
+                        if (usages != null && !usages.isEmpty()) {
+                            usageCard.open(symbol, usages);
+                            invalidate();
+                        }
+                    }));
+        }
+    }
+
+    /**
+     * Les usages LOCAUX d'un symbole : le document dit ses occurrences
+     * du mot (une fenêtre du tampon, jamais tout le document), chaque
+     * rangée porte son extrait (B7) et sa navigation.
+     */
+    private List<UsageCard.Usage> localUsages(String symbol, int caret) {
+        List<UsageCard.Usage> found = new ArrayList<>();
         int from = Math.max(0, caret - 8192);
         int to = Math.min(buffer.length(), caret + 4096);
         for (int at = from; at < to && found.size() < 24; ) {
@@ -5810,8 +5921,7 @@ public final class EditorView extends View {
                 at++;
             }
         }
-        usageCard.open(symbol, found);
-        invalidate();
+        return found;
     }
 
     /** La carte des usages (le harnais la lit). */
@@ -6641,16 +6751,42 @@ public final class EditorView extends View {
      * de symboles décrit sinon (nom, nature, ligne de déclaration),
      * un mot ordinaire ne dit que lui-même — l'index peut être en
      * cours de construction, la popup dit alors le mot sans la nature.
+     *
+     * <p>D-P1 (le rapport des popups) : l'ouverture N'ATTEND PLUS le
+     * fournisseur — l'attente vivait SUR le fil d'interface (jusqu'à
+     * 200 ms par question chez la façade du serveur). La question
+     * PART, la popup vit IMMÉDIATEMENT (son corps dit « … »), la
+     * réponse la REMPLACE à son arrivée ; le retour null (le serveur
+     * ne sait pas) rend la place à la description de l'index — le
+     * remplacement ne vaut qu'à la MÊME position (une réponse
+     * périmée n'évince personne).</p>
      */
     private void showSymbolInfo(int wordStart, int wordEnd, int line, int column) {
         String word = buffer.getText(wordStart, wordEnd);
         if (infoProvider != null) {
-            String provided = infoProvider.infoFor(line, column, word);
-            if (provided != null) {
-                showInfoPopup(word, provided, line, column);
-                return;
-            }
+            // la popup vit immédiate : « … » tient la place le temps
+            // du vol — le fil d'interface n'attend JAMAIS le serveur
+            showInfoPopup(word, InfoPopup.PENDING_BODY, line, column);
+            infoProvider.infoFor(line, column, word, text -> post(() -> {
+                if (text == null || text.isEmpty()) {
+                    // le fournisseur ne sait pas : l'index local tient
+                    // la place (à la même position seulement)
+                    replaceInfoPopup(localSymbolDescription(word), line, column);
+                } else {
+                    replaceInfoPopup(text, line, column);
+                }
+            }));
+            return;
         }
+        showInfoPopup(word, localSymbolDescription(word), line, column);
+    }
+
+    /**
+     * La description de l'index local (le repli du survol) : la nature
+     * du symbole et sa ligne de déclaration ; un mot ordinaire ne dit
+     * que lui-même.
+     */
+    private String localSymbolDescription(String word) {
         String description = "mot du texte";
         if (symbolIndex != null) {
             for (SymbolIndex.Symbol symbol : symbolIndex.symbols()) {
@@ -6661,7 +6797,7 @@ public final class EditorView extends View {
                 }
             }
         }
-        showInfoPopup(word, description, line, column);
+        return description;
     }
 
     /** Le début du mot qui contient l'offset (ou l'offset lui-même). */

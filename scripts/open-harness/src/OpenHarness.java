@@ -2408,8 +2408,18 @@ public final class OpenHarness {
         // le survol du serveur se demande par le « i » de la barre de
         // sélection (le double-tap ne fait que sélectionner)
         tap(editor.selectionBar().docsCenterX(), editor.selectionBar().centerY());
-        View.harnessDrain(2000L);
+        // la question EST PARTIE, la popup vit déjà (« … ») — la
+        // réponse asynchrone s'y attend (le vol du serveur, son fil
+        // à lui ; l'attente ne vit PLUS sur le fil d'interface —
+        // D-P1) : la boucle borne l'attente, la file y couche la
+        // réponse
         String hover = editor.infoPopupText();
+        for (int wait = 0; wait < 100
+                && (hover == null || !hover.contains("classe")); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            hover = editor.infoPopupText();
+        }
         check("le survol du serveur prime dans la popup",
                 hover != null && hover.contains("classe"));
         check("le titre porte le mot questionné",
@@ -2555,18 +2565,31 @@ public final class OpenHarness {
         doubleTapOfWord("static");
         frame();
         tap(editor.selectionBar().docsCenterX(), editor.selectionBar().centerY());
-        View.harnessDrain(2000L);
+        String prime = editor.infoPopupText();
+        for (int wait = 0; wait < 100
+                && (prime == null || !prime.contains("classe")); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            prime = editor.infoPopupText();
+        }
         check("le survol du serveur prime",
-                editor.infoPopupText() != null
-                        && editor.infoPopupText().contains("classe"));
+                prime != null && prime.contains("classe"));
         facade.setHoverEnabled(false);
         doubleTapOfWord("static");
         frame();
         tap(editor.selectionBar().docsCenterX(), editor.selectionBar().centerY());
-        View.harnessDrain(2000L);
+        // la fonction est COUPÉE : la réponse (null) vole quand même
+        // — le repli de l'index local s'y attend (le « … » ne
+        // compte pas pour une réponse locale)
+        String local = editor.infoPopupText();
+        for (int wait = 0; wait < 100
+                && (local == null || local.contains("…")); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            local = editor.infoPopupText();
+        }
         check("la fonction coupée retombe sur l'index local",
-                editor.infoPopupText() != null
-                        && !editor.infoPopupText().contains("classe"));
+                local != null && !local.contains("classe"));
         facade.setHoverEnabled(true);
         // la signature coupée : la carte se range ; revenue : le cache
         // la remonte
@@ -2704,7 +2727,7 @@ public final class OpenHarness {
             if ("Aller à la définition".equals(action.label())) {
                 hasDefinition = true;
             }
-            if ("Trouver les références".equals(action.label())) {
+            if ("Trouver les usages".equals(action.label())) {
                 hasReferences = true;
             }
             if ("Renommer le symbole".equals(action.label())) {
@@ -2715,7 +2738,7 @@ public final class OpenHarness {
             }
         }
         check("l'ampoule porte l'aller-à la définition", hasDefinition);
-        check("l'ampoule porte les références", hasReferences);
+        check("l'ampoule porte les usages (la commande unique)", hasReferences);
         check("l'ampoule porte le renommage", hasRename);
         check("l'ampoule porte le formatage", hasFormat);
         // le choix de la rangée « Aller à la définition » : le caret
@@ -2756,27 +2779,26 @@ public final class OpenHarness {
                         && beforeLine != declarationLine);
         detail("aller-à : ligne " + beforeLine + " → " + editor.caretLine());
 
-        // les références : chaque usage se surligne, la première fait
-        // sauter le caret (la déclaration, première occurrence du
-        // document)
+        // LES USAGES — LA COMMANDE UNIQUE (R-C du rapport des
+        // popups) : la carte vit immédiate aux occurrences du
+        // document (le repli), les références SÉMANTIQUES du serveur
+        // y remplacent la liste à leur arrivée ; chaque usage se
+        // surligne (la teinte bleue du protocole) — plus de saut
+        // aveugle à la première occurrence : la carte LISTE, le choix
+        // y navigue
         facade.requestReferences();
-        int firstOccurrence = -1;
-        for (int wait = 0; wait < 100 && firstOccurrence < 0; wait++) {
+        for (int wait = 0; wait < 100
+                && editor.serverHighlights().size() < 2; wait++) {
             Thread.sleep(20L);
             View.harnessDrain(500L);
-            TextBuffer buffer = editor.getBuffer();
-            for (int line = 0; line < buffer.getLineCount(); line++) {
-                if (buffer.getText(buffer.getLineStart(line), buffer.getLineEnd(line))
-                        .contains("int MAX")) {
-                    firstOccurrence = line;
-                    break;
-                }
-            }
         }
-        check("les références sautent à la première occurrence",
-                firstOccurrence >= 0 && editor.caretLine() == firstOccurrence);
-        check("les références surlignent chaque usage",
+        check("les usages surlignent chaque occurrence",
                 editor.serverHighlights().size() == 2);
+        check("la carte des usages vit (la commande unique)",
+                editor.usageCard().isShown()
+                        && !editor.usageCard().usages().isEmpty());
+        check("le saut aveugle est mort (la carte liste, le choix navigue)",
+                editor.caretLine() == declarationLine);
 
         // le renommage : la carte s'ouvre au caret (le nom neuf
         // démarre du symbole), « PLAFOND » s'y tape, la validation

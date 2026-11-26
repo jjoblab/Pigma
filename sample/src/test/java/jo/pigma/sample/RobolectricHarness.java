@@ -100,6 +100,7 @@ public final class RobolectricHarness {
         completionEnter();
         foldPlaceholderText();
         diagnosticBadge();
+        asyncHover();
         stateSaveRestore();
         assertTrue(failures + " vérification(s) en échec", failures == 0);
         System.out.println("résumé harnais réel : " + scenarios
@@ -673,6 +674,93 @@ public final class RobolectricHarness {
     }
 
     /**
+     * LE SURVOL ASYNCHRONE (D-P1 du rapport des popups) : l'ouverture
+     * N'ATTEND PLUS le fournisseur — la popup vit immédiate (son
+     * corps dit « … » le temps du vol), la réponse la REMPLACE à son
+     * arrivée ; le retour null (le fournisseur ne sait pas) rend la
+     * place à la description de l'index local, la réponse périmée
+     * (la question a bougé) n'évince personne.
+     */
+    private void asyncHover() throws InterruptedException {
+        begin("survol asynchrone : la popup vit immédiate, la réponse remplace");
+        // un fournisseur d'essai : il répond depuis SON fil (la
+        // réponse y dort un peu — le serveur lent de la vraie vie)
+        final String[] served = {null};
+        editor.setInfoProvider((line, column, word, answer) -> new Thread(() -> {
+            try {
+                Thread.sleep(120L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            answer.answer(served[0]);
+        }, "fournisseur d'essai").start());
+        // un mot du document se sélectionne, la documentation s'y
+        // demande (le « i » de la barre)
+        selectFirstWord();
+        editor.showSelectionDocs();
+        frame();
+        check("la popup vit IMMÉDIATEMENT (l'ouverture n'attend pas)",
+                editor.infoPopupLine() == editor.caretLine()
+                        && "\u2026".equals(editor.infoPopupText()));
+        // la réponse du serveur arrive : elle REMPLACE le corps
+        served[0] = "la réponse sémantique du serveur";
+        idle(1000L);
+        frame();
+        check("la réponse tardive remplace le corps de la popup",
+                "la réponse sémantique du serveur".equals(editor.infoPopupText()));
+        // le fournisseur ne sait plus : l'index local reprend la place
+        served[0] = null;
+        editor.showSelectionDocs();
+        idle(1000L);
+        frame();
+        check("le retour null rend la place à l'index local",
+                editor.infoPopupText() != null
+                        && !"\u2026".equals(editor.infoPopupText()));
+        // la réponse périmée n'évince personne : la question a bougé
+        editor.setInfoProvider((line, column, word, answer) ->
+                answer.answer("la réponse périmée"));
+        selectFirstWord();
+        int askedLine = editor.caretLine();
+        editor.showSelectionDocs();
+        idle(500L);
+        frame();
+        check("la réponse périmée n'évince personne",
+                "la réponse périmée".equals(editor.infoPopupText()));
+        editor.setInfoProvider(null);
+        // la question bouge : la popup ancrée ailleurs ne se laisse
+        // pas évincer par l'ancienne réponse (remplacée à SA position)
+        check("la question bougée garde sa réponse",
+                editor.infoPopupLine() == askedLine);
+    }
+
+    /**
+     * Sélectionne le premier identifiant du document (le mot de la
+     * question du survol) : le curseur s'y pose, la sélection l'englobe.
+     */
+    private void selectFirstWord() {
+        String body = editor.getBuffer().toString();
+        int wordStart = -1;
+        int wordEnd = -1;
+        for (int at = 0; at < body.length(); at++) {
+            if (Character.isJavaIdentifierStart(body.charAt(at))) {
+                wordStart = at;
+                wordEnd = at;
+                while (wordEnd < body.length()
+                        && Character.isJavaIdentifierPart(body.charAt(wordEnd))) {
+                    wordEnd++;
+                }
+                break;
+            }
+        }
+        assertTrue("un mot vit au document", wordStart >= 0);
+        // la sélection pose l'ancre et le curseur (le caretTo qui
+        // suivrait RANGERAIT la sélection — la question du survol
+        // vit d'une sélection)
+        editor.setSelection(wordStart, wordEnd);
+        frame();
+    }
+
+    /**
      * L'état sauvegardé : la sauvegarde et la restauration du VRAI
      * cadre (BaseSavedState) — le défaut du rapport y était invisible
      * aux stubs : le vrai cadre l'a épinglé, le correctif vit.
@@ -733,6 +821,18 @@ public final class RobolectricHarness {
     /** Vide la file du fil d'interface (les différés y courent). */
     private void idle() {
         Shadows.shadowOf(Looper.getMainLooper()).idle();
+    }
+
+    /**
+     * L'attente dorée puis la file vide : la réponse du fournisseur
+     * vole de son fil, sa livraison vit au fil d'interface (le post
+     * y couche la réponse).
+     *
+     * @param millis le temps du vol (ms)
+     */
+    private void idle(long millis) throws InterruptedException {
+        Thread.sleep(millis);
+        idle();
     }
 
     /**

@@ -66,7 +66,7 @@ propriétaire (`RAPPORT-POPUPS-PIGMA.md`, 2026-11-26, version analysée
 `8a636c0`) : ses défauts s'y notent `D-P*`, ses doublons `R-*`, ses
 popups manquantes `M*` — la table suit son §9.
 
-| 88 | Popups, l'étape 1 du rapport : le survol ASYNCHRONE (la popup s'ouvre immédiatement avec « … », remplacée à l'arrivée — plus jamais d'attente serveur sur le fil d'interface) ; la FUSION des « usages » (une seule commande : serveur si disponible, recherche textuelle en repli, TOUJOURS présentée dans UsageCard) ; l'ActionRegistry (une seule définition des cinq actions d'édition, lue par la carte d'actions rapides et l'étage Édition du débordement) | D-P1, R-A, R-C | prévu | — | — |
+| 88 | Popups, l'étape 1 du rapport : le survol ASYNCHRONE (la question PART — le contrat InfoPopupProvider/InfoAnswer — la popup vit immédiate avec « … », la réponse la remplace à son arrivée, le null rend la place à l'index local ; `hover.get` meurt avec `setRequestTimeoutMs`) ; LA COMMANDE UNIQUE des usages (R-C — UsageProvider : la carte vit immédiate au repli textuel, les références sémantiques du serveur y REMPLACENT la liste, les surlignages demeurent, plus de saut aveugle) ; l'ActionRegistry (R-A — les cinq actions d'édition définies UNE FOIS, les deux cartes y mènent leurs rangées) | D-P1, R-A, R-C | **fait** | `docs/chantiers/88.md` | à pousser |
 | 89 | Popups, l'étape 2 : les modèles LSP COMPLETS — LspCompletionItem (kind, detail, documentation, insertText/textEdit, sortText, deprecated ; `completionItem/resolve` à la sélection), LspSignatureHelp (les surcharges, la documentation du paramètre), LspHover (le Markdown) | D-P2, D-P5, D-P6, M8, M9 | prévu | — | — |
 | 90 | Popups, l'étape 3 : PopupHost (le gestionnaire — un seul état « popup active », l'exclusion mutuelle, la fermeture au changement de contexte, la fin des 23 fermetures manuelles et du popup fantôme) ; CardBase/ListCard (la pose, le style, le défilement, la croix) ; migration d'une carte à la fois (UsageCard et DiagnosticCard d'abord) | D-P4, R-E, R-F | prévu | — | — |
 | 91 | Popups, l'étape 4 — les P1 manquantes : le CHOIX DE CIBLES (plusieurs définitions), la STRUCTURE DU FICHIER (l'arbre des symboles), la LISTE DES PROBLÈMES (parcourir les erreurs), la SUGGESTION D'IMPORT, l'Historique DU PRESSE-PAPIERS | M1, M2, M13, M14, M20, D-P3, R-D | prévu | — | — |
@@ -90,6 +90,13 @@ popups manquantes `M*` — la table suit son §9.
 
 ## Journal des mises à jour
 
+- 2026-11-27 — chantier 88 fermé : la première étape du plan des
+  popups — D-P1 réglé (le survol n'attend plus sur le fil
+  d'interface : la popup vit immédiate, la réponse la remplace),
+  R-C réglé (la commande unique des usages : la carte vit immédiate
+  au repli, le serveur y remplace sa liste, plus de saut aveugle),
+  R-A réglé (ActionRegistry : les cinq actions d'édition définies
+  une seule fois, lues par les deux cartes).
 - 2026-11-27 — chantier 87 fermé : D6/R1 ACHÈVENT le découpage de
   la vue (TouchController — l'état du toucher : la mémoire du
   contact et ses verdicts, horloge injectée, JVM pur) ; le retour

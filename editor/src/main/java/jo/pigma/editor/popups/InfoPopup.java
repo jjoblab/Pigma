@@ -26,6 +26,14 @@ public final class InfoPopup {
 
     /** Le nombre maximal de rangées du corps (la queue s'abrège). */
     private static final int MAX_BODY_ROWS = 8;
+
+    /**
+     * Le corps de l'ATTENTE (D-P1 du rapport des popups) : la question
+     * part au fournisseur, la popup vit immédiate — « … » tient la
+     * place le temps du vol, la réponse la remplace (ou rend la place
+     * à la description de l'index local si le fournisseur ne sait pas).
+     */
+    public static final String PENDING_BODY = "\u2026";
     /** Le titre montré (null : aucun titre, ou la popup est rangée). */
     private String title;
 

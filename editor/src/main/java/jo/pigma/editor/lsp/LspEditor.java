@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.eclipse.lsp4j.services.LanguageServer;
@@ -17,6 +16,7 @@ import jo.pigma.core.TextListener;
 import jo.pigma.editor.EditorView;
 import jo.pigma.editor.popups.DiagnosticCard;
 import jo.pigma.editor.popups.QuickActionCard;
+import jo.pigma.editor.popups.UsageCard;
 import jo.pigma.editor.selection.SelectionState;
 import jo.pigma.lsp.LspCapabilities;
 import jo.pigma.lsp.LspWorkspace;
@@ -185,7 +185,6 @@ public final class LspEditor {
     private volatile boolean documentHighlightEnabled = true;
 
     /** Le temps d'attente du survol en millisecondes (au-delà, la réponse lente arrivera en asynchrone). */
-    private long requestTimeoutMs = 200L;
 
     /** Le préfixe du dernier envoi de complétion (la clef du cache). */
     private volatile String completionPrefix;
@@ -652,16 +651,6 @@ public final class LspEditor {
         view.post(view::invalidate);
     }
 
-    /**
-     * Le temps d'attente du survol : au-delà, la réponse lente
-     * gardera sa voie — elle remplacera la popup à son arrivée, si
-     * la question vit toujours à la même position.
-     *
-     * @param timeoutMs le temps d'attente en millisecondes
-     */
-    public void setRequestTimeoutMs(long timeoutMs) {
-        requestTimeoutMs = timeoutMs;
-    }
 
     /**
      * L'écouteur des diagnostics du serveur : le panneau de l'hôte s'y
@@ -758,26 +747,112 @@ public final class LspEditor {
     }
 
     /**
-     * Les références du symbole au curseur : chaque usage y revient —
-     * les places du MÊME document se surlignent (la teinte bleue du
-     * protocole), la première y fait sauter le curseur ; les places
-     * d'un autre document partent à l'écouteur de l'hôte.
+     * LES USAGES du symbole au curseur — LA COMMANDE UNIQUE (R-C du
+     * rapport des popups : deux moteurs y vivaient, deux résultats
+     * pour la MÊME intention — la recherche du document ouvrait la
+     * carte, le serveur sautait à la première occurrence). La carte
+     * vit immédiate aux occurrences du document (le repli), les
+     * références SÉMANTIQUES du serveur y REMPLACENT la liste à leur
+     * arrivée ; les places du MÊME document se surlignent aussi (la
+     * teinte bleue du protocole — chaque usage se lit d'un coup
+     * d'œil dans le texte), les places d'un autre document partent à
+     * l'écouteur de l'hôte.
      */
     public void requestReferences() {
-        if (session == null || !capabilities.references()) {
+        view.showUsagesPopup();
+    }
+
+    /**
+     * Le fournisseur d'usages de la vue : les références du serveur
+     * ({@code textDocument/references}) deviennent les RANGÉES de la
+     * carte (chaque rangée porte son extrait, le choix y navigue —
+     * plus un saut aveugle à la première occurrence) ; la réponse
+     * nulle (pas de liaison, la capacité manque, le serveur se tait)
+     * rend la place à la recherche du document.
+     *
+     * @param symbol le mot au curseur
+     * @param line   la ligne du curseur
+     * @param column la colonne du curseur
+     * @param answer l'écouteur de la réponse (les rangées, ou null)
+     */
+    private void usagesFor(String symbol, int line, int column,
+            EditorView.UsageAnswer answer) {
+        if (session == null || uri == null || !capabilities.references()) {
+            answer.answer(null);
             return;
         }
-        LspPosition position = caretPosition();
+        LspPosition position = new LspPosition(line, column);
         session.references(uri, position, true).whenComplete((places, failure) ->
                 view.post(() -> {
-                    navigateTo(places, "référence");
-                    // toutes les places du document se surlignent :
-                    // les usages se lisent d'un coup d'œil
-                    if (places != null && !places.isEmpty()) {
-                        view.setServerHighlights(rangesOf(places));
-                        highlightGeneration.incrementAndGet();
+                    if (places == null || places.isEmpty()) {
+                        answer.answer(null);
+                        return;
                     }
+                    // toutes les places du document se surlignent : les
+                    // usages se lisent d'un coup d'œil
+                    view.setServerHighlights(rangesOf(places));
+                    highlightGeneration.incrementAndGet();
+                    List<LspLocation> external = new ArrayList<>();
+                    String externalUri = null;
+                    for (LspLocation place : places) {
+                        if (place != null && !uri.equals(place.uri())) {
+                            if (externalUri == null) {
+                                externalUri = place.uri();
+                            }
+                            if (place.uri().equals(externalUri)) {
+                                external.add(place);
+                            }
+                        }
+                    }
+                    if (!external.isEmpty() && navigationListener != null) {
+                        navigationListener.onExternalPlaces(externalUri,
+                                List.copyOf(external));
+                    }
+                    answer.answer(usageRowsOf(places));
                 }));
+    }
+
+    /**
+     * Les rangées de la carte pour les places d'un même document :
+     * l'extrait de la ligne (le code se lit dans la carte), la
+     * navigation au choix. Null quand aucune place n'y vit : la
+     * recherche du document tient la place.
+     *
+     * @param places les places du serveur
+     * @return les rangées, ou null
+     */
+    private List<UsageCard.Usage> usageRowsOf(List<LspLocation> places) {
+        TextBuffer buffer = view.getBuffer();
+        List<UsageCard.Usage> rows = new ArrayList<>();
+        for (LspLocation place : places) {
+            if (place == null || place.range() == null
+                    || !uri.equals(place.uri())) {
+                continue;
+            }
+            int offset = Math.min(offsetOf(buffer, place.range().start()),
+                    buffer.length());
+            int line = buffer.lineOfOffset(offset);
+            int column = offset - buffer.getLineStart(line);
+            int lineStart = buffer.getLineStart(line);
+            String lineText = buffer.getText(lineStart,
+                    buffer.getLineEnd(line)).toString();
+            String excerpt = lineText.length() > 80
+                    ? lineText.substring(0, 80) : lineText;
+            final int at = offset;
+            rows.add(new UsageCard.Usage(line, column, "", excerpt,
+                    () -> caretAt(at)));
+        }
+        return rows.isEmpty() ? null : rows;
+    }
+
+    /**
+     * Le curseur se pose à l'offset (borné au texte vivant — la carte
+     * peut vivre plus que le document d'avant).
+     *
+     * @param offset l'offset visé
+     */
+    private void caretAt(int offset) {
+        view.caretTo(Math.min(offset, view.getBuffer().length()));
     }
 
     /**
@@ -929,7 +1004,7 @@ public final class LspEditor {
         }
         if (capabilities.references()) {
             actions.add(new QuickActionCard.Entry(
-                    "Trouver les références", this::requestReferences));
+                    "Trouver les usages", view::showUsagesPopup));
         }
         if (capabilities.rename()) {
             actions.add(new QuickActionCard.Entry(
@@ -1210,28 +1285,27 @@ public final class LspEditor {
      */
     private void attachProviders() {
         final String documentUri = uri;
-        // le survol du serveur prime : la réponse attend au plus le
-        // temps posé ; au-delà, la popup locale tient la place et la
-        // réponse lente la remplacera à son arrivée (le survol
-        // asynchrone — la voie du serveur réel)
-        view.setInfoProvider((line, column, word) -> {
+        // LE FOURNISSEUR D'USAGES (R-C) : les références sémantiques
+        // du serveur remplacent la liste locale à leur arrivée (la
+        // présentation ne change JAMAIS : la carte des usages)
+        view.setUsageProvider(this::usagesFor);
+        // LE SURVOL ASYNCHRONE (D-P1 du rapport des popups — la
+        // coquille au-dessus) : la question part, le fil d'interface
+        // N'ATTEND JAMAIS (l'attente vivait SUR le fil, jusqu'à
+        // requestTimeoutMs par question) ; la popup vit immédiate
+        // (« … »), la réponse la remplace à son arrivée — le retour
+        // null (le serveur ne sait pas, le survol est coupé, la
+        // liaison est morte) rend la place à la description de
+        // l'index local
+        view.setInfoProvider((line, column, word, answer) -> {
             if (!hoverEnabled || session == null) {
-                return null;
+                answer.answer(null);
+                return;
             }
-            CompletableFuture<String> hover =
-                    session.hover(documentUri, new LspPosition(line, column));
-            try {
-                return hover.get(requestTimeoutMs, TimeUnit.MILLISECONDS);
-            } catch (java.util.concurrent.TimeoutException late) {
-                hover.whenComplete((answer, failure) -> {
-                    if (answer != null && !answer.isEmpty()) {
-                        view.post(() -> view.replaceInfoPopup(answer, line, column));
-                    }
-                });
-            } catch (Exception noAnswer) {
-                return null;
-            }
-            return null;
+            session.hover(documentUri, new LspPosition(line, column))
+                    .whenComplete((hoverText, failure) -> answer.answer(
+                            failure != null || hoverText == null || hoverText.isEmpty()
+                                    ? null : hoverText));
         });
         // la complétion du serveur À LA LEÇON DE LA RÉFÉRENCE (l'IDE de
         // référence accumule ses candidats et FILTRE CÔTÉ CLIENT à la
