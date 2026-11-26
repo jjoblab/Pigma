@@ -142,6 +142,8 @@ public final class EditorView extends View {
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint caretPaint = new Paint();
     private final Paint composePaint = new Paint();
+    /** Le placeholder du pli replié ({...} à la référence). */
+    private final Paint placeholderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private Paint.FontMetrics fontMetrics;
     private float charWidth;
     private float lineHeight;
@@ -760,6 +762,7 @@ public final class EditorView extends View {
         textPx = clamped;
         textPaint.setTextSize(clamped);
         inlayPaint.setTextSize(clamped * 0.85f);
+        placeholderPaint.setTextSize(clamped);
         // la gouttière suit le zoom : les numéros s'agrandissent au
         // pincement comme le corps (le facteur porte le corps courant
         // sur le corps de repos de 14 sp)
@@ -1032,6 +1035,20 @@ public final class EditorView extends View {
          * @return les diagnostics, jamais null (vide : aucun)
          */
         List<DiagnosticCard.Entry> diagnosticsAt(int line);
+
+        /**
+         * La plage d'un diagnostic du serveur sur la ligne (le tap
+         * précis s'y éprouve : le doigt sur LE SOULIGNÉ ouvre la
+         * carte, pas sur la ligne entière — la leçon de la référence,
+         * son findHighlightByOffset à l'offset exact).
+         *
+         * @param line   l'indice de la ligne
+         * @param column la colonne du doigt
+         * @return vrai quand un diagnostic du serveur couvre la colonne
+         */
+        default boolean diagnosticCovers(int line, int column) {
+            return false;
+        }
     }
 
     /**
@@ -2935,6 +2952,14 @@ public final class EditorView extends View {
             if (end > start) {
                 drawTokens(canvas, line, start, baseline);
             }
+            // LE PLACEHOLDER DU PLI REPLIÉ (la leçon de la référence :
+            // la ligne d'en-tête d'un pli replié y montre « {... } » —
+            // « /**...*/ » pour un bloc de documentation, « //... »
+            // pour un commentaire, « ... » pour les imports) : la
+            // nature du pli se lit au premier caractère de l'en-tête
+            if (folds.isFolded(line)) {
+                drawFoldPlaceholder(canvas, line, baseline);
+            }
             drawInlayHint(canvas, line, baseline);
             if (composingStart >= 0) {
                 drawComposeUnderline(canvas, line, start, end, baseline);
@@ -3543,15 +3568,36 @@ public final class EditorView extends View {
      * moins quand le bloc est ouvert, plus quand il est replié.
      */
     private void drawFoldMarker(Canvas canvas, int line, boolean isFolded) {
+        // LES CHEVRONS À LA RÉFÉRENCE (EditorGutterComponentImpl y
+        // dessine ses chevrons dans la COLONNE DES PLIS du gutter) :
+        // le pli REPLIÉ porte son carré au plus À LA LIGNE D'OUVERTURE
+        // ; le pli OUVERT porte DEUX chevrons — haut à l'ouverture,
+        // bas à la fermeture — joints par le filet vertical pointillé
         float baseline = lineBaseline(line);
         float mid = baseline + (fontMetrics.top + fontMetrics.bottom) / 2.0f;
-        float left = getPaddingLeft() - dp(9);
-        float right = left + dp(7);
-        canvas.drawRect(left, mid - dp(3), right, mid + dp(3), bracketPaint);
-        canvas.drawLine(left + dp(1), mid, right - dp(1), mid, bracketPaint);
+        float cx = getPaddingLeft() - dp(9);
         if (isFolded) {
-            float midX = (left + right) / 2.0f;
-            canvas.drawLine(midX, mid - dp(2), midX, mid + dp(2), bracketPaint);
+            gutter.drawFoldAnchor(canvas, Gutter.FOLD_COLLAPSED, cx, mid);
+            return;
+        }
+        // le pli ouvert : les bornes hautes et basses, le filet entre
+        int endLine = foldBounds.foldEndLine(line);
+        if (endLine < 0) {
+            gutter.drawFoldAnchor(canvas, Gutter.FOLD_COLLAPSED, cx, mid);
+            return;
+        }
+        gutter.drawFoldAnchor(canvas, Gutter.FOLD_EXPANDED_TOP, cx, mid);
+        if (endLine < buffer.getLineCount() && !isHidden(endLine)) {
+            float endBaseline = lineBaseline(endLine);
+            float endMid = endBaseline
+                    + (fontMetrics.top + fontMetrics.bottom) / 2.0f;
+            gutter.drawFoldAnchor(canvas, Gutter.FOLD_EXPANDED_BOTTOM, cx,
+                    endMid);
+            gutter.drawFoldLine(canvas, cx, mid + dp(6), endMid - dp(6));
+        } else {
+            // la borne basse cachée (pli dans le pli) : le filet va
+            // jusqu'au bas de la fenêtre visible
+            gutter.drawFoldLine(canvas, cx, mid + dp(6), getHeight());
         }
     }
 
@@ -3580,10 +3626,12 @@ public final class EditorView extends View {
     // --------------------------------------------------- plis (régions repliables)
 
     /**
-     * Le doigt sur la colonne des marqueurs de la gouttière : la
-     * ligne qui porte un diagnostic y ouvre sa carte, l'ampoule de
-     * la ligne du curseur y ouvre ses actions rapides — une ligne
-     * sans marqueur ne prend rien (le pli vit derrière).
+     * Le doigt sur la colonne des marqueurs de la gouttière : LE
+     * MARQUEUR SEUL ouvre sa carte (la leçon de la référence : son
+     * icône d'erreur gouttière s'y clique — la LIGNE sans marqueur
+     * ne prend rien, le caret ne bouge pas au tap dans la gouttière
+     * vide) — le rond d'erreur ouvre la carte de diagnostic,
+     * l'ampoule de la ligne du curseur ouvre ses actions rapides.
      *
      * @param line la ligne touchée
      * @return vrai quand un marqueur a pris le geste
@@ -3595,7 +3643,7 @@ public final class EditorView extends View {
         if (lineHasDiagnostics(line)) {
             return openDiagnosticsAtLine(line);
         }
-        if (line == caretLine()) {
+        if (line == caretLine() && !quickActions.isEmpty()) {
             return openQuickActionsAtLine(line);
         }
         return false;
@@ -3643,11 +3691,19 @@ public final class EditorView extends View {
      * @return vrai quand un souligné a pris le geste
      */
     private boolean openDiagnosticAtTap(int offset) {
+        int line = buffer.lineOfOffset(Math.min(offset, buffer.length()));
+        int column = Math.min(offset, buffer.length()) - buffer.getLineStart(line);
+        // LES DIAGNOSTICS DU SERVEUR D'ABORD (leur plage exacte — la
+        // leçon de la référence : findHighlightByOffset à l'OFFSET du
+        // doigt, jamais la ligne entière) : le serveur dit sa plage
+        if (diagnosticProvider != null
+                && diagnosticProvider.diagnosticCovers(line, column)
+                && openDiagnosticsAtLine(line)) {
+            return true;
+        }
         if (diagnostics == null || analysisRevision != buffer.getRevision()) {
             return false;
         }
-        int line = buffer.lineOfOffset(Math.min(offset, buffer.length()));
-        int column = Math.min(offset, buffer.length()) - buffer.getLineStart(line);
         for (DiagnosticsDocument.Diagnostic local
                 : diagnostics.betweenLines(line, line)) {
             int startCol = local.start() - buffer.getLineStart(line);
@@ -3832,6 +3888,32 @@ public final class EditorView extends View {
      * aux couches sémantiques différentes ne partagent pas un plan) et
      * porte les couleurs résolues.
      */
+    /**
+     * Le PLACEHOLDER du pli replié (la leçon de la référence :
+     * getPlaceholderText y rend le triolet d'accolades pour un bloc,
+     * le commentaire étoilé suivi de points pour une documentation,
+     * le double slash suivi de points pour un commentaire de ligne) —
+     * posé juste après le texte de l'en-tête, à l'encre atténuée du
+     * texte.
+     */
+    private void drawFoldPlaceholder(Canvas canvas, int line, float baseline) {
+        String head = buffer.getText(buffer.getLineStart(line),
+                buffer.getLineEnd(line));
+        String trimmed = head.stripLeading();
+        String placeholder = "{...}";
+        if (trimmed.startsWith("/*")) {
+            placeholder = "/**...*/";
+        } else if (trimmed.startsWith("//")) {
+            placeholder = "//...";
+        }
+        float x = getPaddingLeft() + head.length() * charWidth;
+        // l'encre atténuée du texte du thème (la référence y dessine
+        // son placeholder à la couleur du texte, discrètement)
+        placeholderPaint.setColor((theme.defaultColor() & 0x00FFFFFF)
+                | 0x88000000);
+        canvas.drawText(placeholder, x, baseline, placeholderPaint);
+    }
+
     private void drawTokens(Canvas canvas, int line, int start, float baseline) {
         long engineBegin = System.nanoTime();
         SyntaxDocument.LineTokens entry = syntax.lineTokens(line);
@@ -3989,7 +4071,18 @@ public final class EditorView extends View {
      * se tape pas).
      */
     private void updateSuggestions() {
-        if (selectionDragBound != 0 || textDragging || hasSelection()) {
+        if (selectionDragBound != 0 || textDragging) {
+            completionCard.set(List.of(), "");
+            suggestionWordStart = -1;
+            return;
+        }
+        // LA COMPOSITION N'EST PAS UNE SÉLECTION (la leçon de la
+        // référence : la lookup vit PENDANT la frappe — le clavier
+        // logiciel compose le mot, la zone de composition n'est pas
+        // une ancre de sélection) : la carte survit à la composition,
+        // elle se re-filtre au préfixe qui croît. Une sélection VIVANTE
+        // (le doigt a borné une étendue) range la carte seule.
+        if (hasSelection()) {
             completionCard.set(List.of(), "");
             suggestionWordStart = -1;
             return;

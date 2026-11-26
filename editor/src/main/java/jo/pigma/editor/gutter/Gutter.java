@@ -1,6 +1,7 @@
 package jo.pigma.editor.gutter;
 
 import android.graphics.Canvas;
+import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
@@ -51,6 +52,27 @@ public final class Gutter {
 
     /** Le code du marqueur de point d'arrêt (le rond plein de la ligne). */
     public static final int MARKER_BREAKPOINT = 4;
+
+    /** Le pli REPLIÉ : le carré au plus (la référence le dessine ainsi). */
+    public static final int FOLD_COLLAPSED = 10;
+
+    /** Le pli OUVERT, borne HAUTE : le chevron pointé vers le bas. */
+    public static final int FOLD_EXPANDED_TOP = 11;
+
+    /** Le pli OUVERT, borne BASSE : le chevron pointé vers le haut. */
+    public static final int FOLD_EXPANDED_BOTTOM = 12;
+
+    /** Le côté d'un chevron de pli (dp) — la référence : min(4, lineHeight/2-2)*2. */
+    private static final int FOLD_SIDE_DP = 12;
+
+    /** Le filet vertical du pli ouvert (la ligne pointillée entre les chevrons). */
+    private final Paint foldLinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** L'encre des chevrons de pli (le gris discret de la référence). */
+    private final Paint foldPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** Le fond des chevrons (le panneau les perfore — la référence remplit son polygone). */
+    private final Paint foldFillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     /** Le côté d'un marqueur (dp). */
     private static final int MARKER_SIDE_DP = 18;
@@ -110,7 +132,104 @@ public final class Gutter {
         panelBorder.setStrokeWidth(1.0f * density);
         panelBorder.setColor(0x14000000);
         shadowPaint.setStyle(Paint.Style.FILL);
+        foldPaint.setStyle(Paint.Style.STROKE);
+        foldPaint.setStrokeWidth(1.4f * density);
+        foldPaint.setColor(0xFF9E9E9E);
+        foldFillPaint.setStyle(Paint.Style.FILL);
+        foldLinePaint.setStyle(Paint.Style.STROKE);
+        foldLinePaint.setStrokeWidth(1.0f * density);
+        foldLinePaint.setColor(0x509E9E9E);
+        foldLinePaint.setPathEffect(new DashPathEffect(
+                new float[] { 2.5f * density, 3.0f * density }, 0.0f));
         applyStyle();
+    }
+
+    /**
+     * Dessine un CHEVRON DE PLI à la référence (EditorGutterComponentImpl
+     * y dessine drawSquareWithPlus et drawDirectedBox) : le pli REPLIÉ
+     * est un carré barré d'un plus, le pli OUVERT porte DEUX chevrons
+     * — haut à la ligne d'ouverture, bas à la ligne de fermeture —
+     * joints par un filet vertical pointillé.
+     *
+     * @param canvas le canevas de la trame
+     * @param kind   FOLD_COLLAPSED, FOLD_EXPANDED_TOP ou FOLD_EXPANDED_BOTTOM
+     * @param cx     l'abscisse du centre de la colonne des plis (px)
+     * @param cy     l'ordonnée du CENTRE de la ligne (px)
+     */
+    public void drawFoldAnchor(Canvas canvas, int kind, float cx, float cy) {
+        float side = dp(FOLD_SIDE_DP);
+        float half = side / 2.0f;
+        if (kind == FOLD_COLLAPSED) {
+            // le carré au PLUS (drawSquareWithPlus de la référence) :
+            // un carré au filet, la barre horizontale du moins, la
+            // barre verticale du plus
+            float top = cy - half;
+            foldFillPaint.setColor(0x00000000);
+            canvas.drawRect(cx - half, top, cx + half, top + side, foldFillPaint);
+            canvas.drawRect(cx - half, top, cx + half, top + side, foldPaint);
+            canvas.drawLine(cx - half + dp(2), cy, cx + half - dp(2), cy, foldPaint);
+            canvas.drawLine(cx, cy - half + dp(2), cx, cy + half - dp(2), foldPaint);
+        } else if (kind == FOLD_EXPANDED_TOP) {
+            // le chevron pointé vers le bas (drawDirectedBox) : la
+            // flèche coiffée d'un moins — la référence y voit « le
+            // haut du pli ouvert »
+            float top = cy - half;
+            drawDirectedBox(canvas, cx, top, side, side, side - dp(2));
+        } else if (kind == FOLD_EXPANDED_BOTTOM) {
+            // le chevron pointé vers le haut, à la ligne de fermeture
+            float bottom = cy + half;
+            drawDirectedBox(canvas, cx, bottom, side, -side, -side + dp(2));
+        }
+    }
+
+    /**
+     * Le polygone du chevron de la référence (drawDirectedBox) : un
+     * trapèze pointé, rempli du fond, au filet — le moins y barre la
+     * base.
+     */
+    private void drawDirectedBox(Canvas canvas, float cx, float y,
+            float width, float height, float baseHeight) {
+        float half = width / 2.0f;
+        Path box = new Path();
+        box.moveTo(cx - half, y);
+        box.lineTo(cx + half, y);
+        box.lineTo(cx + half, y + baseHeight);
+        box.lineTo(cx, y + height);
+        box.lineTo(cx - half, y + baseHeight);
+        box.close();
+        foldFillPaint.setColor(0x00000000);
+        canvas.drawPath(box, foldFillPaint);
+        canvas.drawPath(box, foldPaint);
+        // le MOINS à mi-base (la référence y barre la base du chevron)
+        float minusY = y + baseHeight / 2.0f + (height - baseHeight) / 4.0f;
+        canvas.drawLine(cx - half + dp(2), minusY, cx + half - dp(2), minusY,
+                foldPaint);
+    }
+
+    /**
+     * Le FILET VERTICAL du pli ouvert (paintFoldingLines de la
+     * référence) : la ligne pointillée qui joint le chevron haut au
+     * chevron bas, à la colonne des plis.
+     *
+     * @param canvas le canevas de la trame
+     * @param cx     l'abscisse de la colonne des plis (px)
+     * @param fromY  l'ordonnée du bas du chevron haut (px)
+     * @param toY    l'ordonnée du haut du chevron bas (px)
+     */
+    public void drawFoldLine(Canvas canvas, float cx, float fromY, float toY) {
+        if (toY > fromY) {
+            canvas.drawLine(cx, fromY, cx, toY, foldLinePaint);
+        }
+    }
+
+    /**
+     * La colonne des plis demande sa largeur (le chevron y respire) :
+     * la référence y met le chevron plus deux pixels.
+     *
+     * @return la largeur de la colonne des plis (px)
+     */
+    public float foldColumnWidth() {
+        return dp(FOLD_SIDE_DP) + dp(2);
     }
 
     /**

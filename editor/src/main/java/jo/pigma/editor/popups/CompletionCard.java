@@ -119,6 +119,15 @@ public final class CompletionCard {
     /** La visibilité posée de la trame d'avant (les transitions s'y lisent). */
     private boolean wasShown;
 
+    /**
+     * Le côté posé : 0 indécis (le mot neuf re-choisit), 1 dessous,
+     * -1 dessus — STABLE tant que le mot vit (la carte ne saute pas
+     * de côté à la frappe).
+     */
+    private int belowSide;
+
+    private boolean below;
+
     private EditorView editor;
 
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -132,6 +141,10 @@ public final class CompletionCard {
     private final Paint scrollbarPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint iconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint iconLetterPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    /** Le filet des icônes plates à la référence. */
+    private final Paint iconStrokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    /** Le plein des icônes plates à la référence. */
+    private final Paint iconGlyphPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint footerRulePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     /**
@@ -182,6 +195,12 @@ public final class CompletionCard {
         iconLetterPaint.setColor(0xFFFFFFFF);
         iconLetterPaint.setTextSize((style.secondarySizeSp() - 3.0f) * density);
         iconLetterPaint.setFakeBoldText(true);
+        // les icônes PLATES de la référence : le filet de 1,5 dp, la
+        // lettre prend la COULEUR de sa nature (pas le blanc sur
+        // pastille — le glyphe plat se lit sur le fond de la carte)
+        iconStrokePaint.setStyle(Paint.Style.STROKE);
+        iconStrokePaint.setStrokeWidth(1.5f * density);
+        iconGlyphPaint.setStyle(Paint.Style.FILL);
         footerRulePaint.setColor(style.borderArgb());
     }
 
@@ -213,9 +232,16 @@ public final class CompletionCard {
         if (changed && highlighted >= 0 && highlighted < entries.size()) {
             kept = entries.get(highlighted).name();
         }
+        boolean wasEmpty = entries.isEmpty();
         entries = fresh;
         prefix = typedPrefix == null ? "" : typedPrefix;
         if (changed) {
+            // la carte qui RE-NAÎT re-choisit son côté (le mot
+            // d'avant a rangé son côté — le clavier a pu bouger
+            // entre-temps) ; la carte vivante garde le sien
+            if (wasEmpty && !fresh.isEmpty()) {
+                belowSide = 0;
+            }
             highlighted = -1;
             if (kept != null) {
                 for (int at = 0; at < entries.size(); at++) {
@@ -491,11 +517,33 @@ public final class CompletionCard {
         float belowTop = metrics.caretY() + metrics.lineHeight() + gap;
         float belowSpace = metrics.viewHeight() - margin - belowTop;
         float aboveSpace = metrics.caretY() - gap - margin;
-        // le dessous d'abord : il ne faut que le plancher de rangées
-        // pour que le côté naturel gagne (le clavier ouvert lui
-        // laisse souvent moins : la carte survit au-dessus, entière)
-        boolean below = belowSpace >= aboveSpace
-                || rowsFit(belowSpace, pad, rowH) >= MIN_ROWS;
+        // LE CÔTÉ EST STABLE (la leçon de la référence : la lookup ne
+        // saute pas de côté à la frappe — le clavier logiciel réduit
+        // la place du dessous trame après trame, une carte qui
+        // re-choisit son côté à chaque pose DISPARAÎT aux yeux de
+        // l'utilisateur). Le côté choisi au premier mot vit tant que
+        // le mot vit : il ne se re-choisit qu'au mot neuf (le préfixe
+        // qui raccourcit à rien) — et le côté qui ne tient PLUS
+        // (moins de MIN_ROWS) cède à l'autre.
+        if (belowSide == 0) {
+            below = belowSpace >= aboveSpace
+                    || rowsFit(belowSpace, pad, rowH) >= MIN_ROWS;
+            belowSide = below ? 1 : -1;
+        } else {
+            below = belowSide > 0;
+            if (below && rowsFit(belowSpace, pad, rowH) < MIN_ROWS
+                    && rowsFit(aboveSpace, pad, rowH) > rowsFit(belowSpace,
+                            pad, rowH)) {
+                below = false;
+                belowSide = -1;
+            } else if (!below
+                    && rowsFit(aboveSpace, pad, rowH) < MIN_ROWS
+                    && rowsFit(belowSpace, pad, rowH) > rowsFit(aboveSpace,
+                            pad, rowH)) {
+                below = true;
+                belowSide = 1;
+            }
+        }
         float space = below ? belowSpace : aboveSpace;
         int fitting = rowsFit(space, pad, rowH);
         rows = Math.max(MIN_ROWS, Math.min(rows, Math.max(fitting, MIN_ROWS)));
@@ -510,6 +558,15 @@ public final class CompletionCard {
         poseX = Math.max(margin,
                 Math.min(metrics.caretX(), metrics.viewWidth() - cardW - margin));
         clampWindow();
+    }
+
+    /**
+     * Le mot neuf : le côté se re-choisit (la carte rangeait son côté
+     * au mot d'avant — le clavier peut avoir bougé entre-temps, la
+     * place du dessous n'est plus celle du mot précédent).
+     */
+    public void newWord() {
+        belowSide = 0;
     }
 
     /**
@@ -624,18 +681,85 @@ public final class CompletionCard {
      * lettre au centre (f pour une méthode, C pour un type…) ; la
      * nature neutre garde le carré vide et pâle.
      */
+    /**
+     * L'icône de nature À LA RÉFÉRENCE (ses icônes de complétion y
+     * sont des GLYPHES PLATS au filet coloré — jamais des pastilles
+     * pleines à lettre : la classe y est un carré au « C », la
+     * méthode un « m » dans un rond, le mot-clé un losange plein
+     * discret, le champ un point) : le glyphe porte la couleur de sa
+     * nature, le filet l'accompagne.
+     */
     private void drawIcon(Canvas canvas, int kind, float left, float cy) {
         float side = dp(ICON_SIDE_DP);
-        float top = cy - side / 2.0f;
-        iconPaint.setColor(iconColor(kind));
-        canvas.drawRoundRect(left, top, left + side, top + side,
-                dp(4), dp(4), iconPaint);
-        String letter = iconLetter(kind);
-        if (!letter.isEmpty()) {
-            float letterW = iconLetterPaint.measureText(letter);
-            canvas.drawText(letter, left + (side - letterW) / 2.0f,
-                    cy + side * 0.28f, iconLetterPaint);
+        float cx = left + side / 2.0f;
+        iconStrokePaint.setColor(iconColor(kind));
+        iconGlyphPaint.setColor(iconColor(kind));
+        switch (kind) {
+            case KIND_CLASS: {
+                // la CLASSE : le carré aux coins doux, le « C » au
+                // centre (l'icône de classe de la référence)
+                canvas.drawRoundRect(left + dp(1), cy - side * 0.42f,
+                        left + side - dp(1), cy + side * 0.42f,
+                        dp(2), dp(2), iconStrokePaint);
+                drawIconLetter(canvas, "C", cx, cy);
+                return;
+            }
+            case KIND_FUNCTION: {
+                // la MÉTHODE : le rond au « m » (le violet de la
+                // référence y vit)
+                canvas.drawCircle(cx, cy, side * 0.42f, iconStrokePaint);
+                drawIconLetter(canvas, "m", cx, cy);
+                return;
+            }
+            case KIND_FIELD: {
+                // le CHAMP : le petit rond plein (la pastille discrète)
+                canvas.drawCircle(cx, cy, side * 0.22f, iconGlyphPaint);
+                return;
+            }
+            case KIND_KEYWORD: {
+                // le MOT-CLÉ : le losange plein discret (le gris de la
+                // référence — un mot du langage ne crie pas)
+                float s = side * 0.30f;
+                android.graphics.Path diamond = new android.graphics.Path();
+                diamond.moveTo(cx, cy - s);
+                diamond.lineTo(cx + s, cy);
+                diamond.lineTo(cx, cy + s);
+                diamond.lineTo(cx - s, cy);
+                diamond.close();
+                canvas.drawPath(diamond, iconGlyphPaint);
+                return;
+            }
+            case KIND_MODULE: {
+                // le MODULE : le carré plein discret
+                canvas.drawRect(cx - side * 0.22f, cy - side * 0.22f,
+                        cx + side * 0.22f, cy + side * 0.22f, iconGlyphPaint);
+                return;
+            }
+            case KIND_WORD: {
+                // le MOT DU TEXTE : le rond creux discret
+                canvas.drawCircle(cx, cy, side * 0.26f, iconStrokePaint);
+                return;
+            }
+            default: {
+                // la NATURE INCONNUE : le rond pointillé discret
+                iconStrokePaint.setPathEffect(
+                        new android.graphics.DashPathEffect(
+                                new float[] { dp(2), dp(2) }, 0.0f));
+                canvas.drawCircle(cx, cy, side * 0.26f, iconStrokePaint);
+                iconStrokePaint.setPathEffect(null);
+            }
         }
+    }
+
+    /** La lettre d'icône au centre de son cercle (le glyphe plat). */
+    private void drawIconLetter(Canvas canvas, String letter, float cx,
+            float cy) {
+        // la lettre prend la couleur de sa nature (le glyphe plat de
+        // la référence — pas le blanc sur pastille pleine)
+        iconLetterPaint.setColor(iconStrokePaint.getColor());
+        float letterW = iconLetterPaint.measureText(letter);
+        canvas.drawText(letter, cx - letterW / 2.0f, cy + dp(4),
+                iconLetterPaint);
     }
 
     /** La teinte de l'icône selon la nature. */
@@ -659,23 +783,6 @@ public final class CompletionCard {
     }
 
     /** La lettre de l'icône selon la nature (vide pour la neutre). */
-    private String iconLetter(int kind) {
-        switch (kind) {
-            case KIND_FUNCTION:
-                return "f";
-            case KIND_CLASS:
-                return "C";
-            case KIND_FIELD:
-                return "v";
-            case KIND_KEYWORD:
-                return "k";
-            case KIND_MODULE:
-                return "M";
-            default:
-                return "";
-        }
-    }
-
     /**
      * La barre de défilement : la fenêtre montre-t-elle moins que la
      * liste ? Le pouce se pose au prorata des rangées visibles.

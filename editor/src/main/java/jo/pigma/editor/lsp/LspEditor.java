@@ -228,6 +228,14 @@ public final class LspEditor {
     private final List<QuickActionCard.Entry> codeActionsCache =
             Collections.synchronizedList(new ArrayList<>());
 
+    /**
+     * Le cache des correctifs par diagnostic (la clef : ligne et
+     * message — la carte de diagnostic les y lit, la réponse
+     * asynchrone y écrit).
+     */
+    private final java.util.Map<String, List<DiagnosticCard.Fix>> diagnosticFixCache =
+            Collections.synchronizedMap(new java.util.HashMap<>());
+
     /** Le report du changement de document vers le serveur (la synchronisation intégrale s'amortit). */
     private final Runnable documentSync = this::pushDocumentToServer;
 
@@ -1298,12 +1306,41 @@ public final class LspEditor {
         });
         // les diagnostics de la ligne : la sévérité du protocole y
         // garde son rang (erreur, avertissement, information)
-        view.setDiagnosticProvider(this::diagnosticsOfLine);
+        view.setDiagnosticProvider(new EditorView.DiagnosticProvider() {
+            @Override
+            public List<DiagnosticCard.Entry> diagnosticsAt(int line) {
+                return diagnosticsOfLine(line);
+            }
+
+            @Override
+            public boolean diagnosticCovers(int line, int column) {
+                if (!diagnosticsEnabled || !isConnected()) {
+                    return false;
+                }
+                // la PLAGE EXACTE du serveur (le tap précis : le doigt
+                // sur le souligné, pas sur la ligne — la leçon de la
+                // référence)
+                for (LspDiagnostic diagnostic : diagnostics) {
+                    if (diagnostic.range().start().line() == line
+                            && column >= diagnostic.range().start().character() - 1
+                            && column <= diagnostic.range().end().character() + 1) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        });
     }
 
     /**
      * Les diagnostics du serveur à une ligne (la carte de diagnostic
-     * les lit au toucher du marqueur ou du souligné rouge).
+     * les lit au toucher du marqueur ou du souligné rouge) — chaque
+     * entrée porte son message ET les correctifs du serveur qui s'y
+     * rattachent (la leçon de la référence : sa popup d'erreur mêle
+     * le message et ses correctifs — l'import manquant s'y corrige
+     * d'un clic, l'ampoule n'est qu'un autre chemin vers la même
+     * liste). La réponse des correctifs arrive asynchrone : la
+     * carte ouverte à la ligne se rouvre fraîche à l'arrivée.
      *
      * @param line l'indice de la ligne
      * @return les diagnostics du serveur sur la ligne, jamais null
@@ -1319,10 +1356,65 @@ public final class LspEditor {
                         diagnostic.severity() == 1 ? DiagnosticCard.SEVERITY_ERROR
                                 : diagnostic.severity() == 2 ? DiagnosticCard.SEVERITY_WARNING
                                 : DiagnosticCard.SEVERITY_INFO,
-                        diagnostic.message()));
+                        diagnostic.message(),
+                        diagnosticFixesOf(line, diagnostic.message())));
             }
         }
         return found;
+    }
+
+    /**
+     * Les correctifs du serveur pour un diagnostic (la réponse arrive
+     * asynchrone — la première lecture rend vide, l'arrivée rouvre la
+     * carte ouverte, la trame suivante y porte les correctifs).
+     *
+     * @param line    la ligne du diagnostic
+     * @param message le message du diagnostic (la clef du cache)
+     * @return les correctifs du serveur, jamais null
+     */
+    private List<DiagnosticCard.Fix> diagnosticFixesOf(int line,
+            String message) {
+        String cacheKey = line + ":" + message;
+        List<DiagnosticCard.Fix> cached = diagnosticFixCache.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        askDiagnosticFixes(line, cacheKey);
+        return List.of();
+    }
+
+    /**
+     * La demande des correctifs d'un diagnostic part au serveur : la
+     * réponse y remplit le cache et ROUVRE la carte de diagnostic si
+     * elle vit encore sur cette ligne (l'utilisateur lit le message,
+     * les correctifs arrivent dessous — la popup de la référence
+     * s'habille pareillement en deux temps).
+     *
+     * @param line     la ligne du diagnostic
+     * @param cacheKey la clef du cache (ligne et message)
+     */
+    private void askDiagnosticFixes(int line, String cacheKey) {
+        diagnosticFixCache.put(cacheKey, List.of());
+        LspRange range = lineRange(line);
+        session.codeActions(uri, range, diagnosticsOf(line))
+                .whenComplete((answer, failure) -> view.post(() -> {
+                    if (failure != null || answer == null) {
+                        return;
+                    }
+                    List<DiagnosticCard.Fix> fixes = new ArrayList<>();
+                    for (LspCodeAction action : answer) {
+                        fixes.add(new DiagnosticCard.Fix(action.title(),
+                                () -> view.applyTextEdits(action.edits())));
+                    }
+                    diagnosticFixCache.put(cacheKey, List.copyOf(fixes));
+                    // la carte de diagnostic VIVANTE sur cette ligne se
+                    // rouvre fraîche : les correctifs y paraissent
+                    if (view.diagnosticCard() != null
+                            && view.diagnosticCard().isShown()
+                            && view.diagnosticCard().line() == line) {
+                        view.openDiagnosticsAtLine(line);
+                    }
+                }));
     }
 
     /**

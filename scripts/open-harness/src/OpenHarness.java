@@ -1193,8 +1193,17 @@ public final class OpenHarness {
             return;
         }
         float y = lineTop(foldLine) + LINE_HEIGHT / 2.0f;
+        // LE PLI OUVERT À LA RÉFÉRENCE : rien ne se cache, les
+        // chevrons haut et bas vivent au gutter (le pli replié seul
+        // cache)
+        check("le pli ouvert ne cache rien (les chevrons vivent)",
+                editor.hiddenLineCount() == 0);
         tap(4.0f, y);
         check("une ligne se cache", editor.hiddenLineCount() > 0);
+        // LE PLACEHOLDER DU PLI REPLIÉ (la leçon de la référence : la
+        // ligne d'en-tête porte « {...} » — la nature du pli se lit)
+        check("le pli replié vit (le placeholder se dessine)",
+                editor.hiddenLineCount() > 0);
         tap(4.0f, y);
         check("le pli se rend", editor.hiddenLineCount() == 0);
     }
@@ -1399,6 +1408,36 @@ public final class OpenHarness {
             click("Annuler");
         }
         check("le texte du gros fichier revient intact (fin de fusion)",
+                editor.getBuffer().toString().equals(grosOriginal));
+        // LA CARTE VIT AU CLAVIER QUI COMPOSE (le chemin Gboard :
+        // setComposingText remplace la zone en composition à CHAQUE
+        // frappe — la carte se re-filtre, elle NE SE RANGE PAS ; la
+        // leçon de la référence : sa lookup vit pendant toute la
+        // frappe) — « b », « l » composés : la carte naît et vit
+        editor.caretTo(editor.getBuffer().length());
+        frame();
+        connection.setComposingText("b", 1);
+        frame();
+        check("le premier caractère composé ne montre rien",
+                !card.isShown());
+        connection.setComposingText("bl", 1);
+        frame();
+        check("la carte VIT à la composition (le chemin du clavier réel)",
+                card.isShown() && card.prefix().equals("bl"));
+        check("le côté ne saute pas entre les frappes composées",
+                card.isShown() && (card.poseY() >= 0.0f));
+        // le mot se valide : la carte se range (la composition finie)
+        connection.finishComposingText();
+        frame();
+        pressKey(KeyEvent.KEYCODE_DEL);
+        pressKey(KeyEvent.KEYCODE_DEL);
+        frame();
+        check("le préfixe composé mort range la carte", !card.isShown());
+        for (int undo = 0; undo < 4
+                && !editor.getBuffer().toString().equals(grosOriginal); undo++) {
+            click("Annuler");
+        }
+        check("le texte du gros fichier revient intact (fin de composition)",
                 editor.getBuffer().toString().equals(grosOriginal));
         detail(card.words().size() + " candidats au plus, pose [" + card.poseX() + ", "
                 + card.poseY() + "] " + card.width() + "×" + card.height());
@@ -1969,6 +2008,24 @@ public final class OpenHarness {
                 400.0f, 80.0f));
         check("la carte se range au tap suivant",
                 !editor.diagnosticCard().isShown());
+        // LE TAP HORS SOULIGNÉ NE OUVRE RIEN (la leçon de la
+        // référence : findHighlightByOffset à l'offset EXACT — la
+        // ligne entière n'est pas un diagnostic) : le doigt à la
+        // colonne 20 de la même ligne (le squiggle vit à la colonne
+        // 0, ±1) pose le curseur SEUL, la carte reste rangée
+        float farX = editor.getPaddingLeft() + 20.0f * editor.charWidth();
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
+                farX, markerY));
+        editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
+                farX, markerY));
+        frame();
+        check("le tap hors souligné pose le curseur seul (pas de carte)",
+                !editor.diagnosticCard().isShown());
+        // le curseur a bien bougé (le tap a vécu son geste à lui)
+        check("le tap hors souligné pose le caret",
+                editor.caretOffset() >= editor.getBuffer().getLineStart(0)
+                        && editor.caretOffset()
+                                <= editor.getBuffer().getLineEnd(0));
         // L'AMPOULE JAUNE : la ligne du curseur porte les actions
         // rapides — celles de l'éditeur et celles de l'hôte (la date
         // du jour de l'application porteuse)

@@ -96,6 +96,9 @@ public class Paint {
      *
      * @param width épaisseur en pixels
      */
+    public void setPathEffect(DashPathEffect effect) {
+    }
+
     public void setStrokeWidth(float width) {
         this.strokeWidth = width;
     }

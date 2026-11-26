@@ -51,16 +51,35 @@ public final class DiagnosticCard {
     private static final int ICON_DP = 22;
 
     /**
-     * Un diagnostic d'une ligne : sa sévérité et son message.
-     *
-     * @param severity la sévérité, une des constantes SEVERITY_
-     * @param message  le message, jamais vide
+     * Un diagnostic d'une ligne : sa sévérité, son message — et les
+     * CORRECTIFS proposés (la leçon de la référence : sa popup
+     * d'erreur porte le message ET ses correctifs DANS la même
+     * carte, l'ampoule n'y est qu'un autre chemin). Le correctif
+     * porte son action (l'exécuter referme la carte).
      */
-    public record Entry(int severity, String message) {
+    public record Entry(int severity, String message,
+            List<Fix> fixes) {
+
+        /**
+         * Un diagnostic sans correctif (la forme courte).
+         *
+         * @param severity la sévérité, une des constantes SEVERITY_
+         * @param message  le message, jamais vide
+         */
+        public Entry(int severity, String message) {
+            this(severity, message, List.of());
+        }
+    }
+
+    /** Un correctif du diagnostic : son titre et son exécution. */
+    public record Fix(String title, Runnable action) {
     }
 
     /** Les diagnostics vivants de la ligne ancrée (vide : la carte se range). */
     private List<Entry> entries = List.of();
+
+    /** Le bas de l'étage des correctifs (le toucher y vise). */
+    private float fixesBottom;
 
     /** La ligne ancrée (les touches s'y adressent). */
     private int line;
@@ -93,6 +112,12 @@ public final class DiagnosticCard {
     private final Paint warningPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint infoPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint glyphPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** L'ampoule d'un correctif (l'étage des correctifs la porte). */
+    private final Paint fixPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** Le titre d'un correctif (l'encre d'action de la référence). */
+    private final Paint fixTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint scrollbarPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     /**
@@ -144,6 +169,9 @@ public final class DiagnosticCard {
         glyphPaint.setColor(0xFFFFFFFF);
         glyphPaint.setStyle(Paint.Style.STROKE);
         glyphPaint.setStrokeWidth(1.6f * density);
+        fixPaint.setColor(style.accentArgb());
+        fixTextPaint.setColor(style.accentArgb());
+        fixTextPaint.setTextSize((style.textSizeSp() - 3.0f) * density);
         scrollbarPaint.setColor(0x66B5B5B5);
     }
 
@@ -205,8 +233,65 @@ public final class DiagnosticCard {
                 || y < poseY || y >= poseY + cardH) {
             return false;
         }
+        // L'ÉTAGE DES CORRECTIFS D'ABORD : le doigt sur un correctif
+        // l'EXÉCUTE (la leçon de la référence : le correctif de sa
+        // popup s'applique au clic — « Import class » y insère
+        // l'import) et la carte se range ; le correctif en vol
+        // (l'action asynchrone) se referme pareillement
+        if (!fixes().isEmpty() && y >= rowsBottomCached
+                && y < fixesBottom) {
+            float at = rowsBottomCached + dp(3);
+            for (Fix fix : fixes()) {
+                if (y >= at && y < at + fixRowHeight()) {
+                    close();
+                    fix.action().run();
+                    return true;
+                }
+                at += fixRowHeight();
+            }
+        }
         close();
         return true;
+    }
+
+    /** Les correctifs de la carte (les diagnostics les portent). */
+    public List<Fix> fixes() {
+        List<Fix> found = new ArrayList<>();
+        for (Entry entry : entries) {
+            if (entry.fixes() != null) {
+                found.addAll(entry.fixes());
+            }
+        }
+        return found;
+    }
+
+    /** La hauteur d'une rangée de correctif (le doigt y vise large). */
+    private float fixRowHeight() {
+        return dp(style.rowHeightDp() - 10);
+    }
+
+    /** Le bas des rangées de messages (l'étage des correctifs y naît). */
+    private float rowsBottomCached;
+
+    /** Une rangée de correctif : la petite ampoule, le titre à l'accent. */
+    private void drawFix(Canvas canvas, Fix fix, float top) {
+        float rowH = fixRowHeight();
+        float cy = top + rowH / 2.0f;
+        float baseline = top + rowH * 0.68f;
+        // l'ampoule de la taille d'une icône de sévérité (le correctif
+        // se lit du même œil que le message qu'il corrige)
+        float side = dp(ICON_DP) * 0.7f;
+        fixPaint.setStyle(Paint.Style.STROKE);
+        fixPaint.setStrokeWidth(1.4f * density);
+        canvas.drawCircle(cy, cy, side * 0.32f, fixPaint);
+        canvas.drawLine(cy - side * 0.16f, cy + side * 0.42f,
+                cy + side * 0.16f, cy + side * 0.42f, fixPaint);
+        canvas.drawLine(cy - side * 0.08f, cy + side * 0.55f,
+                cy + side * 0.08f, cy + side * 0.55f, fixPaint);
+        String title = ellipsize("Corriger : " + fix.title(), textPaint,
+                cardW - dp(ICON_DP) - 3 * dp(14));
+        canvas.drawText(title, poseX + dp(14) + dp(ICON_DP) + dp(8),
+                baseline, fixTextPaint);
     }
 
     /**
@@ -240,14 +325,32 @@ public final class DiagnosticCard {
                 poseX + dp(14), headerBaseline, headerPaint);
         canvas.drawLine(poseX + dp(12), rowsTop + headerH - dp(2),
                 poseX + cardW - dp(12), rowsTop + headerH - dp(2), rulePaint);
+        // LES ÉTAGES (la leçon de la référence : sa popup d'erreur
+        // montre le message, PUIS ses correctifs — un filet les
+        // sépare, les correctifs s'exécutent au doigt) : les
+        // messages d'abord, le filet, les correctifs ensuite
         float rowsBottom = rowsTop + headerH + visibleRows * rowH;
+        rowsBottomCached = rowsBottom;
         for (int at = topRow; at < topRow + visibleRows
                 && at < entries.size(); at++) {
             float top = rowsTop + headerH + (at - topRow) * rowH;
             drawEntry(canvas, entries.get(at), top);
         }
+        float fixesTop = rowsBottom;
+        if (!fixes().isEmpty()) {
+            canvas.drawLine(poseX + dp(12), fixesTop,
+                    poseX + cardW - dp(12), fixesTop, rulePaint);
+            float at = fixesTop + dp(3);
+            for (Fix fix : fixes()) {
+                drawFix(canvas, fix, at);
+                at += fixRowHeight();
+            }
+            fixesBottom = at;
+        } else {
+            fixesBottom = fixesTop;
+        }
         drawScrollbar(canvas, rowsTop + headerH, rowsBottom);
-        drawFooter(canvas, rowsBottom);
+        drawFooter(canvas, Math.max(rowsBottom, fixesBottom));
     }
 
     /** L'abscisse posée (le harnais la lit). */
@@ -298,15 +401,21 @@ public final class DiagnosticCard {
                 Math.min(dp(style.maxCardWidthDp() - 80),
                         metrics.viewWidth() - 2 * margin));
         int rows = Math.min(MAX_VISIBLE_ROWS, entries.size());
+        // l'étage des correctifs PAIE sa hauteur (la carte qui le
+        // porte se pose plus haute — le pied compte les deux étages)
+        int fixCount = fixes().size();
+        float fixesHeight = fixCount == 0 ? 0.0f
+                : dp(3) + fixCount * fixRowHeight() + dp(3);
         float available = metrics.viewHeight() - 2 * margin - 2 * padY()
-                - dp(style.headerHeightDp()) - dp(FOOTER_DP);
+                - dp(style.headerHeightDp()) - dp(FOOTER_DP) - fixesHeight;
         while (rows > 1 && 2 * padY() + dp(style.headerHeightDp())
-                + dp(FOOTER_DP) + rows * rowHeight() > available) {
+                + dp(FOOTER_DP) + fixesHeight
+                + rows * rowHeight() > available) {
             rows--;
         }
         visibleRows = rows;
         cardH = 2 * padY() + dp(style.headerHeightDp())
-                + visibleRows * rowHeight() + dp(FOOTER_DP);
+                + visibleRows * rowHeight() + fixesHeight + dp(FOOTER_DP);
         float belowTop = anchorBottom + gap;
         if (belowTop + cardH <= metrics.viewHeight() - margin) {
             poseY = belowTop;
