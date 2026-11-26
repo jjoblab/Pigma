@@ -674,7 +674,6 @@ public final class EditorView extends View {
             clampCaret();
             shiftFolds(start);
             ensureCaretVisible();
-            recordLocalTrace(start, removedLength, insertedLength);
             // une édition déplace tout ce qui suit : les positions des
             // correspondances seraient des mensonges — la recherche se
             // range (la feuille la relance), la popup d'info aussi
@@ -5605,11 +5604,18 @@ public final class EditorView extends View {
                 if (buffer.getText(start, at).toString().equals(symbol)) {
                     final int line = buffer.lineOfOffset(start);
                     final int column = start - buffer.getLineStart(line);
+                    // L'EXTRAIT de la ligne (B7) : le code se lit dans
+                    // la carte — la ligne coupée au plafond d'affichage
+                    int lineStart = buffer.getLineStart(line);
+                    String lineText = buffer.getText(lineStart,
+                            buffer.getLineEnd(line)).toString();
+                    final String excerpt = lineText.length() > 80
+                            ? lineText.substring(0, 80) : lineText;
                     // la ligne se BORNE au moment de la navigation (la
                     // carte peut vivre plus que le document d'avant :
                     // une annulation a pu tuer sa ligne — la navigation
                     // y reste dans le texte vivant)
-                    found.add(new UsageCard.Usage(line, column, "",
+                    found.add(new UsageCard.Usage(line, column, "", excerpt,
                             () -> caretTo(buffer.getLineStart(
                                     Math.min(line, buffer.getLineCount() - 1))
                                     + column)));
@@ -5750,53 +5756,26 @@ public final class EditorView extends View {
     }
 
     /**
-     * Restaure la ligne d'une trace passée : le texte de la ligne
-     * d'alors remet à sa place — une unité d'annulation, la
-     * restauration s'enregistre à son tour (elle se défait comme elle
-     * s'est faite). La ligne morte au présent se borne au document.
+     * Restaure une version passée : la PLAGE EXACTE d'avant le geste
+     * reprend son texte d'alors (B7 — plus d'écrasement d'une autre
+     * ligne par un numéro décalé : la plage vit en décalages du
+     * document, bornée à sa longueur présente). La restauration
+     * s'enregistre à son tour (elle se défait comme elle s'est
+     * faite — une unité d'annulation).
      *
-     * @param trace la trace à restaurer, jamais null
+     * @param version la version à restaurer, jamais null
      */
-    public void restoreHistoryLine(LocalHistory.Trace trace) {
-        int lineCount = buffer.getLineCount();
-        if (lineCount == 0 || trace == null) {
+    public void restoreHistoryVersion(LocalHistory.Version version) {
+        if (version == null) {
             return;
         }
-        int line = Math.min(trace.line(), lineCount - 1);
-        int lineStart = buffer.getLineStart(line);
-        int lineEnd = buffer.getLineEnd(line);
+        int start = Math.min(version.start(), buffer.length());
+        int end = Math.min(version.end(), buffer.length());
+        if (end < start) {
+            end = start;
+        }
         pendingEditLabel = "restauration";
-        applyEdit(lineStart, lineEnd, trace.lineText());
-    }
-
-    /**
-     * Une écriture du tampon laisse sa trace à l'historique local :
-     * l'étiquette du geste en cours (collage, complétion…) ou le geste
-     * par défaut (insertion, suppression, remplacement), la ligne
-     * touchée, le texte de la ligne APRÈS le geste — la vue du passé
-     * se lit par plage de lignes. L'étiquette se consomme au passage.
-     */
-    private void recordLocalTrace(int start, int removedLength, int insertedLength) {
-        String gesture = pendingEditLabel;
-        pendingEditLabel = null;
-        if (gesture == null) {
-            gesture = removedLength == 0 ? "insertion"
-                    : insertedLength == 0 ? "suppression" : "remplacement";
-        }
-        if (buffer.length() == 0 && insertedLength == 0) {
-            localHistory.record(System.currentTimeMillis(), gesture, 0, "");
-            return;
-        }
-        int line = buffer.lineOfOffset(Math.min(start, buffer.length()));
-        String lineText = "";
-        if (buffer.getLineCount() > 0 && line < buffer.getLineCount()) {
-            int lineStart = buffer.getLineStart(line);
-            int lineEnd = buffer.getLineEnd(line);
-            if (lineEnd > lineStart) {
-                lineText = buffer.getText(lineStart, lineEnd).toString();
-            }
-        }
-        localHistory.record(System.currentTimeMillis(), gesture, line, lineText);
+        applyEdit(start, end, version.before());
     }
 
     /** Coupe la sélection : copie puis remplace par le vide. */
@@ -6783,9 +6762,19 @@ public final class EditorView extends View {
     }
 
     private void applyEdit(int start, int end, CharSequence text) {
+        // LA VERSION D'HISTORIQUE (B7) : le texte d'avant se garde,
+        // la plage porte la région OCCUPÉE APRÈS le geste (le texte
+        // posé y vit) — la restauration remettra la plage exacte à son
+        // état d'avant (une insertion s'y retire entière)
+        String before = buffer.getText(start, end).toString();
+        int line = buffer.lineOfOffset(Math.min(start, buffer.length()));
+        int occupiedStart = Math.min(start, buffer.length());
+        int occupiedEnd = Math.min(start + text.length(), buffer.length());
         try (TextTransaction transaction = undoStack.newTransaction()) {
             transaction.replace(start, end, text);
         }
+        localHistory.record(System.currentTimeMillis(), pendingEditLabel,
+                line, occupiedStart, occupiedEnd, before);
         selection.setCaret(Math.min(start + text.length(), buffer.length()));
         // toute édition directe réduit la sélection (le curseur porte
         // la fin, l'ancre ne survit pas à ce qu'elle désignait)

@@ -2140,7 +2140,7 @@ public final class OpenHarness {
         frame();
         connection.commitText("2", 1);
         frame();
-        check("une trace naît de la frappe",
+        check("une version naît de la frappe",
                 editor.localHistory().size() >= 1);
         // la ligne porte SEUIL2 : la sélection de la ligne ouvre
         // l'historique de cette partie du code
@@ -2156,15 +2156,17 @@ public final class OpenHarness {
         HistoryCard history = editor.historyCard();
         check("la carte de l'historique local s'ouvre sur la plage",
                 history.isShown());
-        check("les traces de la plage se lisent", history.traceCount() >= 2);
-        // la trace d'AVANT (la ligne sans le « 2 ») se déplie au doigt,
-        // sa pastille restaure la ligne du passé
-        tap(history.poseX() + history.width() * 0.5f, history.traceCenterY(1));
+        // LA VERSION GROUPE LA FRAPPE (B7 repensé) : les deux touches
+        // de la phrase tiennent UNE version (la pause de deux secondes
+        // la ferme) — la plage d'avant se lit, la restauration remet
+        // la plage exacte du passé
+        check("les versions de la plage se lisent", history.traceCount() >= 1);
+        tap(history.poseX() + history.width() * 0.5f, history.traceCenterY(0));
         frame();
-        check("la trace se déplie au doigt", history.expandedTrace() == 1);
-        tap(history.poseX() + 60.0f, history.restoreChipY(1));
+        check("la version se déplie au doigt", history.expandedTrace() == 0);
+        tap(history.poseX() + 60.0f, history.restoreChipY(0));
         frame();
-        check("la restauration remet la ligne du passé",
+        check("la restauration remet la plage du passé",
                 editor.getBuffer().toString().contains("SEUIL")
                         && !editor.getBuffer().toString().contains("SEUIL2"));
         check("la carte se range après la restauration", !history.isShown());
@@ -2172,7 +2174,7 @@ public final class OpenHarness {
         click("Annuler");
         check("la double annulation rend la ligne d'avant",
                 editor.getBuffer().toString().equals(original));
-        detail("historique local : " + editor.localHistory().size() + " trace(s)");
+        detail("historique local : " + editor.localHistory().size() + " version(s)");
     }
 
     /**

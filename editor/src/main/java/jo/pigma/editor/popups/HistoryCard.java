@@ -48,7 +48,7 @@ public final class HistoryCard {
     private static final int MAX_VISIBLE_TRACES = 6;
 
     /** Les traces de la plage, du dernier au premier (vides : l'en-tête seul). */
-    private List<LocalHistory.Trace> traces = List.of();
+    private List<LocalHistory.Version> traces = List.of();
 
     /** La carte vit-elle ? (l'ouverture la pose, la fermeture la range). */
     private boolean shown;
@@ -174,7 +174,7 @@ public final class HistoryCard {
      * @param firstLine la première ligne de la plage (humaine, 1-based)
      * @param lastLine  la dernière ligne de la plage (humaine, 1-based)
      */
-    public void open(List<LocalHistory.Trace> lines, int firstLine, int lastLine) {
+    public void open(List<LocalHistory.Version> lines, int firstLine, int lastLine) {
         traces = List.copyOf(lines);
         fromLine = firstLine;
         toLine = lastLine;
@@ -413,14 +413,14 @@ public final class HistoryCard {
      * replie à la largeur (au plus {@value #EXPAND_ROWS} rangées) et
      * la pastille Restaurer vit au bas.
      */
-    private void drawTrace(Canvas canvas, LocalHistory.Trace trace,
+    private void drawTrace(Canvas canvas, LocalHistory.Version trace,
             float top, boolean unfolded, int at) {
         float rowH = rowHeight();
         String when = moment(trace.millis());
         String caption = when + " · " + trace.gesture();
         canvas.drawText(caption, poseX + dp(14), top + rowH * 0.34f, timePaint);
-        String snippet = trace.lineText().isEmpty() ? "— ligne vide —"
-                : trace.lineText();
+        String snippet = trace.before().isEmpty() ? "— plage vidée —"
+                : trace.before();
         if (!unfolded) {
             String shown = shrink(snippet, snippetPaint,
                     cardW - dp(28) - dp(14));
@@ -462,8 +462,8 @@ public final class HistoryCard {
         if (at < 0 || at >= traces.size()) {
             return 0.0f;
         }
-        List<String> rows = wrap(traces.get(at).lineText().isEmpty()
-                ? "— ligne vide —" : traces.get(at).lineText(),
+        List<String> rows = wrap(traces.get(at).before().isEmpty()
+                ? "— plage vidée —" : traces.get(at).before(),
                 snippetPaint, cardW - dp(28), EXPAND_ROWS);
         // le dépli : les rangées au-delà de la première (la première
         // vit dans la rangée), la pastille, la respiration
@@ -476,9 +476,9 @@ public final class HistoryCard {
     }
 
     /** La restauration : la ligne du passé remet, la carte se range. */
-    private void restore(LocalHistory.Trace trace) {
+    private void restore(LocalHistory.Version trace) {
         if (editor != null) {
-            editor.restoreHistoryLine(trace);
+            editor.restoreHistoryVersion(trace);
             close();
         }
     }

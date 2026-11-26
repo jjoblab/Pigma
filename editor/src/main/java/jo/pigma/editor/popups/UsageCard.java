@@ -44,7 +44,19 @@ public final class UsageCard {
      * Un usage du symbole : sa ligne (et son fichier quand il vit
      * ailleurs — la carte le dit à droite), le choix y navigue.
      */
-    public record Usage(int line, int column, String file, Runnable go) {
+    /**
+     * Un usage : sa ligne, sa colonne, son fichier, l'extrait de la
+     * ligne (le mot s'y voit dans son contexte — B7 : la rangée
+     * montre le code, pas un numéro seul) et le saut.
+     *
+     * @param line    l'indice de la ligne
+     * @param column  la colonne du mot
+     * @param file    le fichier de l'usage (vide : le document courant)
+     * @param excerpt l'extrait de la ligne, coupé au besoin
+     * @param go      le saut à l'usage
+     */
+    public record Usage(int line, int column, String file, String excerpt,
+            Runnable go) {
     }
 
     /** Les usages vivants (vide : la carte se range). */
@@ -305,6 +317,18 @@ public final class UsageCard {
         float whereW = detailPaint.measureText(where);
         canvas.drawText(where, poseX + cardW - dp(14) - whereW, baseline,
                 detailPaint);
+        // L'EXTRAIT DE LA LIGNE (B7) : le code s'y lit sous la
+        // localisation, le mot en encre pleine (le reste de la ligne
+        // vit dans la même encre — le mot SE DÉTACHE par sa police
+        // pleine, l'entourage atténué)
+        String excerpt = usage.excerpt() == null ? "" : usage.excerpt().trim();
+        if (!excerpt.isEmpty()) {
+            float excerptBaseline = top + rowH * 0.92f;
+            String squeezed = excerpt.length() > 60
+                    ? excerpt.substring(0, 57) + "…" : excerpt;
+            canvas.drawText(squeezed, poseX + dp(14) + dp(ICON_DP),
+                    excerptBaseline, detailPaint);
+        }
     }
 
     /** La croix de fermeture (le coin haut droit). */
