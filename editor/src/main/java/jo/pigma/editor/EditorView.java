@@ -56,6 +56,8 @@ import android.text.InputType;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
@@ -527,6 +529,10 @@ public final class EditorView extends View {
 
     /** La minimap vit-elle à l'écran (l'hôte la retire quand son écran n'en veut pas). */
     private boolean minimapEnabled = true;
+
+    /** Le pont d'accessibilité (le service qui parle y lit la vue — D5). */
+    private final jo.pigma.editor.accessibility.EditorAccessibility accessibility =
+            jo.pigma.editor.accessibility.EditorAccessibility.of(this);
 
     /** La borne de début du mot courant (l'insertion remplace le préfixe). */
     private int suggestionWordStart = -1;
@@ -2608,6 +2614,36 @@ public final class EditorView extends View {
     @Override
     public boolean onCheckIsTextEditor() {
         return true;
+    }
+
+    /**
+     * Le nœud d'accessibilité (D5) : le service qui parle y lit la
+     * vue — un éditeur de texte éditable, sa fenêtre de contenu, sa
+     * sélection, ses actions.
+     */
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo node) {
+        super.onInitializeAccessibilityNodeInfo(node);
+        accessibility.fillNode(node);
+    }
+
+    /**
+     * Les événements d'accessibilité par défaut gardent leurs
+     * remplissages de texte (la frappe s'y entend).
+     */
+    @Override
+    public boolean dispatchPopulateAccessibilityEvent(AccessibilityEvent event) {
+        boolean populated = super.dispatchPopulateAccessibilityEvent(event);
+        if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
+            accessibility.fillTextChanged(event);
+            return true;
+        }
+        if (event.getEventType()
+                == AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED) {
+            accessibility.fillSelectionChanged(event);
+            return true;
+        }
+        return populated;
     }
 
     @Override

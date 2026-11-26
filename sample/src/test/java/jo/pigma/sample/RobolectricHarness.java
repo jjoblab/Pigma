@@ -90,6 +90,7 @@ public final class RobolectricHarness {
         imeTyping();
         imeBridge();
         keyEvents();
+        accessibilityNode();
         enterDeleteStress();
         kotlinTab();
         selectAllText();
@@ -345,6 +346,43 @@ public final class RobolectricHarness {
         check("la région vide se range",
                 connection.setComposingRegion(0, 0));
         editor.setSelection(0, 0);
+    }
+
+    /**
+     * L'accessibilité (D5) : le nœud se remplit — la classe d'éditeur,
+     * la fenêtre de texte, la sélection, les actions du protocole.
+     */
+    private void accessibilityNode() {
+        begin("accessibilité : le nœud et ses actions");
+        android.view.accessibility.AccessibilityNodeInfo node =
+                editor.createAccessibilityNodeInfo();
+        check("le nœud existe", node != null);
+        check("la classe parle d'un éditeur de texte",
+                "android.widget.EditText".contentEquals(node.getClassName()));
+        check("la vue se dit éditable", node.isEditable());
+        check("le texte se borne à la fenêtre du curseur",
+                node.getText().length() > 0
+                        && node.getText().length()
+                                < editor.getBuffer().length());
+        check("la sélection se lit", node.getTextSelectionStart() >= 0);
+        boolean hasAction = false;
+        for (android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
+                action : node.getActionList()) {
+            if (action == android.view.accessibility.AccessibilityNodeInfo
+                    .AccessibilityAction.ACTION_SET_TEXT) {
+                hasAction = true;
+            }
+        }
+        check("l'action de poser le texte vit au nœud", hasAction);
+        // l'événement de frappe se remplit
+        android.view.accessibility.AccessibilityEvent event =
+                android.view.accessibility.AccessibilityEvent.obtain(
+                        android.view.accessibility.AccessibilityEvent
+                                .TYPE_VIEW_TEXT_CHANGED);
+        boolean populated = editor.dispatchPopulateAccessibilityEvent(event);
+        check("l'événement de frappe se remplit", populated
+                && event.getText().size() > 0);
+        event.recycle();
     }
 
     /**

@@ -405,6 +405,31 @@ public class View {
     }
 
     /** La vue est-elle un éditeur de texte ? */
+    /**
+     * Le nœud d'accessibilité (le service qui parle y lit la vue —
+     * la forme du vrai cadre, le remplissage vit à la vue).
+     */
+    public android.view.accessibility.AccessibilityNodeInfo createAccessibilityNodeInfo() {
+        android.view.accessibility.AccessibilityNodeInfo node =
+                new android.view.accessibility.AccessibilityNodeInfo();
+        onInitializeAccessibilityNodeInfo(node);
+        return node;
+    }
+
+    /** Le remplissage du nœud (la vue y écrit sa description). */
+    public void onInitializeAccessibilityNodeInfo(
+            android.view.accessibility.AccessibilityNodeInfo node) {
+    }
+
+    /**
+     * La dispatch de remplissage d'événement (la vue y écrit ses
+     * textes — le vrai cadre l'appelle avant l'envoi).
+     */
+    public boolean dispatchPopulateAccessibilityEvent(
+            android.view.accessibility.AccessibilityEvent event) {
+        return false;
+    }
+
     public boolean onCheckIsTextEditor() {
         return false;
     }

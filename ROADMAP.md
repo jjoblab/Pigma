@@ -44,7 +44,7 @@ qu'il propose.
 | 74 | Pont IME complet : getTextBefore/AfterCursor, setComposingRegion, getCursorCapsMode | D2, R3 | **fait** | `docs/chantiers/74.md` | à pousser |
 | 75 | Appariement par type de signes : BracketMatcher (isOpening/closerOf/closes), les deux marches et les diagnostics typés | B1 | **fait** | `docs/chantiers/75.md` | à pousser |
 | 76 | Processus LSP : stderr drainé (fil de vidange), arrêt en deux temps (grâce 500 ms puis tue-loup) | D8 | **fait** | `docs/chantiers/76.md` | à pousser |
-| 77 | Accessibilité bibliothèque : AccessibilityNodeInfo, actions, événements | D5 | prévu | — | — |
+| 77 | Accessibilité : package editor.accessibility (nœud éditable, fenêtre de texte bornée, actions, événements de frappe et sélection) | D5 | **fait** | `docs/chantiers/77.md` | à pousser |
 | 78 | Historique local et usages repensés (versions, diffs, extraits) | B7 | prévu | — | — |
 | 79 | Chaîne d'approvisionnement : verification-metadata, versions épinglées | D11 | prévu | — | — |
 | 80 | Fins de ligne : CRLF au tampon et au protocole | D13 | prévu | — | — |
@@ -73,6 +73,10 @@ amputé de ce qui est déjà fait.
 - 2026-11-26 — création ; historique des 113 commits réattribué à
   `jjoblab <olson12jb@gmail.com>` et poussé (force) — les 3 commits
   « Z User » de la période des vagues 44-46 rewriting.
+- 2026-11-26 — chantier 77 fermé : D5 réglé — le package
+  accessibility/ vit (le nœu00e9d se remplit : classe d'éditeur,
+  fenêtre de texte bornée autour du curseur, sélection, huit
+  actions ; les événements de frappe et de sélection se remplissent).
 - 2026-11-26 — chantier 76 fermé : D8 réglé — le stderr du serveur
   se vide au fil de fond (un serveur bavard ne fige plus le tuyau),
   l'arrêt accorde sa grâce puis son tue-loup ; le test du serveur
