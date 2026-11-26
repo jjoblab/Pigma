@@ -27,7 +27,10 @@ import static org.junit.Assert.assertTrue;
 /**
  * Le rendu du diagnostic à la trame réelle (mode graphique NATIF, à
  * la leçon de la capture du guide) : le retour de terrain sur
- * l'icône du diagnostic — la pastille du tap et les icônes de
+ * l'icône du diagnostic — la pastille du tap porte l'AMPOULE AU
+ * TRAIT AU-DESSUS DU MOT (LA MÊME que l'étage des correctifs — le
+ * retour du terrain à la leçon de la référence : la gouttière porte
+ * déjà LE marqueur, la pastille n'y vit plus), les icônes de
  * sévérité vivent AU TRAIT à la couleur de leur sévérité (rouge pour
  * l'erreur, ambre pour l'avertissement — la leçon de la référence,
  * étudiée dans {@code docs/etude-codeassist.md}), l'ampoule de
@@ -298,13 +301,17 @@ public final class DiagnosticRenderingIT {
     }
 
     /**
-     * LA PASTILLE DU TAP : l'icône de sévérité (au trait, la couleur
-     * de la pire — ROUGE pour l'erreur interne des paires) vit à la
-     * colonne de la pastille à la GOUTTIÈRE de la ligne diagnostiquée,
-     * et elle NAÎT par le pop (l'échelle y gagne, l'opacité suit).
+     * LA PASTILLE DU TAP : l'AMPOULE AU TRAIT — LA MÊME que l'étage
+     * des correctifs de la carte (l'encre à l'ACCENT) — vit
+     * AU-DESSUS DU MOT diagnostiqué, DANS LE TEXTE (le retour du
+     * terrain à la leçon de la référence : la gouttière porte déjà
+     * LE marqueur du diagnostic — la pastille n'y parle plus de la
+     * ligne, elle parle du mot) ; l'ANCIENNE colonne de gouttière de
+     * la pastille demeure au panneau. Elle NAÎT par le pop (l'échelle
+     * y gagne, l'opacité suit).
      */
     @Test
-    public void badgeSeverityIcon() {
+    public void badgeBulbAboveTheWord() {
         arrive();
         String original = editor.getBuffer().toString();
         editor.setSelection(original.length(), original.length());
@@ -324,10 +331,14 @@ public final class DiagnosticRenderingIT {
         frame();
         int caret = editor.getCaretOffset();
         int line = editor.getBuffer().lineOfOffset(caret);
-        float y = editor.getPaddingTop()
-                + line * editor.lineHeight() + editor.lineHeight() / 2.0f;
+        float lineTop = editor.getPaddingTop()
+                + line * editor.lineHeight();
+        float y = lineTop + editor.lineHeight() / 2.0f;
+        // le caractère diagnostiqué vit à caret-1 (le curseur s'est
+        // posé APRÈS le « ) » commis) : le doigt vise SA colonne
+        int signOffset = caret - 1;
         float x = editor.getPaddingLeft()
-                + (caret - 1 - editor.getBuffer().getLineStart(line))
+                + (signOffset - editor.getBuffer().getLineStart(line))
                 * editor.charWidth();
         // le premier tap pose la pastille ; le pop se laisse jouer
         // (150 ms : l'opacité y est pleine, l'échelle presque posée)
@@ -338,22 +349,46 @@ public final class DiagnosticRenderingIT {
             Thread.currentThread().interrupt();
         }
         frame();
-        // L'ICÔNE AU TRAIT ROUGE vit à la colonne de la pastille (la
-        // colonne propre, à l'écart des marqueurs de la ligne) — sa
-        // CROIX centrale y vit (le cercle au trait est creux, la croix
-        // y signe l'erreur : l'ancienne ampoule n'en portait pas)
-        int badgeCx = (int) (editor.getPaddingLeft() - 40 * density);
-        int badgeCy = (int) y;
-        int red = inkNear(editor.popupStyle().errorArgb(),
-                badgeCx - (int) (10 * density), badgeCx + (int) (10 * density),
-                badgeCy - (int) (10 * density), badgeCy + (int) (10 * density));
-        assertTrue("la pastille porte l'icône de sévérité rouge ("
-                + red + " pixels)", red >= ICON_INK);
-        int cross = inkNear(editor.popupStyle().errorArgb(),
-                badgeCx - (int) (2 * density), badgeCx + (int) (2 * density),
-                badgeCy - (int) (2 * density), badgeCy + (int) (2 * density));
-        assertTrue("la croix de l'erreur signe le centre de la pastille ("
-                + cross + " pixels)", cross >= 2);
+        // LA PASTILLE COIFFE LE MOT : dans le TEXTE (jamais la
+        // gouttière — le mur gauche du texte la borne), AU-DESSUS de
+        // la rangée (le centre précède le bord haut), à la colonne du
+        // MOT (le premier caractère de la plage)
+        float badgeX = editor.diagnosticBadgeCenterX();
+        float badgeY = editor.diagnosticBadgeCenterY();
+        assertTrue("la pastille vit dans le texte, hors gouttière ("
+                + badgeX + " < " + editor.getPaddingLeft() + ")",
+                badgeX >= editor.getPaddingLeft());
+        assertTrue("la pastille coiffe la rangée du mot (au-dessus, "
+                + badgeY + " >= " + lineTop + ")",
+                badgeY < lineTop);
+        // la pastille se centre sur le PREMIER CARACTÈRE de la plage
+        // (le centre du caractère tapé — le mot commence là), BORNÉE au
+        // mur gauche du texte (le côté de l'ampoule) : jamais la
+        // gouttière — un mot à la colonne NULLE y éprouve la borne
+        float wordCenter = Math.max(x + editor.charWidth() / 2.0f,
+                editor.getPaddingLeft() + 9 * density);
+        assertTrue("la pastille se centre sur le mot diagnostiqué ("
+                + badgeX + " vs " + wordCenter + ")",
+                Math.abs(badgeX - wordCenter) < 1.0f);
+        // L'AMPOULE AU TRAIT À L'ACCENT — la même encre que l'étage
+        // des correctifs — vit autour du centre
+        int cx = (int) badgeX;
+        int cy = (int) badgeY;
+        int accent = inkNear(editor.popupStyle().accentArgb(),
+                cx - (int) (10 * density), cx + (int) (10 * density),
+                cy - (int) (10 * density), cy + (int) (10 * density));
+        assertTrue("la pastille porte l'ampoule au trait à l'accent ("
+                + accent + " pixels)", accent >= ICON_INK);
+        // PLUS RIEN À L'ANCIENNE COLONNE DE GOUTTIÈRE : la pastille
+        // n'y vit plus — l'accent n'y paraît plus (le marqueur d'erreur
+        // de la ligne vit à SA colonne, encre ROUGE)
+        int oldColumn = (int) (editor.getPaddingLeft() - 40 * density);
+        int ghost = inkNear(editor.popupStyle().accentArgb(),
+                oldColumn - (int) (8 * density),
+                oldColumn + (int) (8 * density),
+                (int) (y - 8 * density), (int) (y + 8 * density));
+        assertTrue("l'ancienne colonne de la pastille demeure au panneau ("
+                + ghost + " pixels d'accent)", ghost == 0);
         // le retour au propre (le scénario repart propre)
         editor.getUndoStack().undo();
         frame();

@@ -306,14 +306,10 @@ public final class DiagnosticCard {
         // qu'il corrige), FIXE dans le cadre
         float ix = poseX + dp(14) + dp(ICON_DP) / 2.0f;
         float side = dp(ICON_DP) * 0.72f;
-        // l'ampoule au trait : le corps en cercle, le culot en deux
-        // barres (la référence y dessine son icône au trait, les
-        // caps arrondis)
-        canvas.drawCircle(ix, cy - side * 0.08f, side * 0.34f, fixPaint);
-        canvas.drawLine(ix - side * 0.18f, cy + side * 0.30f,
-                ix + side * 0.18f, cy + side * 0.30f, fixPaint);
-        canvas.drawLine(ix - side * 0.12f, cy + side * 0.44f,
-                ix + side * 0.12f, cy + side * 0.44f, fixPaint);
+        // l'ampoule au trait (le glyphe partagé — la pastille du tap
+        // porte LA MÊME au-dessus du mot, le retour du terrain) : le
+        // corps en cercle, le culot en deux barres
+        BulbIcon.draw(canvas, fixPaint, ix, cy, side);
         // le titre du correctif RESTE DANS LE CADRE (le retour du
         // terrain : « Corriger : … » y débordait) : la largeur
         // disponible se mesure au pinceau du correctif, l'ellipsize

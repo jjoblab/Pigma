@@ -22,7 +22,7 @@ import jo.pigma.editor.popups.ColorPickerCard;
 import jo.pigma.editor.popups.InfoPopup;
 import jo.pigma.editor.popups.LocalHistory;
 import jo.pigma.editor.popups.DiagnosticCard;
-import jo.pigma.editor.popups.SeverityIcon;
+import jo.pigma.editor.popups.BulbIcon;
 import jo.pigma.editor.popups.BadgePop;
 import jo.pigma.editor.popups.PopupStyle;
 import jo.pigma.editor.popups.QuickActionCard;
@@ -33,6 +33,7 @@ import jo.pigma.editor.internal.render.Painter;
 import jo.pigma.editor.internal.search.SearchController;
 import jo.pigma.editor.internal.scroll.ScrollController;
 import jo.pigma.editor.internal.touch.PinchController;
+import jo.pigma.editor.internal.touch.TouchController;
 import jo.pigma.editor.popups.PopupMetrics;
 import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.editor.popups.CompletionCard;
@@ -258,9 +259,6 @@ public final class EditorView extends View {
     /** Le doigt est-il tombé sur une carte ouverte ? — le geste entier lui revient. */
     private boolean downOnCard;
 
-    /** Le doigt tient-il la carte de la minimap (la navigation y suit en continu). */
-    private boolean minimapDragging;
-
     /** Le soft wrap vit-il (les lignes coupent à la largeur — la leçon de la référence). */
     private boolean softWrap;
 
@@ -326,14 +324,20 @@ public final class EditorView extends View {
                 - getPaddingRight());
     }
 
-    /** L'horodatage de l'appui courant (l'appui long sélectionne le mot). */
-    private long touchDownNanos;
-
-    /** L'horodatage du dernier tap (le double-tap sélectionne le mot). */
-    private long lastTapNanos;
-
-    private float lastTapX;
-    private float lastTapY;
+    /**
+     * L'ÉTAT DU TOUCHER (le composant du découpage — R1, la suite du
+     * pincement) : QUI possède le contact. L'appui naît puis GRANDIT —
+     * tap, balayage, appui long, poignée de sélection, traîné-déposé,
+     * carte du document tenue. La MÉMOIRE y vit (l'horodatage de
+     * l'appui, celui du dernier tap, le point de départ, la borne
+     * traînée, le point de dépôt, le doigt vivant — la loupe et
+     * l'aperçu flottant le suivent), la GÉOMÉTRIE demeure à la vue
+     * (où tombe un doigt : quel offset, quelle ligne, quel marqueur)
+     * — le contrôleur y tient les verdicts : l'appui a-t-il durée,
+     * le tap en suit-il un autre, le doigt a-t-il franchi le seuil,
+     * le lâcher vaut-il un tap plat.
+     */
+    private final TouchController touch = new TouchController();
 
     private float scrollY;
 
@@ -343,34 +347,6 @@ public final class EditorView extends View {
      * aussi). Positif quand le texte défile à gauche.
      */
     private float scrollX;
-    private float touchStartX;
-    private float touchStartY;
-    private boolean dragging;
-
-    /**
-     * La poignée traînée (0 : aucune, 1 : la borne de début, 2 : la
-     * borne de fin — l'appui long qui glisse s'y raccorde : la borne
-     * la plus proche du doigt).
-     */
-    private int selectionDragBound;
-
-    /** La borne fixe du traînement (l'autre bout de la sélection). */
-    private int dragFixedBound = -1;
-
-    /**
-     * Le traîné-déposé : l'appui dans le texte d'une sélection vivante
-     * l'arme (le glissé qui suit déplacera le texte au doigt).
-     */
-    private boolean textDragArmed;
-
-    /** Le traîné-déposé engagé : le curseur de dépôt suit le doigt. */
-    private boolean textDragging;
-
-    /** Le décalage de dépôt courant du traîné-déposé (-1 : hors geste). */
-    private int dropOffset = -1;
-
-    /** L'abscisse du doigt pendant le traîné (l'aperçu flottant la suit). */
-    private float dragFingerX;
 
     /** Le balayeur aux bords (le composant du découpage — R1 : le
      * traîné tenu au bord y fait glisser la vue, échéance après
@@ -456,23 +432,23 @@ public final class EditorView extends View {
 
     /**
      * La pastille d'erreur du tap (B4) : le doigt masque le texte
-     * visé — un tap sur un mot diagnostiqué y pose l'ampoule rouge
-     * dans la gouttière (l'alignement du carré d'erreur), le tap sur
-     * l'ampoule ouvre la carte. Elle vit trois secondes et meurt au
-     * geste qui la déplace.
+     * visé — un tap sur un mot diagnostiqué y pose l'AMPOULE
+     * AU-DESSUS du mot (le retour du terrain à la leçon de la
+     * référence : la gouttière porte déjà LE marqueur du diagnostic,
+     * la pastille n'y parle plus de la ligne, elle parle du mot), le
+     * tap sur l'ampoule ouvre la carte. Elle vit trois secondes et
+     * meurt au geste qui la déplace.
      */
     private long diagnosticBadgeUntilNanos;
     private int diagnosticBadgeLine = -1;
-    /** La colonne du signe diagnostiqué (le diagnostic y survit à la re-construction). */
+    /** La colonne du MOT diagnostiqué (le diagnostic y survit à la
+     * re-construction — la pastille s'y centre). */
     private int diagnosticBadgeColumn;
 
-    /** La sévérité de la pastille vivante (rouge pour l'erreur, ambre
-     * pour l'avertissement, accent pour le renseignement — l'icône au
-     * trait de la référence y suit sa couleur). */
-    private int diagnosticBadgeSeverity = DiagnosticCard.SEVERITY_ERROR;
-
-    /** L'icône de sévérité de la pastille (au trait, la référence). */
-    private final SeverityIcon badgeIcon = new SeverityIcon();
+    /** L'encre de l'ampoule de la pastille (au trait, à l'accent —
+     * LA MÊME que l'étage des correctifs de la carte : le tap y
+     * cherche la correction, l'ampoule y suit). */
+    private final Paint badgeBulbPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     /** Le pop de naissance de la pastille (le ressort de la référence :
      * l'échelle part de la moitié, ancrée à la ligne — elle monte vers
@@ -622,12 +598,6 @@ public final class EditorView extends View {
     /** Le cadre arrondi de la loupe de précision. */
     private final Paint loupeBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-    /**
-     * L'ordonnée du doigt pendant le traînement (la loupe la fuit —
-     * poignée comme traîné-déposé).
-     */
-    private float dragFingerY;
-
     /** La teinte des correspondances de recherche. */
     private final Paint searchPaint = new Paint();
 
@@ -760,12 +730,12 @@ public final class EditorView extends View {
         edgeScroller = new ScrollController(new ScrollController.Host() {
             @Override
             public boolean isTextDragging() {
-                return textDragging;
+                return touch.isTextDragging();
             }
 
             @Override
             public float fingerY() {
-                return dragFingerY;
+                return touch.fingerY();
             }
 
             @Override
@@ -800,7 +770,7 @@ public final class EditorView extends View {
 
             @Override
             public void recomputeDrop() {
-                dropOffset = offsetNearest(dragFingerX, dragFingerY);
+                touch.dropAt(offsetNearest(touch.fingerX(), touch.fingerY()));
             }
 
             @Override
@@ -889,27 +859,18 @@ public final class EditorView extends View {
 
             @Override
             public void settleGestures() {
-                dragging = false;
-                selectionDragBound = 0;
-                dragFixedBound = -1;
-                textDragging = false;
-                textDragArmed = false;
-                dropOffset = -1;
+                touch.settle();
                 dismissInfoPopup();
             }
 
             @Override
             public void touchRestartedAt(float x, float y) {
-                if (!Float.isNaN(x) && !Float.isNaN(y)) {
-                    touchStartX = x;
-                    touchStartY = y;
-                }
-                dragging = false;
+                touch.restartAt(x, y);
             }
 
             @Override
             public void forgetLastTap() {
-                lastTapNanos = 0L;
+                touch.forgetTap();
             }
 
             @Override
@@ -1275,7 +1236,15 @@ public final class EditorView extends View {
         diagnosticCard.setStyle(popupStyle);
         quickActionCard.setStyle(popupStyle);
         gutter.setStyle(popupStyle);
-        badgeIcon.setStyle(popupStyle);
+        // la pastille : l'ampoule au trait à l'ACCENT — la même encre
+        // que l'étage des correctifs de la carte (le retour du terrain
+        // : le petit icône du trait diagnostiqué porte LA MÊME ampoule
+        // que la carte), le trait au même rapport
+        badgeBulbPaint.setColor(popupStyle.accentArgb());
+        badgeBulbPaint.setStyle(Paint.Style.STROKE);
+        badgeBulbPaint.setStrokeCap(Paint.Cap.ROUND);
+        badgeBulbPaint.setStrokeJoin(Paint.Join.ROUND);
+        badgeBulbPaint.setStrokeWidth(dp(18) * (1.4f / (22.0f * 0.72f)));
         if (renameBar != null) {
             renameBar.setStyle(popupStyle);
         }
@@ -1621,59 +1590,46 @@ public final class EditorView extends View {
 
     /**
      * Pose la pastille du diagnostic sur le mot diagnostiqué visé par le
-     * tap (B4) : la pastille vit trois secondes à la colonne de
-     * l'icône, sa SÉVÉRITÉ y suit la pire de la ligne (rouge pour
-     * l'erreur, ambre pour l'avertissement — la leçon de la
-     * référence), et elle NAÎT par le ressort (le pop : l'échelle
-     * part de la moitié, ancrée à la ligne). Le tap suivant sur elle
-     * ouvre la carte. Un offset sans diagnostic range la pastille
-     * vivante (le geste a déplacé l'attention).
+     * tap (B4) : l'ampoule vit trois secondes AU-DESSUS DU MOT (le
+     * retour du terrain à la leçon de la référence : la gouttière
+     * porte déjà LE marqueur du diagnostic — la pastille n'y parle
+     * plus de la ligne, elle parle du mot), elle se centre sur le
+     * PREMIER CARACTÈRE de la plage diagnostiquée, et elle NAÎT par
+     * le ressort (le pop : l'échelle part de la moitié, ancrée à la
+     * ligne). Le tap suivant sur elle ouvre la carte. Un offset sans
+     * diagnostic range la pastille vivante (le geste a déplacé
+     * l'attention).
      *
      * @param offset l'offset visé par le doigt
      */
     private void offerDiagnosticBadge(int offset) {
         int line = buffer.lineOfOffset(Math.min(offset, buffer.length()));
-        boolean onDiagnostic = false;
+        int lineStart = buffer.getLineStart(line);
+        // la colonne du MOT : le PREMIER caractère de la plage du
+        // diagnostic couvrant l'offset (la pastille s'y centre — le
+        // doigt touche le souligné N'IMPORTE OÙ, la pastille parle du
+        // mot entier) ; le fournisseur de l'hôte ne dit pas sa plage —
+        // la colonne tapée y tient lieu de mot
+        int column = -1;
         if (diagnostics != null && analysisRevision == buffer.getRevision()) {
             for (DiagnosticsDocument.Diagnostic diagnostic
                     : diagnostics.betweenLines(line, line)) {
                 if (diagnostic.start() <= offset && offset < diagnostic.end()) {
-                    onDiagnostic = true;
+                    column = Math.max(diagnostic.start(), lineStart) - lineStart;
                     break;
                 }
             }
         }
-        if (!onDiagnostic && diagnosticProvider != null
+        if (column < 0 && diagnosticProvider != null
                 && diagnosticProvider.diagnosticCovers(line,
-                        offset - buffer.getLineStart(line))) {
-            onDiagnostic = true;
+                        offset - lineStart)) {
+            column = Math.min(offset, buffer.getLineEnd(line)) - lineStart;
         }
-        if (onDiagnostic) {
+        if (column >= 0) {
             diagnosticBadgeLine = line;
-            diagnosticBadgeColumn = Math.min(offset,
-                    buffer.getLineEnd(line)) - buffer.getLineStart(line);
+            diagnosticBadgeColumn = column;
             diagnosticBadgeUntilNanos = System.nanoTime()
                     + BADGE_LIFETIME_NANOS;
-            // la SÉVÉRITÉ de la pastille : la PIRE de la ligne (les
-            // diagnostics internes — les paires — sont des erreurs,
-            // les entrées de l'hôte portent la leur : l'erreur domine
-            // l'avertissement, l'avertissement le renseignement)
-            diagnosticBadgeSeverity = onInternalDiagnostic(offset)
-                    ? DiagnosticCard.SEVERITY_ERROR
-                    : DiagnosticCard.SEVERITY_INFO;
-            if (diagnosticProvider != null) {
-                for (DiagnosticCard.Entry hosted
-                        : diagnosticsOfLine(line)) {
-                    if (hosted.severity() < diagnosticBadgeSeverity) {
-                        diagnosticBadgeSeverity = hosted.severity();
-                    }
-                }
-            }
-            if (diagnosticBadgeSeverity == DiagnosticCard.SEVERITY_INFO
-                    && (diagnosticsOfLine(line).isEmpty()
-                        || diagnosticProvider == null)) {
-                diagnosticBadgeSeverity = DiagnosticCard.SEVERITY_ERROR;
-            }
             badgePop.born();
             postDelayed(this::invalidate, BADGE_LIFETIME_MS + 50);
         } else {
@@ -1682,25 +1638,9 @@ public final class EditorView extends View {
         }
     }
 
-    /** Le diagnostic interne (la paire non fermée — toujours une
-     * ERREUR) vit-il sous l'offset ? */
-    private boolean onInternalDiagnostic(int offset) {
-        if (diagnostics == null || analysisRevision != buffer.getRevision()) {
-            return false;
-        }
-        int line = buffer.lineOfOffset(Math.min(offset, buffer.length()));
-        for (DiagnosticsDocument.Diagnostic diagnostic
-                : diagnostics.betweenLines(line, line)) {
-            if (diagnostic.start() <= offset && offset < diagnostic.end()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /**
-     * Le doigt est-il sur la pastille vivante ? Le tap y ouvre la
-     * carte de la ligne ancrée.
+     * Le doigt est-il sur l'ampoule vivante ? Le tap y ouvre la carte
+     * de la ligne ancrée.
      *
      * @param x l'abscisse du doigt (px, coordonnées de la vue)
      * @param y l'ordonnée du doigt (px, coordonnées de la vue)
@@ -1712,7 +1652,7 @@ public final class EditorView extends View {
             diagnosticBadgeLine = -1;
             return false;
         }
-        float cx = markerCx();
+        float cx = diagnosticBadgeCenterX();
         float cy = diagnosticBadgeCenterY();
         float radius = dp(14);
         if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= radius * radius) {
@@ -1725,7 +1665,7 @@ public final class EditorView extends View {
     }
 
     /**
-     * L'ordonnée du CENTRE de la pastille vivante (l'accès du harnais
+     * L'ordonnée du CENTRE de l'ampoule vivante (l'accès du harnais
      * et du nœud d'accessibilité : la géométrie du dessin s'y lit,
      * le doigt s'y pose).
      *
@@ -1736,8 +1676,22 @@ public final class EditorView extends View {
         if (diagnosticBadgeLine < 0) {
             return Float.MAX_VALUE;
         }
-        return lineBaseline(diagnosticBadgeLine)
-                + (fontMetrics.top + fontMetrics.bottom) / 2.0f;
+        // la ligne ANCRÉE : le bord haut de sa rangée visible (le pli
+        // décale l'indice)
+        float top = getPaddingTop()
+                + visibleIndexOf(diagnosticBadgeLine) * lineHeight - scrollY;
+        float side = dp(18);
+        float gap = dp(6);
+        // AU-DESSUS de la ligne (la leçon de la référence : son
+        // ampoule flotte au-dessus du curseur — le pied à un pas de
+        // la rangée) ; sans la place au-dessus (la première rangée de
+        // la fenêtre), la pastille TOMBE SOUS la ligne — jamais dans
+        // la gouttière
+        if (top - gap - side >= 0.0f) {
+            return top - gap - side / 2.0f;
+        }
+        return Math.min(top + lineHeight + gap + side / 2.0f,
+                getHeight() - side / 2.0f);
     }
 
     /**
@@ -2080,7 +2034,7 @@ public final class EditorView extends View {
      */
     private void reopenSameDocument() {
         selection.setAnchor(-1);
-        selectionDragBound = 0;
+        touch.releaseHandle();
         search.forget();
         infoPopup.dismiss();
         undoStack.clear();
@@ -3060,7 +3014,7 @@ public final class EditorView extends View {
             // intermédiaire y laisserait une barre périmée — le doigt
             // passerait à travers le texte (la sélection se range à
             // la trame suivante, la barre l'ignore entre-temps)
-            boolean selectionAlive = hasSelection() && selectionDragBound == 0;
+            boolean selectionAlive = hasSelection() && !touch.isHandleDragging();
             downOnCard = touchedSearch || touchedGoto || touchedRename
                     || (completionCard != null && completionCard.isShown()
                             && completionCard.onTouchArea(event.getX(), event.getY()))
@@ -3113,9 +3067,7 @@ public final class EditorView extends View {
         }
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
-                touchStartX = event.getX();
-                touchStartY = event.getY();
-                touchDownNanos = System.nanoTime();
+                touch.begin(event.getX(), event.getY());
                 pinch.reset();
                 // LA MINIMAP ET SA BARRE D'ANNULER/RÉTABLIR prennent
                 // leur geste au DOWN : la barre COIFFE la région (les
@@ -3141,7 +3093,7 @@ public final class EditorView extends View {
                         // BARRE (hors pastille) ne déplace PAS le
                         // curseur — la barre d'outils consomme sans
                         // naviguer, la carte vit dessous
-                        minimapDragging = true;
+                        touch.holdsMap();
                         int line = minimap.lineAt(event.getY(), getHeight(),
                                 buffer.getLineCount());
                         caretTo(buffer.getLineStart(line));
@@ -3157,9 +3109,6 @@ public final class EditorView extends View {
                 dismissInfoPopup();
                 diagnosticCard.close();
                 quickActionCard.close();
-                dragging = false;
-                selectionDragBound = 0;
-                dragFixedBound = -1;
                 // une sélection vivante se saisit d'abord par ses
                 // poignées (le défilement n'y a pas droit)
                 grabSelectionHandle(event.getX(), event.getY());
@@ -3167,13 +3116,11 @@ public final class EditorView extends View {
                 // sélection (pas sur une poignée) l'arme — le glissé
                 // qui suit, avant le seuil de l'appui long, déplacera
                 // le texte au doigt
-                textDragArmed = selectionDragBound == 0
+                touch.armTextDrag(!touch.isHandleDragging()
                         && event.getX() >= getPaddingLeft()
                         && hasSelection()
                         && selectionStart() <= offsetNearest(event.getX(), event.getY())
-                        && offsetNearest(event.getX(), event.getY()) <= selectionEnd();
-                textDragging = false;
-                dropOffset = -1;
+                        && offsetNearest(event.getX(), event.getY()) <= selectionEnd());
                 break;
             case MotionEvent.ACTION_POINTER_DOWN:
                 // le second doigt se pose : le pincement s'engage (les
@@ -3197,7 +3144,7 @@ public final class EditorView extends View {
                     }
                     break;
                 }
-                if (minimapDragging) {
+                if (touch.isMapDragging()) {
                     // le doigt tient la carte : la navigation suit à
                     // CHAQUE cran (la réactivité demandée)
                     int line = minimap.lineAt(event.getY(), getHeight(),
@@ -3205,38 +3152,37 @@ public final class EditorView extends View {
                     caretTo(buffer.getLineStart(line));
                     break;
                 }
-                if (selectionDragBound != 0) {
+                if (touch.isHandleDragging()) {
                     dragSelectionBound(event.getX(), event.getY());
                     break;
                 }
-                if (textDragArmed && !textDragging && !heldLongEnough()
-                        && (Math.abs(event.getX() - touchStartX) > touchSlop()
-                                || Math.abs(event.getY() - touchStartY) > touchSlop())) {
+                if (touch.isTextArmed() && !touch.isTextDragging()
+                        && !touch.heldLongEnough()
+                        && touch.beyondSlop(event.getX(), event.getY(), touchSlop())) {
                     // le traîné s'engage : le texte de la sélection
                     // suivra le doigt jusqu'au dépôt (l'appui long qui
                     // glisse garde sa voie : l'étendue de sélection)
                     requestFocus();
                     clearComposing();
                     dismissInfoPopup();
-                    textDragging = true;
+                    touch.engageTextDrag();
                 }
-                if (textDragging) {
+                if (touch.isTextDragging()) {
                     // le curseur de dépôt suit le doigt : le caractère
                     // le plus proche (il se dessine à la place du
                     // curseur le temps du geste) ; le doigt près du
                     // bord programme le défilement — le point de dépôt
                     // reste lisible pendant que la vue glisse
-                    dragFingerX = event.getX();
-                    dragFingerY = event.getY();
+                    touch.finger(event.getX(), event.getY());
                     scheduleEdgeScroll();
-                    dropOffset = offsetNearest(event.getX(), event.getY());
+                    touch.dropAt(offsetNearest(event.getX(), event.getY()));
                     invalidate();
                     break;
                 }
-                if (!dragging && heldLongEnough()
-                        && touchStartX < dp(24)
-                        && Math.abs(event.getX() - touchStartX) <= touchSlop()
-                        && Math.abs(event.getY() - touchStartY) <= touchSlop()) {
+                if (!touch.isDragging() && touch.heldLongEnough()
+                        && touch.startX() < dp(24)
+                        && Math.abs(event.getX() - touch.startX()) <= touchSlop()
+                        && Math.abs(event.getY() - touch.startY()) <= touchSlop()) {
                     // l'appui long IMMOBILE de la colonne des marqueurs :
                     // le point d'arrêt se pose (la ligne en pose le
                     // retire) — le geste du débogueur, le tap simple
@@ -3245,12 +3191,11 @@ public final class EditorView extends View {
                             (int) ((event.getY() - getPaddingTop() + scrollY) / lineHeight));
                     toggleBreakpoint(line);
                     clearComposing();
-                    lastTapNanos = 0L;
+                    touch.forgetTap();
                     break;
                 }
-                if (!dragging && heldLongEnough()
-                        && (Math.abs(event.getX() - touchStartX) > touchSlop()
-                                || Math.abs(event.getY() - touchStartY) > touchSlop())) {
+                if (!touch.isDragging() && touch.heldLongEnough()
+                        && touch.beyondSlop(event.getX(), event.getY(), touchSlop())) {
                     // l'appui long qui glisse : la sélection s'étend au
                     // doigt — le mot sous l'appui sème la sélection
                     // s'il n'y en a pas, la borne la plus proche du
@@ -3259,28 +3204,27 @@ public final class EditorView extends View {
                     requestFocus();
                     clearComposing();
                     if (!hasSelection()) {
-                        selectWordAt(touchStartX, touchStartY);
+                        selectWordAt(touch.startX(), touch.startY());
                     }
                     dismissInfoPopup();
                     engageSelectionDrag(event.getX(), event.getY());
                     dragSelectionBound(event.getX(), event.getY());
                     break;
                 }
-                if (!dragging && (Math.abs(event.getY() - touchStartY) > touchSlop()
-                        || Math.abs(event.getX() - touchStartX) > touchSlop())) {
-                    dragging = true;
+                if (!touch.isDragging()
+                        && touch.beyondSlop(event.getX(), event.getY(), touchSlop())) {
+                    touch.engageScroll();
                 }
-                if (dragging) {
+                if (touch.isDragging()) {
                     // le défilement à DEUX axes : le texte suit le
                     // doigt en hauteur et en largeur (la ligne longue
                     // s'y révèle — le pincement l'a agrandie, le
                     // geste plat la parcourt)
-                    scrollY = clampToRange(scrollY - (event.getY() - touchStartY),
+                    scrollY = clampToRange(scrollY - (event.getY() - touch.startY()),
                             0.0f, maxScroll());
-                    scrollX = clampToRange(scrollX - (event.getX() - touchStartX),
+                    scrollX = clampToRange(scrollX - (event.getX() - touch.startX()),
                             0.0f, maxScrollX());
-                    touchStartY = event.getY();
-                    touchStartX = event.getX();
+                    touch.slideTo(event.getX(), event.getY());
                     invalidate();
                 }
                 break;
@@ -3290,49 +3234,49 @@ public final class EditorView extends View {
                     // pas un tap (le curseur ne saute pas au doigt qui
                     // reste le dernier levé)
                     pinch.reset();
-                    lastTapNanos = 0L;
+                    touch.forgetTap();
                     invalidate();
                     break;
                 }
-                if (selectionDragBound != 0) {
+                if (touch.isHandleDragging()) {
                     // la poignée se lâche : la sélection reste posée,
                     // l'appui ne compte pas pour un tap (le suivant ne
                     // serait pas un double-tap) ; la trame se redemande —
                     // la loupe s'y range, la barre de sélection y naît
                     // (sans elle, la dernière trame — loupe comprise —
                     // resterait gelée à l'écran)
-                    selectionDragBound = 0;
-                    dragFixedBound = -1;
-                    lastTapNanos = 0L;
+                    touch.releaseHandle();
+                    touch.forgetTap();
                     invalidate();
                     break;
                 }
-                if (textDragging) {
+                if (touch.isTextDragging()) {
                     // le dépôt : le texte sélectionné se déplace au
                     // curseur de dépôt — l'appui ne compte pas pour un
                     // tap non plus ; le défilement au bord se range
                     edgeScroller.cancel();
-                    dropTextAtSelection(dropOffset);
-                    textDragging = false;
-                    textDragArmed = false;
-                    dropOffset = -1;
-                    lastTapNanos = 0L;
+                    dropTextAtSelection(touch.dropOffset());
+                    touch.releaseTextDrag();
+                    touch.forgetTap();
                     break;
                 }
-                if (minimapDragging) {
-                    minimapDragging = false;
-                    lastTapNanos = 0L;
+                if (touch.isMapDragging()) {
+                    touch.releaseMap();
+                    touch.forgetTap();
                     break;
                 }
-                if (dragging) {
-                    dragging = false;
+                if (touch.isDragging()) {
+                    // le balayage se rend (son lâcher ne vaut pas un
+                    // tap — le geste a grandi)
+                    touch.settle();
                 } else if (tapDiagnosticBadge(event.getX(), event.getY())) {
-                    // L'AMPOULE DE LA PASTILLE VIT DANS LA GOUTTIÈRE
-                    // (B4) : son tap s'y éprouve AVANT toute autre
-                    // branche — la gouttière la renverrait à ses
-                    // marqueurs, le texte à son curseur
+                    // LA PASTILLE FLOTTE AU-DESSUS DU MOT (B4, le
+                    // retour du terrain à la leçon de la référence) :
+                    // son tap s'y éprouve AVANT toute autre branche —
+                    // elle vit sur le texte, le curseur s'y poserait
+                    // à sa place
                     requestFocus();
-                    lastTapNanos = 0L;
+                    touch.forgetTap();
                 } else if (event.getX() > getWidth() - minimap.width()) {
                     // LA MINIMAP : sa barre d'annulation en tête (le tap
                     // y joue la pile), la carte du document dessous (le
@@ -3345,11 +3289,11 @@ public final class EditorView extends View {
                     if (button >= 0) {
                         minimap.pressButton(button);
                         clearComposing();
-                        lastTapNanos = 0L;
+                        touch.forgetTap();
                         break;
                     }
                     if (event.getY() < minimap.barHeight()) {
-                        lastTapNanos = 0L;
+                        touch.forgetTap();
                         break;
                     }
                     int line = minimap.lineAt(event.getY(), getHeight(),
@@ -3370,7 +3314,7 @@ public final class EditorView extends View {
                     if (event.getX() < dp(24)
                             && handleGutterMarkerTap(line)) {
                         clearComposing();
-                        lastTapNanos = 0L;
+                        touch.forgetTap();
                         break;
                     }
                     // LE DOUBLE-TAP SUR LE NUMÉRO pose le point d'arrêt
@@ -3378,18 +3322,18 @@ public final class EditorView extends View {
                     // double-clic) — la COLONNE DES NUMÉROS SEULE (entre
                     // les marqueurs et le bord du panneau : la colonne
                     // des plis garde son pli au double-tap)
-                    if (tappedTwice(event.getX(), event.getY())
+                    if (touch.tappedTwice(event.getX(), event.getY(), touchSlop())
                             && event.getX() > dp(24)
                             && event.getX() < getPaddingLeft() - dp(16)) {
                         toggleBreakpoint(line);
                         clearComposing();
-                        lastTapNanos = 0L;
+                        touch.forgetTap();
                         break;
                     }
                     toggleFoldAt(line);
                     clearComposing();
-                } else if (heldLongEnough()
-                        || tappedTwice(event.getX(), event.getY())) {
+                } else if (touch.heldLongEnough()
+                        || touch.tappedTwice(event.getX(), event.getY(), touchSlop())) {
                     // l'appui long ou le double-tap : le mot sous le
                     // doigt se sélectionne (la frappe suivante le
                     // remplacera) — SAUF le littéral de couleur (la
@@ -3441,9 +3385,7 @@ public final class EditorView extends View {
                         }
                     }
                 }
-                lastTapNanos = System.nanoTime();
-                lastTapX = event.getX();
-                lastTapY = event.getY();
+                touch.rememberTap(event.getX(), event.getY());
                 break;
             case MotionEvent.ACTION_CANCEL:
                 // le système reprend le geste (la navigation par geste,
@@ -3453,15 +3395,11 @@ public final class EditorView extends View {
                 // de poignée tenue tuerait les deux) ; le pincement
                 // s'y range pareillement
                 pinch.reset();
-                if (selectionDragBound != 0 || textDragging || dragging) {
+                if (touch.isHandleDragging() || touch.isTextDragging()
+                        || touch.isDragging()) {
                     edgeScroller.cancel();
-                    selectionDragBound = 0;
-                    dragFixedBound = -1;
-                    textDragging = false;
-                    textDragArmed = false;
-                    dropOffset = -1;
-                    dragging = false;
-                    lastTapNanos = 0L;
+                    touch.settle();
+                    touch.forgetTap();
                     invalidate();
                 }
                 break;
@@ -3469,19 +3407,6 @@ public final class EditorView extends View {
                 break;
         }
         return true;
-    }
-
-    /** L'appui courant a-t-il duré au-delà du seuil de l'appui long ? */
-    private boolean heldLongEnough() {
-        return System.nanoTime() - touchDownNanos > 500_000_000L;
-    }
-
-    /** Le tap courant suit-il de près un tap au même endroit ? */
-    private boolean tappedTwice(float x, float y) {
-        return lastTapNanos > 0L
-                && System.nanoTime() - lastTapNanos < 350_000_000L
-                && Math.abs(x - lastTapX) < touchSlop()
-                && Math.abs(y - lastTapY) < touchSlop();
     }
 
     /**
@@ -3541,9 +3466,8 @@ public final class EditorView extends View {
         }
         requestFocus();
         clearComposing();
-        selectionDragBound = toStart <= toEnd ? 1 : 2;
-        dragFixedBound = selectionDragBound == 1 ? selectionEnd() : selectionStart();
-        dragFingerY = y;
+        touch.holdsHandle(toStart <= toEnd ? 1 : 2,
+                toStart <= toEnd ? selectionEnd() : selectionStart(), y);
     }
 
     /**
@@ -3554,10 +3478,9 @@ public final class EditorView extends View {
     private void engageSelectionDrag(float x, float y) {
         float[] start = handleCenter(selectionStart());
         float[] end = handleCenter(selectionEnd());
-        selectionDragBound = distanceTo(x, y, start[0], start[1])
+        int bound = distanceTo(x, y, start[0], start[1])
                 <= distanceTo(x, y, end[0], end[1]) ? 1 : 2;
-        dragFixedBound = selectionDragBound == 1 ? selectionEnd() : selectionStart();
-        dragFingerY = y;
+        touch.holdsHandle(bound, bound == 1 ? selectionEnd() : selectionStart(), y);
     }
 
     /**
@@ -3568,14 +3491,14 @@ public final class EditorView extends View {
      */
     private void dragSelectionBound(float x, float y) {
         autoScrollNearEdges(x, y);
-        dragFingerY = y;
+        touch.finger(x, y);
         int offset = offsetNearest(x, y);
-        if (selectionDragBound == 1) {
-            selection.setCaret(Math.min(offset, dragFixedBound));
-            selection.setAnchor(dragFixedBound);
+        if (touch.draggedBound() == 1) {
+            selection.setCaret(Math.min(offset, touch.fixedBound()));
+            selection.setAnchor(touch.fixedBound());
         } else {
-            selection.setCaret(Math.max(offset, dragFixedBound));
-            selection.setAnchor(dragFixedBound);
+            selection.setCaret(Math.max(offset, touch.fixedBound()));
+            selection.setAnchor(touch.fixedBound());
         }
         invalidate();
     }
@@ -4745,16 +4668,18 @@ public final class EditorView extends View {
     }
 
     /**
-     * Dessine la pastille du diagnostic : L'ICÔNE DE SÉVÉRITÉ au
-     * trait de la référence (le cercle barré rouge de l'erreur, le
-     * triangle ambre de l'avertissement, le « i » d'accent du
-     * renseignement) — dans la GOUTTIÈRE de la ligne du diagnostic,
-     * à l'écart des marqueurs (le retour du terrain : le disque
-     * au-dessus du mot mangeait la ligne du dessus). Elle NAÎT par
+     * Dessine la pastille du diagnostic : l'AMPOULE au trait — LA MÊME
+     * que l'étage des correctifs de la carte (le retour du terrain :
+     * le petit icône du trait diagnostiqué doit ouvrir la même lecture
+     * que la carte — le corps en cercle, le culot en barres, l'encre à
+     * l'accent) — vivant AU-DESSUS DU MOT diagnostiqué (la leçon de la
+     * référence : son ampoule flotte au-dessus du curseur ; la
+     * gouttière porte déjà LE marqueur du diagnostic — la pastille
+     * n'y parle plus de la ligne, elle parle du mot). Elle NAÎT par
      * le POP de la référence : l'échelle part de la MOITIÉ, ancrée
-     * au pied de la ligne (elle monte vers le mot), l'opacité suit —
-     * le ressort amorti y joue sa signature. Elle meurt à son
-     * échéance, le dessin ne la rend plus.
+     * au pied de la pastille (elle monte depuis la ligne vers le
+     * mot), l'opacité suit — le ressort amorti y joue sa signature.
+     * Elle meurt à son échéance, le dessin ne la rend plus.
      */
     private void drawDiagnosticBadge(Canvas canvas) {
         if (diagnosticBadgeLine < 0
@@ -4762,26 +4687,24 @@ public final class EditorView extends View {
                 || isHidden(diagnosticBadgeLine)) {
             return;
         }
-        float baseline = lineBaseline(diagnosticBadgeLine);
-        float cy = baseline
-                + (fontMetrics.top + fontMetrics.bottom) / 2.0f;
-        float cx = markerCx();
+        float cx = diagnosticBadgeCenterX();
+        float cy = diagnosticBadgeCenterY();
         float side = dp(18);
         // le pop de naissance (la référence : l'échelle part de la
-        // moitié, ancrée AU PIED de la ligne — la pastille monte vers
-        // le mot), le fondu au-dessus
+        // moitié, ancrée AU PIED de la pastille — l'ampoule monte
+        // depuis la ligne vers le mot), le fondu au-dessus
         float scale = badgePop.scale();
         float alpha = badgePop.alpha();
         int save = canvas.save();
         if (scale != 1.0f) {
-            float anchorY = baseline + fontMetrics.descent;
-            canvas.translate(cx, anchorY);
+            float pivotY = cy + side / 2.0f;
+            canvas.translate(cx, pivotY);
             canvas.scale(scale, scale);
-            canvas.translate(-cx, -anchorY);
+            canvas.translate(-cx, -pivotY);
         }
         canvas.saveLayerAlpha(cx - side, cy - side, cx + side, cy + side,
                 Math.max(0, Math.min(255, (int) (alpha * 255.0f))));
-        badgeIcon.draw(canvas, diagnosticBadgeSeverity, cx, cy, side);
+        BulbIcon.draw(canvas, badgeBulbPaint, cx, cy, side);
         canvas.restore();
         canvas.restore();
         if (badgePop.isRunning()) {
@@ -4790,20 +4713,12 @@ public final class EditorView extends View {
     }
 
     /**
-     * L'abscisse du marqueur de la PASTILLE flottante (la colonne
-     * propre de l'aperçu — le carré d'erreur y vivait avant, le
-     * retour du terrain l'a rangé à la colonne des marqueurs) : la
-     * pastille du tap y vit, à l'écart des marqueurs de la ligne.
-     *
-     * @return l'abscisse en pixels, coordonnées de la vue
-     */
-    private float markerCx() {
-        return getPaddingLeft() - dp(40);
-    }
-
-    /**
-     * L'abscisse du CENTRE de la pastille vivante (le pendant public
-     * de {@link #markerCx()} : le harnais y pose son doigt).
+     * L'abscisse du CENTRE de l'ampoule vivante : le MOT la porte —
+     * le premier caractère de la plage diagnostiquée (la leçon de la
+     * référence : son ampoule se pose au-dessus du curseur) — BORNÉE
+     * au texte (le mur gauche de la gouttière, le mur droit de la
+     * vue : la pastille ne retourne jamais dans la gouttière, les
+     * marqueurs y vivent leur vie).
      *
      * @return l'abscisse en pixels, {@link Float#MAX_VALUE} si aucune
      *         pastille ne vit
@@ -4812,7 +4727,13 @@ public final class EditorView extends View {
         if (diagnosticBadgeLine < 0) {
             return Float.MAX_VALUE;
         }
-        return markerCx();
+        float side = dp(18);
+        float x = getPaddingLeft()
+                + diagnosticBadgeColumn * charWidth
+                + charWidth / 2.0f;
+        return clampToRange(x, getPaddingLeft() + side / 2.0f,
+                Math.max(getPaddingLeft() + side / 2.0f,
+                        getWidth() - side / 2.0f));
     }
 
     /**
@@ -5199,7 +5120,7 @@ public final class EditorView extends View {
      * se tape pas).
      */
     private void updateSuggestions() {
-        if (selectionDragBound != 0 || textDragging) {
+        if (touch.isHandleDragging() || touch.isTextDragging()) {
             completionCard.set(List.of(), "");
             suggestionWordStart = -1;
             return;
@@ -5624,8 +5545,8 @@ public final class EditorView extends View {
      * presse-papiers).
      */
     private boolean selectionBarAlive() {
-        return hasSelection() && selectionDragBound == 0
-                && !textDragging && !dragging;
+        return hasSelection() && !touch.isHandleDragging()
+                && !touch.isTextDragging() && !touch.isDragging();
     }
 
     private void updateSelectionBar() {
@@ -6448,7 +6369,9 @@ public final class EditorView extends View {
     private void drawCaret(Canvas canvas) {
         // le temps du traîné-déposé, le curseur se dessine au point de
         // dépôt : le doigt y voit où le texte se posera
-        int offset = Math.min(textDragging ? dropOffset : selection.caret(), buffer.length());
+        int offset = Math.min(
+                touch.isTextDragging() ? touch.dropOffset() : selection.caret(),
+                buffer.length());
         int line = buffer.lineOfOffset(offset);
         if (line < firstVisibleLine() || line > lastVisibleLine() || isHidden(line)) {
             return;
@@ -6494,13 +6417,14 @@ public final class EditorView extends View {
      * ne vit que le temps du traînement.
      */
     private void drawLoupe(Canvas canvas) {
-        if (selectionDragBound == 0 && !textDragging) {
+        if (!touch.isHandleDragging() && !touch.isTextDragging()) {
             return;
         }
-        if (textDragging && dropOffset < 0) {
+        if (touch.isTextDragging() && touch.dropOffset() < 0) {
             return;
         }
-        int offset = Math.min(textDragging ? dropOffset : selection.caret(),
+        int offset = Math.min(
+                touch.isTextDragging() ? touch.dropOffset() : selection.caret(),
                 buffer.length());
         int line = buffer.lineOfOffset(offset);
         if (isHidden(line)) {
@@ -6517,9 +6441,9 @@ public final class EditorView extends View {
         float height = lineHeight * LOUPE_SCALE + dp(8);
         float left = clampToRange(centerX - width / 2.0f, getPaddingLeft(),
                 Math.max(getPaddingLeft(), getWidth() - getPaddingRight() - width));
-        float top = dragFingerY - dp(12) - height;
+        float top = touch.fingerY() - dp(12) - height;
         if (top < getPaddingTop()) {
-            top = Math.min(dragFingerY + dp(12),
+            top = Math.min(touch.fingerY() + dp(12),
                     Math.max(getPaddingTop(), getHeight() - getPaddingBottom() - height));
         }
         // le contenu : la ligne rendue UNE FOIS à l'échelle 1 (hors
@@ -6575,7 +6499,7 @@ public final class EditorView extends View {
      * du traîné reste chaud, la trame ne paie qu'un drawText court.
      */
     private void drawDragPreview(Canvas canvas) {
-        if (!textDragging || !hasSelection()) {
+        if (!touch.isTextDragging() || !hasSelection()) {
             return;
         }
         int start = selectionStart();
@@ -6589,9 +6513,9 @@ public final class EditorView extends View {
                 ? carried.substring(0, 19) + "…" : carried;
         float chipWidth = shown.length() * charWidth + dp(16);
         float chipHeight = lineHeight + dp(8);
-        float left = clampToRange(dragFingerX - chipWidth / 2.0f, getPaddingLeft(),
+        float left = clampToRange(touch.fingerX() - chipWidth / 2.0f, getPaddingLeft(),
                 Math.max(getPaddingLeft(), getWidth() - getPaddingRight() - chipWidth));
-        float top = Math.min(dragFingerY + dp(10),
+        float top = Math.min(touch.fingerY() + dp(10),
                 Math.max(getPaddingTop(), getHeight() - getPaddingBottom() - chipHeight));
         canvas.drawRoundRect(left, top, left + chipWidth, top + chipHeight,
                 dp(6), dp(6), selectionRenderer.paint());
@@ -6781,7 +6705,7 @@ public final class EditorView extends View {
      * @return le décalage de dépôt, -1 hors geste
      */
     public int harnessDropOffset() {
-        return dropOffset;
+        return touch.dropOffset();
     }
 
     /**
