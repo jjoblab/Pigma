@@ -3766,11 +3766,12 @@ public final class OpenHarness {
                 Math.abs(editor.harnessScrollY() - scrollBefore) < 1.0f);
         // l'état corrompu ne lève pas : un paquet aux bornes hors
         // texte se borne (la vue ne lève jamais à la restauration)
-        android.os.Bundle hostile = new android.os.Bundle();
-        hostile.putInt("pigma.caret", Integer.MAX_VALUE / 2);
-        hostile.putInt("pigma.anchor", Integer.MAX_VALUE);
-        hostile.putFloat("pigma.scrollY", Float.MAX_VALUE);
-        editor.harnessRestoreState(hostile);
+        // l'état corrompu porte les bornes hostiles DANS le
+        // SavedState de la vue (le vrai porteur depuis la vague du
+        // correctif D1)
+        editor.harnessRestoreState(new jo.pigma.editor.EditorView.SavedState(
+                null, Integer.MAX_VALUE / 2, Integer.MAX_VALUE,
+                Float.MAX_VALUE));
         frame();
         check("un état corrompu se borne sans lever",
                 editor.caretOffset() <= editor.getBuffer().length());

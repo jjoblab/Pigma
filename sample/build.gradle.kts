@@ -46,6 +46,17 @@ android {
             useLegacyPackaging = true
         }
     }
+
+    // Le harnais d'intégration vit aux tests du sample : Robolectric
+    // y porte les VRAIES classes du cadre (la vue, le canevas, les
+    // événements, l'app-bar Material) — les ressources de l'APK y
+    // sont lisibles (le thème), le manifeste y déclare l'activité de
+    // démonstration.
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -59,4 +70,9 @@ dependencies {
     // (la feuille basse) — aucune géométrie maison, le cadre porte
     // la mesure et la disposition.
     implementation(libs.material)
+    // le harnais d'intégration : les scénarios du vieux harnais sur
+    // les vraies classes du cadre (la demande du propriétaire : de
+    // vraies classes au lieu de stubs)
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
 }

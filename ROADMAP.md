@@ -30,12 +30,12 @@ qu'il propose.
 
 | # | Chantier | Rapport | État | Document | Commit |
 |---|----------|---------|------|----------|--------|
-| 64 | Harnais sur les vraies classes Android (Robolectric remplace les stubs maison) | R5, D7 | prévu | — | — |
+| 64 | Harnais sur les vraies classes Android (Robolectric remplace les stubs maison) — 11 scénarios sur l'activité réelle ; D1 corrigé au passage (SavedState du cadre) | R5, D7, D1, R2 | **fait** | `docs/chantiers/64.md` | à pousser |
 | 65 | Guide d'intégration « 5 minutes » à la racine + capture | — | prévu | — | — |
 | 66 | Entrée et composition : clearComposing avant l'insertion, complétion ne mange plus la touche | B6 | prévu | — | — |
 | 67 | Minimap : zone tactile bornée à ce qui est dessiné, setMinimapEnabled | B2 | prévu | — | — |
 | 68 | Plis : chevron au bon calque, un seul chevron, placeholder `{…}` tapable | B5 | prévu | — | — |
-| 69 | Sauvegarde d'état : BaseSavedState + super (rotation sûre) | D1, R2 | prévu | — | — |
+| 69 | ~~Sauvegarde d'état : BaseSavedState + super~~ réglé au chantier 64 | D1, R2 | **fait** | `docs/chantiers/64.md` | chantier 64 |
 | 70 | Version LSP par document (Map URI → compteur, stricte croissance) | D3 | prévu | — | — |
 | 71 | Silence du fond : échecs comptés et remontés, passBeginNanos remis | D9 | prévu | — | — |
 | 72 | Écouteurs du tampon : CopyOnWriteArrayList | D10 | prévu | — | — |
@@ -72,3 +72,7 @@ amputé de ce qui est déjà fait.
 - 2026-11-26 — création ; historique des 113 commits réattribué à
   `jjoblab <olson12jb@gmail.com>` et poussé (force) — les 3 commits
   « Z User » de la période des vagues 44-46 rewriting.
+- 2026-11-26 — chantier 64 fermé : le harnais réel (Robolectric)
+  vit aux tests du sample, D1/R2 réglés dedans. Le check complet
+  exige `--max-workers=1` dans le bac (4 Go : le démon et le test
+  du vrai cadre s'entre-tuent sinon).

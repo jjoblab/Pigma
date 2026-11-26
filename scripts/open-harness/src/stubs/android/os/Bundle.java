@@ -11,6 +11,12 @@ import java.util.Map;
  */
 public final class Bundle implements Parcelable {
 
+    /** L'écriture du stub (le paquet voyage en mémoire). */
+    @Override
+    public void writeToParcel(Parcel dest, int flags) {
+    }
+
+
     /** Les valeurs posées (les clefs y vivent). */
     private final Map<String, Object> values = new HashMap<>();
 

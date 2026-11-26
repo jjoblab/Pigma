@@ -1897,6 +1897,17 @@ public final class EditorView extends View {
     }
 
     /**
+     * La hauteur d'une ligne de texte (marge comprise) — l'hôte et
+     * le harnais d'intégration y calculent les ordonnées de contact
+     * depuis la géométrie RÉELLE de la police du cadre.
+     *
+     * @return la hauteur de ligne en pixels
+     */
+    public float lineHeight() {
+        return lineHeight;
+    }
+
+    /**
      * Les colonnes par niveau d'indentation (les guides de L2 y
      * vivent, le formatage du serveur y règle ses tabulations).
      *
@@ -6606,37 +6617,38 @@ public final class EditorView extends View {
      */
     @Override
     protected android.os.Parcelable onSaveInstanceState() {
-        android.os.Bundle state = new android.os.Bundle();
-        state.putInt("pigma.caret", selection.caret());
-        state.putInt("pigma.anchor", selection.anchor());
-        state.putFloat("pigma.scrollY", scrollY);
-        return state;
+        // le porteur du cadre D'ABORD (le contrat de View : le parent
+        // doit vivre dans l'état, sinon le cadre lève à la dispatch)
+        return new SavedState(super.onSaveInstanceState(),
+                selection.caret(), selection.anchor(), scrollY);
     }
 
     /**
      * La restauration d'état : ce que {@link #onSaveInstanceState()}
-     * a écrit se relit — le curseur, l'ancre, le défilement
-     * reviennent (les bornes s'y parent : un texte changé entre
-     * les deux appels ne doit pas lever).
+     * a écrit se relit — le porteur du cadre remonte à la sienne, le
+     * curseur, l'ancre et le défilement reviennent (les bornes s'y
+     * parent : un texte changé entre les deux appels ne doit pas
+     * lever).
      *
      * @param state l'état sauvé, null à la création pure
      */
     @Override
     protected void onRestoreInstanceState(android.os.Parcelable state) {
-        super.onRestoreInstanceState(state);
-        if (!(state instanceof android.os.Bundle)) {
+        if (!(state instanceof SavedState)) {
+            super.onRestoreInstanceState(state);
             return;
         }
-        android.os.Bundle saved = (android.os.Bundle) state;
+        SavedState saved = (SavedState) state;
+        super.onRestoreInstanceState(saved.getSuperState());
         int length = buffer.length();
-        int caret = clamp(saved.getInt("pigma.caret", 0), 0, length);
-        int anchor = saved.getInt("pigma.anchor", -1);
+        int caret = clamp(saved.caret, 0, length);
+        int anchor = saved.anchor;
         if (anchor > length) {
             anchor = -1;
         }
         selection.setCaret(caret);
         selection.setAnchor(anchor);
-        scrollY = clampToRange(saved.getFloat("pigma.scrollY", 0.0f),
+        scrollY = clampToRange(saved.scrollY,
                 0.0f, maxScroll());
         invalidate();
     }
@@ -6782,4 +6794,70 @@ public final class EditorView extends View {
         return (int) (value * getResources().getDisplayMetrics().density);
     }
 
+    /**
+     * L'état sauvegardé de la vue : le porteur du cadre (le contrat
+     * de View l'exige — la dispatch de sauvegarde lève sans lui), le
+     * curseur, l'ancre et le défilement.
+     */
+    public static final class SavedState extends android.view.View.BaseSavedState {
+
+        /** Le créateur du pareclable (le cadre y passe). */
+        public static final android.os.Parcelable.Creator<SavedState> CREATOR =
+                new android.os.Parcelable.Creator<SavedState>() {
+                    @Override
+                    public SavedState createFromParcel(android.os.Parcel source) {
+                        return new SavedState(source);
+                    }
+
+                    @Override
+                    public SavedState[] newArray(int size) {
+                        return new SavedState[size];
+                    }
+                };
+
+        /** Le curseur sauvé (unités de code UTF-16). */
+        public final int caret;
+
+        /** L'ancre sauvée (-1 : aucune sélection). */
+        public final int anchor;
+
+        /** Le défilement vertical sauvé (pixels). */
+        public final float scrollY;
+
+        /**
+         * Un état neuf.
+         *
+         * @param superState le porteur du cadre
+         * @param caret       le curseur
+         * @param anchor      l'ancre
+         * @param scrollY     le défilement vertical
+         */
+        public SavedState(android.os.Parcelable superState,
+                int caret, int anchor, float scrollY) {
+            super(superState);
+            this.caret = caret;
+            this.anchor = anchor;
+            this.scrollY = scrollY;
+        }
+
+        /**
+         * La relecture du pareclable.
+         *
+         * @param source la source
+         */
+        private SavedState(android.os.Parcel source) {
+            super(source);
+            this.caret = source.readInt();
+            this.anchor = source.readInt();
+            this.scrollY = source.readFloat();
+        }
+
+        @Override
+        public void writeToParcel(android.os.Parcel dest, int flags) {
+            super.writeToParcel(dest, flags);
+            dest.writeInt(caret);
+            dest.writeInt(anchor);
+            dest.writeFloat(scrollY);
+        }
+    }
 }

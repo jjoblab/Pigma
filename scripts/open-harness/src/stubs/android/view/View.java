@@ -39,6 +39,48 @@ public class View {
         void onClick(View view);
     }
 
+    /**
+     * L'état de base du cadre : le porteur du parent y vit (le
+     * contrat du vrai cadre — la vue y accroche son état propre).
+     */
+    public static class BaseSavedState implements android.os.Parcelable {
+
+        /** L'état vide du cadre. */
+        public static final BaseSavedState EMPTY_STATE =
+                new BaseSavedState((android.os.Parcelable) null);
+
+        /** L'état du parent (null à la racine). */
+        private final android.os.Parcelable superState;
+
+        /**
+         * Un état neuf.
+         *
+         * @param superState l'état du parent
+         */
+        public BaseSavedState(android.os.Parcelable superState) {
+            this.superState = superState;
+        }
+
+        /**
+         * La relecture du pareclable (le constructeur du cadre — les
+         * sous-classes du vrai cadre y passent leur source).
+         *
+         * @param source la source
+         */
+        public BaseSavedState(android.os.Parcel source) {
+            this.superState = null;
+        }
+
+        /** L'état du parent (l'EMPTY_STATE si aucun). */
+        public final android.os.Parcelable getSuperState() {
+            return superState;
+        }
+
+        @Override
+        public void writeToParcel(android.os.Parcel dest, int flags) {
+        }
+    }
+
     /** Le contexte porteur. */
     private final Context context;
 

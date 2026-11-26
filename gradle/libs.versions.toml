@@ -19,11 +19,18 @@ gson = "2.15.0"
 compileSdk = "35"
 minSdk = "26"
 targetSdk = "35"
+# Le harnais d'intégration : Robolectric porte les VRAIES classes du
+# cadre (View, Canvas, MotionEvent, Toast, l'app-bar Material) sur
+# machine virtuelle — les stubs du vieux harnais ne tenaient pas la
+# parité de l'API (le rapport d'analyse l'a dit : la sauvegarde
+# d'état du cadre y était invisible).
+robolectric = "4.14.1"
 
 [libraries]
 archunit = { module = "com.tngtech.archunit:archunit", version.ref = "archunit" }
 material = { module = "com.google.android.material:material", version.ref = "material" }
 junit = { module = "junit:junit", version.ref = "junit" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 # Le client de serveur de langage : lsp4j porte le protocole et le
 # JSON-RPC, gson en dépend (transitif, la version y est un intervalle
 # que Gradle résout) — la seule dépendance extérieure du dépôt,
