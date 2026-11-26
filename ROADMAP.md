@@ -6,7 +6,8 @@ chaque ligne « fait » pointe son document de chantier et son commit.
 
 Source du plan courant : le rapport d'analyse du propriétaire
 (`RAPPORT-ANALYSE-PIGMA`, 2026-11-25, version analysée `5e0de36`)
-et les demandes qui l'ont suivies. Les numéros `D*` (défauts) et
+puis, au-delà du 87, le rapport des popups (`RAPPORT-POPUPS-PIGMA.md`,
+2026-11-26, version analysée `8a636c0`). Les numéros `D*` (défauts) et
 `B*` (bugs signalés) viennent du rapport ; les `R*` sont les refontes
 qu'il propose.
 
@@ -54,11 +55,24 @@ qu'il propose.
 | 84 | Découpage, le composant de DESSIN : Painter (jo.pigma.editor.internal.render) — les glyphes du plan cuit, les chips, les ligatures, le placeholder, le soulignement de composition, extraits (437 lignes) ; LinePlan quitte son nid pour render/ ; la vue tranche les fenêtres et délègue (7 388 → 7 155), le pinceau de texte PARTAGÉ ; la coquille du #RGBA (sa 4e paire, l'alpha, se lit désormais) — PainterTest (JVM) + le rendu aux pixels inchangé | D6, R1 | **fait** | `docs/chantiers/84.md` | à pousser |
 | 85 | Découpage : SearchController (internal.search — la requête, les correspondances au plafond, le cycle qui boucle ; le cœur pur testé en JVM) et ScrollController (internal.scroll — le balayage aux bords du traîné, l'échéance qui se reprogramme, l'annulation nette) ; la vue : 7 163 → 7 122 lignes, RESTE TouchController (les gestes) | D6, R1 | **fait** | `docs/chantiers/85.md` | à pousser |
 | 86 | Découpage : le PINCEMENT, première brique du contrôleur des gestes (internal.touch.PinchController — l'écart porte le facteur, le milieu porte le foyer, la ligne sous le foyer y demeure ; le contrat maigre et le cœur testé en JVM) ; la vue : 7 122 → 7 178 lignes (le branchement se paie) | D6, R1 | **fait** | `docs/chantiers/86.md` | à pousser |
-| 87 | Découpage, la suite du contrôleur des gestes : l'état du toucher (le tap, le double-tap, l'appui long, les poignées de sélection, la loupe, les taps à étages) — le harnais comme filet | D6, R1 | prévu | — | — |
+| 87 | Découpage, la suite du contrôleur des gestes : L'ÉTAT DU TOUCHER (internal.touch.TouchController — la mémoire du contact : l'appui, le tap, le seuil de glisse, la poignée traînée et sa fixe, le point de dépôt, le doigt vivant ; les verdicts : durée, double-tap, seuil, rangement) — LE DÉCOUPAGE DE LA VUE S'ACHÈVE (82→87) ; le retour de terrain : la pastille du diagnostic NAÎT AU-DESSUS DU MOT (l'ampoule au trait de l'étage des correctifs, BulbIcon partagé, jamais dans la gouttière qui porte déjà le marqueur) | D6, R1 | **fait** | `docs/chantiers/87.md` | `60b1673` |
 
 L'ordre suit le plan d'action du rapport (priorité 1 d'abord : les bugs
 d'usage B6/B2/B5, puis les défauts de haut risque D1/D3, puis le reste),
 amputé de ce qui est déjà fait.
+
+Le plan des chantiers 88 à 93 suit le rapport des popups du
+propriétaire (`RAPPORT-POPUPS-PIGMA.md`, 2026-11-26, version analysée
+`8a636c0`) : ses défauts s'y notent `D-P*`, ses doublons `R-*`, ses
+popups manquantes `M*` — la table suit son §9.
+
+| 88 | Popups, l'étape 1 du rapport : le survol ASYNCHRONE (la popup s'ouvre immédiatement avec « … », remplacée à l'arrivée — plus jamais d'attente serveur sur le fil d'interface) ; la FUSION des « usages » (une seule commande : serveur si disponible, recherche textuelle en repli, TOUJOURS présentée dans UsageCard) ; l'ActionRegistry (une seule définition des cinq actions d'édition, lue par la carte d'actions rapides et l'étage Édition du débordement) | D-P1, R-A, R-C | prévu | — | — |
+| 89 | Popups, l'étape 2 : les modèles LSP COMPLETS — LspCompletionItem (kind, detail, documentation, insertText/textEdit, sortText, deprecated ; `completionItem/resolve` à la sélection), LspSignatureHelp (les surcharges, la documentation du paramètre), LspHover (le Markdown) | D-P2, D-P5, D-P6, M8, M9 | prévu | — | — |
+| 90 | Popups, l'étape 3 : PopupHost (le gestionnaire — un seul état « popup active », l'exclusion mutuelle, la fermeture au changement de contexte, la fin des 23 fermetures manuelles et du popup fantôme) ; CardBase/ListCard (la pose, le style, le défilement, la croix) ; migration d'une carte à la fois (UsageCard et DiagnosticCard d'abord) | D-P4, R-E, R-F | prévu | — | — |
+| 91 | Popups, l'étape 4 — les P1 manquantes : le CHOIX DE CIBLES (plusieurs définitions), la STRUCTURE DU FICHIER (l'arbre des symboles), la LISTE DES PROBLÈMES (parcourir les erreurs), la SUGGESTION D'IMPORT, l'Historique DU PRESSE-PAPIERS | M1, M2, M13, M14, M20, D-P3, R-D | prévu | — | — |
+| 92 | Popups, l'étape 5 — les P2 : la définition en APERÇU, l'aller au symbole/fichier, les fichiers récents, l'APERÇU du renommage, l'entourer de, les extraits | M3–M5, M15, M18, M21 | prévu | — | — |
+| 93 | Popups, l'étape 6 : l'ACCESSIBILITÉ des cartes (annonce à l'ouverture, rangées en nœuds virtuels, cible ≥ 48 dp) et les chaînes LOCALISÉES (PopupStrings posé par l'hôte) | D-P8, D-P9 | prévu | — | — |
+
 
 ## Déjà couvert avant cette feuille (constaté au code, au 2026-11-26)
 
@@ -76,6 +90,14 @@ amputé de ce qui est déjà fait.
 
 ## Journal des mises à jour
 
+- 2026-11-27 — chantier 87 fermé : D6/R1 ACHÈVENT le découpage de
+  la vue (TouchController — l'état du toucher : la mémoire du
+  contact et ses verdicts, horloge injectée, JVM pur) ; le retour
+  de terrain : la pastille du diagnostic naît AU-DESSUS DU MOT
+  (l'ampoule au trait de l'étage des correctifs — BulbIcon
+  partagé, hors gouttière qui porte déjà le marqueur) ; la feuille
+  s'ouvre sur le plan des popups du second rapport (chantiers
+  88-93, son §9).
 - 2026-11-26 — chantier 82 refermé sur un retour de terrain : les
   deux régressions des plis réparées — le chevron du pli ouvert
   renaît (le correctif du chevron bas l'avait emporté avec lui :
