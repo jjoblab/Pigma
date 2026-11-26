@@ -74,7 +74,7 @@ amputé de ce qui est déjà fait.
   `jjoblab <olson12jb@gmail.com>` et poussé (force) — les 3 commits
   « Z User » de la période des vagues 44-46 rewriting.
 - 2026-11-26 — chantier 77 fermé : D5 réglé — le package
-  accessibility/ vit (le nœu00e9d se remplit : classe d'éditeur,
+  accessibility/ vit (le nœud se remplit : classe d'éditeur,
   fenêtre de texte bornée autour du curseur, sélection, huit
   actions ; les événements de frappe et de sélection se remplissent).
 - 2026-11-26 — chantier 76 fermé : D8 réglé — le stderr du serveur
