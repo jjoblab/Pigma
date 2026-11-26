@@ -28,6 +28,8 @@ import jo.pigma.editor.popups.PopupStyle;
 import jo.pigma.editor.popups.QuickActionCard;
 import jo.pigma.editor.popups.RenameCard;
 import jo.pigma.editor.render.RenderCache;
+import jo.pigma.editor.render.LinePlan;
+import jo.pigma.editor.internal.render.Painter;
 import jo.pigma.editor.popups.PopupMetrics;
 import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.editor.popups.CompletionCard;
@@ -103,14 +105,9 @@ import jo.pigma.syntax.SyntaxTheme;
  */
 public final class EditorView extends View {
 
-    /** Plan de rendu d'une ligne : textes tranchés, couleurs résolues (fusion L3 comprise), colonnes de début, abscisses, gras. */
-    record LinePlan(String[] texts, int[] colors, int[] cols, float[] xs, boolean[] bolds) {
-    }
-
     private static final String INITIAL_TEXT = "";
 
     private static final int CARET_COLOR = 0xFF2962FF;
-    private static final int COMPOSE_COLOR = 0xFF7A8199;
 
     /** Colonnes au-delà desquelles le dessin d'une ligne s'arrête. */
     private static final int MAX_DRAWN_COLUMNS = 10_000;
@@ -154,19 +151,15 @@ public final class EditorView extends View {
 
     private final TextBuffer buffer;
     private final UndoStack undoStack;
-    private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    /** Le peintre du corps des lignes (le composant de DESSIN du
+     * découpage — R1 : les glyphes du plan cuit, les chips, les
+     * ligatures, le placeholder, le soulignement de composition). */
+    private Painter painter;
+
+    /** Le pinceau du texte, PARTAGÉ avec le peintre (la loupe et la
+     * mesure y lisent le même objet — un seul réglage). */
+    private Paint textPaint;
     private final Paint caretPaint = new Paint();
-    private final Paint composePaint = new Paint();
-    /** Le placeholder du pli replié ({...} à la référence). */
-    private final Paint placeholderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    /** Les ligatures d'opérateurs dessinées (FiraCode à la référence). */
-    private final Paint ligaturePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    /** La couleur des ligatures (le thème la pose, 0 : celle du texte). */
-    private int ligatureColor;
-    /** Le remplissage du chip de couleur (le littéral hex encadré de sa teinte). */
-    private final Paint colorChipPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    /** Le liseré du chip de couleur (discret, à la bordure du thème). */
-    private final Paint colorChipBorderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private Paint.FontMetrics fontMetrics;
     private float charWidth;
     private float lineHeight;
@@ -750,10 +743,14 @@ public final class EditorView extends View {
         semantic = SemanticDocument.open(buffer, syntax, structure,
                 new JavaDeclarations());
         backgroundFill = BackgroundFill.start(syntax);
-        textPaint.setTypeface(Typeface.MONOSPACE);
+        // LE PEINTRE DU CORPS DES LIGNES (le découpage — R1) : la vue
+        // partage son pinceau de texte (la loupe et la mesure y
+        // lisent le même objet — un seul réglage)
+        painter = new Painter(dp(1));
+        textPaint = painter.textPaint();
+        painter.applyTheme(theme.defaultColor());
         applyTextSize(14.0f * getResources().getDisplayMetrics().scaledDensity);
         caretPaint.setColor(CARET_COLOR);
-        composePaint.setColor(COMPOSE_COLOR);
         bracketPaint.setStyle(Paint.Style.STROKE);
         bracketPaint.setStrokeWidth(dp(1) * 1.5f);
         bracketPaint.setColor(CARET_COLOR);
@@ -947,9 +944,10 @@ public final class EditorView extends View {
             return;
         }
         textPx = clamped;
-        textPaint.setTextSize(clamped);
+        // le peintre suit le corps (le pinceau partagé y gagne sa
+        // taille, le placeholder la sienne)
+        painter.applyTextSize(clamped);
         inlayPaint.setTextSize(clamped * 0.85f);
-        placeholderPaint.setTextSize(clamped);
         // la gouttière suit le zoom : les numéros s'agrandissent au
         // pincement comme le corps (le facteur porte le corps courant
         // sur le corps de repos de 14 sp)
@@ -960,8 +958,11 @@ public final class EditorView extends View {
         charWidth = textPaint.measureText("M");
         lineHeight = (float) Math.ceil(fontMetrics.bottom - fontMetrics.top) + dp(2);
         caretWidth = dp(2);
-        // les mesures NEUVES nourrissent la géométrie extraite (après
-        // la mesure, pas avant : le modèle lirait les anciennes)
+        // les mesures NEUVES nourrissent la géométrie extraite ET le
+        // peintre (après la mesure, pas avant : ils liraient les
+        // anciennes)
+        painter.applyMeasures(charWidth, fontMetrics.ascent,
+                fontMetrics.descent);
         syncLayoutMetrics();
         renderCache.invalidate();
         scrollY = clampToRange(scrollY, 0.0f, maxScroll());
@@ -1980,6 +1981,9 @@ public final class EditorView extends View {
         setPopupStyle(restylePopupForTheme(popupStyle, newBackground, dark));
         theme = newTheme;
         themeBackground = newBackground;
+        // le peintre suit le thème : la couleur du texte (les
+        // ligatures et le placeholder s'y teintent)
+        painter.applyTheme(newTheme.defaultColor());
         // les plans portent des couleurs résolues : re-rendu, jamais
         // retokenisation (la première coloration du panneau ne bouge pas)
         renderCache.invalidate();
@@ -4761,7 +4765,8 @@ public final class EditorView extends View {
      * La TRANCHE du plan d'une ligne entre deux colonnes (le rendu du
      * soft wrap : la rangée y dessine SES colonnes du plan cuit, le
      * décalage d'indent y pose la suite au premier caractère non
-     * blanc de la ligne).
+     * blanc de la ligne) — le peintre y rend la tranche, la vue
+     * tranche les bornes.
      */
     private void drawTokenRange(Canvas canvas, int line, int start,
             int fromCol, int toCol, float baseline, int indentCols) {
@@ -4771,36 +4776,8 @@ public final class EditorView extends View {
         int lineEnd = buffer.getLineEnd(line);
         LinePlan plan = renderCache.frame(line, entry, fusionLabel(line),
                 () -> buffer.getText(start, lineEnd), this::bakeLine);
-        String[] texts = plan.texts();
-        int[] colors = plan.colors();
-        int[] cols = plan.cols();
-        float[] xs = plan.xs();
-        boolean[] bolds = plan.bolds();
-        float left = getPaddingLeft() + indentCols * charWidth;
-        // chaque segment du plan se coupe aux bornes de la rangée :
-        // la partie visible se dessine à son abscisse relative — la
-        // COLONNE du segment y vit au plan (l'abscisse est en pixels :
-        // la caste d'avant la lisait comme une colonne, la rangée ne
-        // s'alignait qu'à chasse unitaire)
-        for (int at = 0; at < texts.length; at++) {
-            int segFrom = cols[at];
-            int segLen = texts[at].length();
-            if (segFrom + segLen <= fromCol || segFrom >= toCol) {
-                continue;
-            }
-            int cutStart = Math.max(0, fromCol - segFrom);
-            int cutEnd = Math.min(segLen, toCol - segFrom);
-            if (cutEnd <= cutStart) {
-                continue;
-            }
-            String piece = texts[at].substring(cutStart, cutEnd);
-            textPaint.setColor(colors[at]);
-            textPaint.setFakeBoldText(bolds != null && bolds[at]);
-            canvas.drawText(piece,
-                    left + (segFrom + cutStart - fromCol) * charWidth,
-                    baseline, textPaint);
-        }
-        textPaint.setFakeBoldText(false);
+        painter.drawTokenRange(canvas, plan, fromCol, toCol,
+                getPaddingLeft() + indentCols * charWidth, baseline);
     }
 
     /**
@@ -4899,11 +4876,7 @@ public final class EditorView extends View {
         // soustraction d'avant le comptait DEUX fois, le placeholder
         // dérivait à gauche dès que la vue défilait)
         float x = getPaddingLeft() + column * charWidth;
-        // l'encre atténuée du texte du thème (la référence y dessine
-        // son placeholder à la couleur du texte, discrètement)
-        placeholderPaint.setColor((theme.defaultColor() & 0x00FFFFFF)
-                | 0x88000000);
-        canvas.drawText(placeholder, x, baseline, placeholderPaint);
+        painter.drawFoldPlaceholder(canvas, placeholder, x, baseline);
     }
 
     /**
@@ -4980,44 +4953,16 @@ public final class EditorView extends View {
         int lineEnd = buffer.getLineEnd(line);
         LinePlan plan = renderCache.frame(line, entry, fusionLabel(line),
                 () -> buffer.getText(start, lineEnd), this::bakeLine);
-        // LA COUPE DU PLI S'APPLIQUE VRAIMENT (le retour de
-        // terrain : reveal se calculait puis personne ne le
-        // lisait — l'en-tête replié se dessinait ENTIER et le
-        // « {...} » se peignait PAR-DESSUS l'ouvrant et sa suite) : les
-        // segments au-delà de l'ouvrant ne se dessinent pas, celui qui
-        // l'englobe se tranche à la coupe
+        // LA COUPE DU PLI S'APPLIQUE VRAIMENT (le retour de terrain
+        // sur les plis : les segments au-delà de l'ouvrant ne se
+        // dessinent pas, celui qui l'englobe se tranche) — le peintre
+        // y peint la coupe, la vue tranche la fenêtre
         int reveal = Math.min(drawEnd, lineEnd);
-        int revealCols = reveal - start;
-        String[] texts = plan.texts();
-        int[] colors = plan.colors();
-        int[] cols = plan.cols();
-        float[] xs = plan.xs();
-        boolean[] bolds = plan.bolds();
-        float left = getPaddingLeft();
-        for (int at = 0; at < texts.length; at++) {
-            if (cols[at] >= revealCols) {
-                break;
-            }
-            String piece = texts[at];
-            if (cols[at] + piece.length() > revealCols) {
-                piece = piece.substring(0, revealCols - cols[at]);
-            }
-            textPaint.setColor(colors[at]);
-            // le gras sémantique (L3) : un drapeau de peinture, pas une
-            // seconde police
-            textPaint.setFakeBoldText(bolds != null && bolds[at]);
-            canvas.drawText(piece, left + xs[at], baseline, textPaint);
-            if (piece.length() < texts[at].length()) {
-                break;
-            }
-        }
+        painter.drawTokens(canvas, plan, reveal - start,
+                getPaddingLeft(), baseline);
         // LES LIGATURES (la leçon de la référence : FiraCode y fond
-        // les paires d'opérateurs en UN glyphe — la police du terminal
-        // n'en porte pas, le pinceau les dessine) : la flèche, le
-        // non-égal, les comparaisons et les conjonctions s'unifient
-        // par-dessus leurs deux caractères
+        // les paires d'opérateurs en UN glyphe) par-dessus le plan
         drawLigatures(canvas, line, reveal, baseline);
-        textPaint.setFakeBoldText(false);
     }
 
     /**
@@ -5036,82 +4981,15 @@ public final class EditorView extends View {
         // l'ouvrant ne vivent plus (le placeholder y naît)
         int window = Math.min(Math.min(lineEnd, drawEnd) - lineStart, 512);
         CharSequence text = buffer.getText(lineStart, lineStart + window);
-        float left = getPaddingLeft();
-        // le rectangle du chip : la hauteur de la ligne respirée, le
-        // liseré à la bordure du thème
-        float top = baseline + fontMetrics.ascent * 0.82f;
-        float bottom = baseline + fontMetrics.descent * 0.55f;
-        int at = 0;
-        while (at < window) {
-            if (text.charAt(at) != '#') {
-                at++;
-                continue;
-            }
-            // les chiffres hexadécimaux qui suivent le dièse
-            int digits = 0;
-            while (at + 1 + digits < window
-                    && isHexDigit(text.charAt(at + 1 + digits))) {
-                digits++;
-            }
-            if (digits == 3 || digits == 4 || digits == 6 || digits == 8) {
-                String literal = text.subSequence(at, at + 1 + digits)
-                        .toString();
-                Integer color = parseColorLiteral(literal);
-                if (color != null) {
-                    float chipLeft = left + at * charWidth;
-                    float chipRight = chipLeft + (1 + digits) * charWidth;
-                    // le fond TEINTÉ : la couleur à alpha réduit (le
-                    // littéral se lit DESSUS — à la référence, le
-                    // fond ne mange jamais le texte), le liseré la
-                    // borde PLEIN
-                    colorChipPaint.setColor(
-                            (color & 0x00FFFFFF) | 0x30000000);
-                    canvas.drawRoundRect(chipLeft, top, chipRight, bottom,
-                            dp(3), dp(3), colorChipPaint);
-                    colorChipBorderPaint.setColor(color | 0xFF000000);
-                    colorChipBorderPaint.setStrokeWidth(Math.max(1.0f, dp(1)));
-                    colorChipBorderPaint.setStyle(Paint.Style.STROKE);
-                    canvas.drawRoundRect(chipLeft, top, chipRight, bottom,
-                            dp(3), dp(3), colorChipBorderPaint);
-                }
-                at += 1 + digits;
-            } else {
-                at++;
-            }
-        }
+        painter.drawColorChips(canvas, text, window, getPaddingLeft(),
+                baseline);
     }
 
     /**
-     * Le littéral hexadécimal se parse en couleur ARGB (null : il ne
-     * se parse pas — le chip ne se peint pas).
-     */
-    private static Integer parseColorLiteral(String literal) {
-        try {
-            long value = Long.parseLong(literal.substring(1), 16);
-            return switch (literal.length() - 1) {
-                case 3 -> 0xFF000000 | (int) (((value >> 8 & 0xF) * 17) << 16
-                        | ((value >> 4 & 0xF) * 17) << 8
-                        | (value & 0xF) * 17);
-                case 4 -> 0xFF000000 | (int) (((value >> 12 & 0xF) * 17) << 16
-                        | ((value >> 8 & 0xF) * 17) << 8
-                        | (value >> 4 & 0xF) * 17);
-                case 6 -> (int) (0xFF000000L | value);
-                case 8 -> (int) value;
-                default -> null;
-            };
-        } catch (NumberFormatException error) {
-            return null;
-        }
-    }
-
-    /**
-     * Les LIGATURES d'opérateurs dessinées (la police monospace
-     * d'Android n'en porte pas — le pinceau les fond comme FiraCode
-     * à la référence) : chaque paire reconnue se recouvre de son
-     * glyphe unifié — la barre du fond, le trait qui l'anime — à la
-     * couleur du texte du thème, dans la case des DEUX caractères.
-     * La passe relit la ligne au tampon (une fenêtre, jamais le
-     * document), dessin par-dessus le plan cuit.
+     * Les LIGATURES d'opérateurs dessinées (la leçon de la
+     * référence : FiraCode y fond les paires d'opérateurs en UN
+     * glyphe) — la vue tranche la fenêtre de la ligne (la coupe du
+     * pli borne), le peintre y peint les glyphes unifiés.
      */
     private void drawLigatures(Canvas canvas, int line, int reveal,
             float baseline) {
@@ -5121,109 +4999,8 @@ public final class EditorView extends View {
         // l'ouvrant ne vivent plus (le placeholder y naît)
         int window = Math.min(Math.min(lineEnd, reveal) - lineStart, 512);
         CharSequence text = buffer.getText(lineStart, lineStart + window);
-        float left = getPaddingLeft();
-        ligaturePaint.setStrokeWidth(Math.max(1.2f, charWidth * 0.10f));
-        ligaturePaint.setStrokeCap(Paint.Cap.ROUND);
-        float midY = baseline - fontMetrics.ascent * 0.38f;
-        for (int at = 0; at + 1 < window; at++) {
-            char a = text.charAt(at);
-            char b = text.charAt(at + 1);
-            String ligature = ligatureOf(a, b);
-            if (ligature == null) {
-                continue;
-            }
-            float cx = left + at * charWidth + charWidth;
-            float halfChar = charWidth * 0.5f;
-            ligaturePaint.setColor(ligatureColor != 0
-                    ? ligatureColor : theme.defaultColor());
-            switch (ligature) {
-                case "arrow" -> drawArrowLigature(canvas, cx, midY, halfChar);
-                case "ne" -> drawNeLigature(canvas, cx, midY, halfChar);
-                case "cmp" -> drawCmpLigature(canvas, cx, midY, halfChar);
-                case "logic" -> drawLogicLigature(canvas, cx, midY, halfChar);
-                case "incdec" -> drawIncDecLigature(canvas, cx, midY, halfChar);
-                default -> {
-                }
-            }
-        }
-    }
-
-    /** La paire reconnue dit son espèce de ligature (null : aucune). */
-    private String ligatureOf(char a, char b) {
-        if (a == '=' && b == '>') {
-            return "arrow";
-        }
-        if (a == '-' && b == '>') {
-            return "arrow";
-        }
-        if (a == '!' && b == '=') {
-            return "ne";
-        }
-        if ((a == '>' && b == '=') || (a == '<' && b == '=')
-                || (a == '=' && b == '=')) {
-            return "cmp";
-        }
-        if ((a == '&' && b == '&') || (a == '|' && b == '|')) {
-            return "logic";
-        }
-        if ((a == '+' && b == '+') || (a == '-' && b == '-')) {
-            return "incdec";
-        }
-        if ((a == '+' && b == '=') || (a == '-' && b == '=')
-                || (a == '*' && b == '=') || (a == '/' && b == '=')
-                || (a == '%' && b == '=')) {
-            return "cmp";
-        }
-        return null;
-    }
-
-    /** La flèche unifiée (=> ou ->) : la barre traversante, la pointe à droite. */
-    private void drawArrowLigature(Canvas canvas, float cx, float midY,
-            float halfChar) {
-        float fromX = cx - halfChar - charWidth * 0.25f;
-        float toX = cx + halfChar + charWidth * 0.25f;
-        canvas.drawLine(fromX, midY, toX, midY, ligaturePaint);
-        float head = charWidth * 0.28f;
-        canvas.drawLine(toX - head, midY - head * 0.8f, toX, midY,
-                ligaturePaint);
-        canvas.drawLine(toX - head, midY + head * 0.8f, toX, midY,
-                ligaturePaint);
-    }
-
-    /** Le non-égal unifié (!=) : la barre traversante barrée. */
-    private void drawNeLigature(Canvas canvas, float cx, float midY,
-            float halfChar) {
-        drawCmpLigature(canvas, cx, midY, halfChar);
-        // la barre du NON : la diagonale qui refuse l'égalité
-        float half = halfChar + charWidth * 0.25f;
-        canvas.drawLine(cx - half * 0.5f, midY + half * 0.45f,
-                cx + half * 0.5f, midY - half * 0.45f, ligaturePaint);
-    }
-
-    /** La comparaison unifiée (>=, <=, ==, +=...) : la barre double soudée. */
-    private void drawCmpLigature(Canvas canvas, float cx, float midY,
-            float halfChar) {
-        float fromX = cx - halfChar - charWidth * 0.2f;
-        float toX = cx + halfChar + charWidth * 0.2f;
-        // le trait unique qui soude les deux signes (le premier se
-        // recouvre, le second se fond)
-        canvas.drawLine(fromX, midY, toX, midY, ligaturePaint);
-    }
-
-    /** La conjonction unifiée (&& ou ||) : les deux signes soudés par la barre. */
-    private void drawLogicLigature(Canvas canvas, float cx, float midY,
-            float halfChar) {
-        float fromX = cx - halfChar - charWidth * 0.2f;
-        float toX = cx + halfChar + charWidth * 0.2f;
-        canvas.drawLine(fromX, midY, toX, midY, ligaturePaint);
-    }
-
-    /** L'incrémentation unifiée (++ ou --) : les deux signes soudés. */
-    private void drawIncDecLigature(Canvas canvas, float cx, float midY,
-            float halfChar) {
-        float fromX = cx - halfChar - charWidth * 0.2f;
-        float toX = cx + halfChar + charWidth * 0.2f;
-        canvas.drawLine(fromX, midY, toX, midY, ligaturePaint);
+        painter.drawLigatures(canvas, text, window, getPaddingLeft(),
+                baseline);
     }
 
     /**
@@ -6610,9 +6387,8 @@ public final class EditorView extends View {
         if (to <= from) {
             return;
         }
-        float x1 = getPaddingLeft() + (from - start) * charWidth;
-        float x2 = getPaddingLeft() + (to - start) * charWidth;
-        canvas.drawRect(x1, baseline + dp(1), x2, baseline + dp(3), composePaint);
+        painter.drawComposeUnderline(canvas, from - start, to - start,
+                getPaddingLeft(), baseline);
     }
 
     private void drawCaret(Canvas canvas) {
