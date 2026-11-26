@@ -373,8 +373,21 @@ public final class RobolectricHarness {
                 editor.hiddenLineCount() == 0);
         tap(gutterX, y);
         check("une ligne se cache", editor.hiddenLineCount() > 0);
+        // LE TAP SUR LE PLACEHOLDER (B5) : le doigt au-delà de la fin
+        // visible de l'en-tête replié rouvre le bloc — le « {...} » se
+        // clique à la leçon de la référence, le curseur ne se pose pas
+        // dans la région cachée
+        String header = "package";
+        float placeholderX = editor.getPaddingLeft()
+                + header.length() * editor.charWidth() + 40.0f;
+        tap(placeholderX, y);
+        check("le tap sur le placeholder rouvre le pli (B5)",
+                editor.hiddenLineCount() == 0);
+        // le pli se referme par la gouttière (le scénario repart propre)
         tap(gutterX, y);
-        check("le pli se rend", editor.hiddenLineCount() == 0);
+        check("une ligne se cache encore", editor.hiddenLineCount() > 0);
+        tap(placeholderX, y);
+        check("le placeholder rouvre encore", editor.hiddenLineCount() == 0);
     }
 
     /**

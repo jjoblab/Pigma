@@ -3123,9 +3123,22 @@ public final class EditorView extends View {
                     // curseur ne bouge pas
                     int offset = offsetNearest(event.getX(), event.getY());
                     if (!openDiagnosticAtTap(offset)) {
-                        placeCaretAt(event.getX(), event.getY());
-                        clearComposing();
-                        showSoftInput();
+                        // LE PLACEHOLDER DU PLI REPLIÉ (B5) : le tap
+                        // au-delà de la fin visible de l'en-tête d'un
+                        // pli replié ROUVRE le bloc (la leçon de la
+                        // référence — son « ... » s'y clique) ; le
+                        // curseur ne se pose pas dans la région cachée
+                        int tapLine = buffer.lineOfOffset(
+                                Math.min(offset, buffer.length()));
+                        if (folds.isFolded(tapLine)
+                                && foldBounds.foldStartsAt(tapLine)
+                                && event.getX() > foldPlaceholderLeft(tapLine)) {
+                            toggleFoldAt(tapLine);
+                        } else {
+                            placeCaretAt(event.getX(), event.getY());
+                            clearComposing();
+                            showSoftInput();
+                        }
                     }
                 }
                 lastTapNanos = System.nanoTime();
@@ -4486,6 +4499,20 @@ public final class EditorView extends View {
      * posé juste après le texte de l'en-tête, à l'encre atténuée du
      * texte.
      */
+    /**
+     * La borne gauche du placeholder d'une ligne d'en-tête repliée —
+     * le tap au-delà rouvre le bloc (le placeholder s'y dessine,
+     * après la fin visible de l'en-tête).
+     *
+     * @param line l'indice de la ligne d'en-tête
+     * @return l'abscisse où le placeholder commence
+     */
+    private float foldPlaceholderLeft(int line) {
+        String head = buffer.getText(buffer.getLineStart(line),
+                buffer.getLineEnd(line));
+        return getPaddingLeft() + head.length() * charWidth - scrollX;
+    }
+
     private void drawFoldPlaceholder(Canvas canvas, int line, float baseline) {
         String head = buffer.getText(buffer.getLineStart(line),
                 buffer.getLineEnd(line));

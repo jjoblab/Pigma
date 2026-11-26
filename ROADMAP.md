@@ -34,7 +34,7 @@ qu'il propose.
 | 65 | Guide d'intégration « 5 minutes » à la racine + capture (rendu réel au mode graphique natif) | — | **fait** | `INTEGRATION.md` | à pousser |
 | 66 | Entrée et composition : clearComposing avant l'insertion (sendKeyEvent et performEditorAction) | B6 | **fait** | `docs/chantiers/66.md` | à pousser |
 | 67 | Minimap : zone tactile bornée à ce qui se dessine (mapBottom), setMinimapEnabled/isMinimapEnabled publics | B2 | **fait** | `docs/chantiers/67.md` | à pousser |
-| 68 | Plis : chevron au bon calque, un seul chevron, placeholder `{…}` tapable | B5 | prévu | — | — |
+| 68 | Plis : le placeholder `{…}` de l'en-tête replié se tape et rouvre le bloc (foldPlaceholderLeft) | B5 | **fait** | `docs/chantiers/68.md` | à pousser |
 | 69 | ~~Sauvegarde d'état : BaseSavedState + super~~ réglé au chantier 64 | D1, R2 | **fait** | `docs/chantiers/64.md` | chantier 64 |
 | 70 | Version LSP par document (Map URI → compteur, stricte croissance) | D3 | prévu | — | — |
 | 71 | Silence du fond : échecs comptés et remontés, passBeginNanos remis | D9 | prévu | — | — |
@@ -72,6 +72,10 @@ amputé de ce qui est déjà fait.
 - 2026-11-26 — création ; historique des 113 commits réattribué à
   `jjoblab <olson12jb@gmail.com>` et poussé (force) — les 3 commits
   « Z User » de la période des vagues 44-46 rewriting.
+- 2026-11-26 — chantier 68 fermé : B5 réglé — le tap au-delà de
+  la fin visible d'un en-tête replié rouvre le bloc (le placeholder
+  se clique à la leçon de la référence) ; les chevrons vivaient déjà
+  au panneau de la gouttière depuis la vague 49.
 - 2026-11-26 — chantier 67 fermé : B2 réglé — la zone tactile de
   la minimap se borne au bas du document rendu (`mapBottom`), le
   drapeau public `setMinimapEnabled` la retire entière ; le
