@@ -101,8 +101,8 @@ import jo.pigma.syntax.SyntaxTheme;
  */
 public final class EditorView extends View {
 
-    /** Plan de rendu d'une ligne : textes tranchés, couleurs résolues (fusion L3 comprise), abscisses, gras. */
-    record LinePlan(String[] texts, int[] colors, float[] xs, boolean[] bolds) {
+    /** Plan de rendu d'une ligne : textes tranchés, couleurs résolues (fusion L3 comprise), colonnes de début, abscisses, gras. */
+    record LinePlan(String[] texts, int[] colors, int[] cols, float[] xs, boolean[] bolds) {
     }
 
     private static final String INITIAL_TEXT = "";
@@ -3563,8 +3563,11 @@ public final class EditorView extends View {
                     // LE CHIP DE COULEUR se peint SOUS le texte (le
                     // fond translucide y teinte le littéral, le
                     // liseré le borde — la leçon de la référence :
-                    // le littéral reste LISIBLE, jamais caché)
-                    drawColorChips(canvas, line, baseline);
+                    // le littéral reste LISIBLE, jamais caché) — la
+                    // coupe du pli s'y respire aussi (les chips
+                    // au-delà de l'ouvrant ne vivent plus, le
+                    // placeholder les remplace)
+                    drawColorChips(canvas, line, drawEnd, baseline);
                     drawTokens(canvas, line, start, drawEnd, baseline);
                 } else {
                     drawWrappedLine(canvas, line, start, drawEnd, baseline,
@@ -3579,9 +3582,9 @@ public final class EditorView extends View {
             if (folds.isFolded(line)) {
                 drawFoldPlaceholder(canvas, line, baseline);
             }
-            drawInlayHint(canvas, line, baseline);
+            drawInlayHint(canvas, line, drawEnd, baseline);
             if (composingStart >= 0 && rows <= 1) {
-                drawComposeUnderline(canvas, line, start, end, baseline);
+                drawComposeUnderline(canvas, line, start, drawEnd, baseline);
             }
         }
         drawStructure(canvas, first, last, count);
@@ -3949,12 +3952,18 @@ public final class EditorView extends View {
      *
      * @param canvas   le canevas de la vue
      * @param line     la ligne visible courante
+     * @param drawEnd  la coupe du pli (offset de fin révélée)
      * @param baseline la ligne de base de la ligne
      */
-    private void drawInlayHint(Canvas canvas, int line, float baseline) {
+    private void drawInlayHint(Canvas canvas, int line, int drawEnd,
+            float baseline) {
         if (inlayHints.isEmpty()) {
             return;
         }
+        // la coupe du pli borne l'indice : l'indication au-delà de
+        // l'ouvrant ne vit plus (le placeholder y naît)
+        int revealCols = Math.min(drawEnd, buffer.getLineEnd(line))
+                - buffer.getLineStart(line);
         for (LspInlayHint hint : inlayHints) {
             if (hint.position().line() != line) {
                 continue;
@@ -3962,6 +3971,9 @@ public final class EditorView extends View {
             int start = buffer.getLineStart(line);
             int end = buffer.getLineEnd(line);
             int column = Math.max(0, Math.min(hint.position().character(), end - start));
+            if (column >= revealCols) {
+                return;
+            }
             float x = getPaddingLeft() + column * charWidth + dp(6);
             if (x + inlayPaint.measureText(hint.label()) < getWidth() - getPaddingRight()) {
                 canvas.drawText(hint.label(), x, baseline, inlayPaint);
@@ -4089,6 +4101,14 @@ public final class EditorView extends View {
                 gutter.drawMarker(canvas, Gutter.MARKER_PREVIEW,
                         getPaddingLeft() - dp(40), cy);
             }
+            // LE MARQUEUR DE PLI DE LA GOUTTIÈRE (le retour de
+            // terrain : il vivait dans drawStructure, DANS la
+            // translation du corps — il défilait avec le texte) : le
+            // replié porte son carré au plus, l'ouvert son chevron
+            // haut et son filet — posé au panneau, hors défilement
+            if (foldBounds.foldStartsAt(line)) {
+                drawFoldMarker(canvas, line, folds.isFolded(line));
+            }
         }
     }
 
@@ -4096,23 +4116,16 @@ public final class EditorView extends View {
      * Dessine la structure de L2 par-dessus les plans : les guides
      * VERTICAUX DES BLOCS (un trait par accolade appariée — à la
      * colonne de l'ouvrante, de la ligne après l'ouvrante à la ligne
-     * avant la fermante : le fil relie les accolades), le marqueur
-     * de pli dans la gouttière, et le surlignage de la paire du
-     * curseur. La PORTÉE ACTIVE s'y met en évidence : le guide du
-     * bloc qui contient le caret (et celui de l'accolade appariée
-     * qu'il touche) se trace à l'encre du curseur, un peu plus
-     * épais — les autres restent une ombre de structure.
+     * avant la fermante : le fil relie les accolades) et le surlignage
+     * de la paire du curseur (le marqueur de pli vivait ici : il
+     * demeure désormais à la gouttière, hors translation du corps —
+     * l'icône ne défile pas avec le texte). La PORTÉE ACTIVE s'y met
+     * en évidence : le guide du bloc qui contient le caret (et celui
+     * de l'accolade appariée qu'il touche) se trace à l'encre du
+     * curseur, un peu plus épais — les autres restent une ombre de
+     * structure.
      */
     private void drawStructure(Canvas canvas, int first, int last, int count) {
-        for (int line = first; line <= last && line < count; line++) {
-            if (isHidden(line)) {
-                continue;
-            }
-            boolean opens = foldBounds.foldStartsAt(line);
-            if (opens) {
-                drawFoldMarker(canvas, line, folds.isFolded(line));
-            }
-        }
         drawBlockGuides(canvas, first, last, count);
         if (bracketPair == null) {
             return;
@@ -4259,6 +4272,13 @@ public final class EditorView extends View {
             gutter.drawFoldAnchor(canvas, Gutter.FOLD_COLLAPSED, cx, mid);
             return;
         }
+        // LE CHEVRON DE L'OUVERTURE VIT (le retour de terrain
+        // l'avait tué AVEC celui de la fermeture : le pli
+        // ouvert ne portait plus AUCUNE icône — l'utilisateur ne voyait
+        // plus où plier) : le « moins » dirigé vers le bas naît à la
+        // ligne d'ouverture, SEUL — la ligne de l'accolade fermante ne
+        // porte toujours rien (le chevron bas doublait l'information)
+        gutter.drawFoldAnchor(canvas, Gutter.FOLD_EXPANDED_TOP, cx, mid);
         // LE PLI OUVERT NE MARQUE QUE SA NAISSANCE (le retour du
         // terrain : le chevron de la ligne fermante doublait
         // l'information et surchargeait le bord) : la BORNE BASSE et
@@ -4667,13 +4687,17 @@ public final class EditorView extends View {
                 () -> buffer.getText(start, lineEnd), this::bakeLine);
         String[] texts = plan.texts();
         int[] colors = plan.colors();
+        int[] cols = plan.cols();
         float[] xs = plan.xs();
         boolean[] bolds = plan.bolds();
         float left = getPaddingLeft() + indentCols * charWidth;
         // chaque segment du plan se coupe aux bornes de la rangée :
-        // la partie visible se dessine à son abscisse relative
+        // la partie visible se dessine à son abscisse relative — la
+        // COLONNE du segment y vit au plan (l'abscisse est en pixels :
+        // la caste d'avant la lisait comme une colonne, la rangée ne
+        // s'alignait qu'à chasse unitaire)
         for (int at = 0; at < texts.length; at++) {
-            int segFrom = (int) xs[at];
+            int segFrom = cols[at];
             int segLen = texts[at].length();
             if (segFrom + segLen <= fromCol || segFrom >= toCol) {
                 continue;
@@ -4715,7 +4739,10 @@ public final class EditorView extends View {
         int step = Math.max(8, columns - indent);
         for (int row = 0; row < rows; row++) {
             int fromCol = row == 0 ? 0 : wrapCols + (row - 1) * step;
-            int toCol = row == 0 ? wrapCols
+            // la première rangée se borne à la coupe du pli aussi (un
+            // en-tête replié coupé avant sa largeur de rangée n'en
+            // montre pas plus : le placeholder y remplace la suite)
+            int toCol = row == 0 ? Math.min(wrapCols, end - start)
                     : Math.min(end - start, wrapCols + row * step);
             if (fromCol >= end - start) {
                 break;
@@ -4729,25 +4756,10 @@ public final class EditorView extends View {
     }
 
     /**
-     * Dessine la ligne depuis son plan de rendu : le plan se valide par
-     * identité d'entrée (aucune lecture de texte sur le chemin rapide),
-     * se partage par contenu (les lignes identiques ne cuisent qu'une
-     * fois — l'étiquette de fusion y entre : deux lignes de même texte
-     * aux couches sémantiques différentes ne partagent pas un plan) et
-     * porte les couleurs résolues.
-     */
-    /**
-     * Le PLACEHOLDER du pli replié (la leçon de la référence :
-     * getPlaceholderText y rend le triolet d'accolades pour un bloc,
-     * le commentaire étoilé suivi de points pour une documentation,
-     * le double slash suivi de points pour un commentaire de ligne) —
-     * posé juste après le texte de l'en-tête, à l'encre atténuée du
-     * texte.
-     */
-    /**
      * La borne gauche du placeholder d'une ligne d'en-tête repliée —
-     * le tap au-delà rouvre le bloc (le placeholder s'y dessine, à
-     * partir du dernier ouvrant de l'en-tête).
+     * le tap au-delà rouvre le bloc : à l'OUVRANT de l'en-tête quand
+     * il en porte un (le placeholder y naît), à la FIN du texte
+     * visible sinon (l'en-tête sans ouvrant s'affiche entier).
      *
      * @param line l'indice de la ligne d'en-tête
      * @return l'abscisse où le placeholder commence
@@ -4755,7 +4767,17 @@ public final class EditorView extends View {
     private float foldPlaceholderLeft(int line) {
         String head = buffer.getText(buffer.getLineStart(line),
                 buffer.getLineEnd(line));
-        return getPaddingLeft() + lastOpenerColumn(head) * charWidth - scrollX;
+        // LA BORNE TACTILE SUIT LE PLACEHOLDER (coordonnées de la vue —
+        // le doigt n'y vit pas dans le canevas translaté) : sur
+        // l'OUVRANT quand l'en-tête en porte un, à la FIN du texte
+        // visible sinon (l'en-tête sans ouvrant s'affiche entier — le
+        // tap au-delà de SA fin rouvre, jamais la colonne −1 de
+        // l'ouvrant manquant qui mangeait toute la ligne)
+        int column = lastOpenerColumn(head);
+        if (column < 0) {
+            column = head.length();
+        }
+        return getPaddingLeft() + column * charWidth - scrollX;
     }
 
     /**
@@ -4765,7 +4787,10 @@ public final class EditorView extends View {
      * imports). L'ouvrant déjà présent dans l'en-tête ne se répète
      * pas : le placeholder naît SUR lui (le bug d'usage B5 : le
      * dessin d'avant posait « {...} » après un en-tête finissant par
-     * « { » — l'écran montrait « method {{...} »).
+     * « { » — l'écran montrait « method {{...} ») ; l'en-tête sans
+     * ouvrant s'affiche entier et le placeholder suit SA FIN (jamais
+     * la colonne −1 — il vivait dans la gouttière avant le retour de
+     * terrain).
      *
      * @param canvas   le canevas de la vue
      * @param line     l'indice de la ligne d'en-tête
@@ -4775,8 +4800,19 @@ public final class EditorView extends View {
         String head = buffer.getText(buffer.getLineStart(line),
                 buffer.getLineEnd(line));
         String placeholder = foldPlaceholderText(line, head);
-        int openerColumn = lastOpenerColumn(head);
-        float x = getPaddingLeft() + openerColumn * charWidth - scrollX;
+        // LA COLONNE DU PLACEHOLDER : l'OUVRANT quand l'en-tête en
+        // porte un (il naît SUR lui — B5), la FIN du texte visible
+        // sinon (l'en-tête sans ouvrant s'affiche entier : « import x; … »)
+        // — jamais la colonne −1 qui le posait dans LA GOUTTIÈRE
+        int column = lastOpenerColumn(head);
+        if (column < 0) {
+            column = head.length();
+        }
+        // AUCUN scrollX ici : le dessin vit dans le canevas translaté
+        // du corps (la translation y porte déjà le défilement — la
+        // soustraction d'avant le comptait DEUX fois, le placeholder
+        // dérivait à gauche dès que la vue défilait)
+        float x = getPaddingLeft() + column * charWidth;
         // l'encre atténuée du texte du thème (la référence y dessine
         // son placeholder à la couleur du texte, discrètement)
         placeholderPaint.setColor((theme.defaultColor() & 0x00FFFFFF)
@@ -4858,27 +4894,43 @@ public final class EditorView extends View {
         int lineEnd = buffer.getLineEnd(line);
         LinePlan plan = renderCache.frame(line, entry, fusionLabel(line),
                 () -> buffer.getText(start, lineEnd), this::bakeLine);
-        // la tranche révélée s'arrête où le pli la coupe (drawEnd peut
-        // devancer lineEnd) : les segments au-delà ne se dessinent pas
+        // LA COUPE DU PLI S'APPLIQUE VRAIMENT (le retour de
+        // terrain : reveal se calculait puis personne ne le
+        // lisait — l'en-tête replié se dessinait ENTIER et le
+        // « {...} » se peignait PAR-DESSUS l'ouvrant et sa suite) : les
+        // segments au-delà de l'ouvrant ne se dessinent pas, celui qui
+        // l'englobe se tranche à la coupe
         int reveal = Math.min(drawEnd, lineEnd);
+        int revealCols = reveal - start;
         String[] texts = plan.texts();
         int[] colors = plan.colors();
+        int[] cols = plan.cols();
         float[] xs = plan.xs();
         boolean[] bolds = plan.bolds();
         float left = getPaddingLeft();
         for (int at = 0; at < texts.length; at++) {
+            if (cols[at] >= revealCols) {
+                break;
+            }
+            String piece = texts[at];
+            if (cols[at] + piece.length() > revealCols) {
+                piece = piece.substring(0, revealCols - cols[at]);
+            }
             textPaint.setColor(colors[at]);
             // le gras sémantique (L3) : un drapeau de peinture, pas une
             // seconde police
             textPaint.setFakeBoldText(bolds != null && bolds[at]);
-            canvas.drawText(texts[at], left + xs[at], baseline, textPaint);
+            canvas.drawText(piece, left + xs[at], baseline, textPaint);
+            if (piece.length() < texts[at].length()) {
+                break;
+            }
         }
         // LES LIGATURES (la leçon de la référence : FiraCode y fond
         // les paires d'opérateurs en UN glyphe — la police du terminal
         // n'en porte pas, le pinceau les dessine) : la flèche, le
         // non-égal, les comparaisons et les conjonctions s'unifient
         // par-dessus leurs deux caractères
-        drawLigatures(canvas, line, baseline);
+        drawLigatures(canvas, line, reveal, baseline);
         textPaint.setFakeBoldText(false);
     }
 
@@ -4890,10 +4942,13 @@ public final class EditorView extends View {
      * rectangle arrondi rempli de sa couleur, liseré discret — le
      * double-tap sur le littéral ouvre le sélecteur.
      */
-    private void drawColorChips(Canvas canvas, int line, float baseline) {
+    private void drawColorChips(Canvas canvas, int line, int drawEnd,
+            float baseline) {
         int lineStart = buffer.getLineStart(line);
         int lineEnd = buffer.getLineEnd(line);
-        int window = Math.min(lineEnd - lineStart, 512);
+        // la coupe du pli borne la fenêtre : les chips au-delà de
+        // l'ouvrant ne vivent plus (le placeholder y naît)
+        int window = Math.min(Math.min(lineEnd, drawEnd) - lineStart, 512);
         CharSequence text = buffer.getText(lineStart, lineStart + window);
         float left = getPaddingLeft();
         // le rectangle du chip : la hauteur de la ligne respirée, le
@@ -4972,10 +5027,13 @@ public final class EditorView extends View {
      * La passe relit la ligne au tampon (une fenêtre, jamais le
      * document), dessin par-dessus le plan cuit.
      */
-    private void drawLigatures(Canvas canvas, int line, float baseline) {
+    private void drawLigatures(Canvas canvas, int line, int reveal,
+            float baseline) {
         int lineStart = buffer.getLineStart(line);
         int lineEnd = buffer.getLineEnd(line);
-        int window = Math.min(lineEnd - lineStart, 512);
+        // la coupe du pli borne la fenêtre : les ligatures au-delà de
+        // l'ouvrant ne vivent plus (le placeholder y naît)
+        int window = Math.min(Math.min(lineEnd, reveal) - lineStart, 512);
         CharSequence text = buffer.getText(lineStart, lineStart + window);
         float left = getPaddingLeft();
         ligaturePaint.setStrokeWidth(Math.max(1.2f, charWidth * 0.10f));
@@ -5114,9 +5172,10 @@ public final class EditorView extends View {
 
     /**
      * Cuit le plan d'une ligne : textes tranchés jusqu'au plafond de
-     * dessin, couleurs résolues depuis les portées, abscisses en
-     * colonnes (la marge s'ajoute au dessin). Une ligne sans jeton
-     * (ligne monstre, hors plafond moteur) se cuit en texte brut.
+     * dessin, couleurs résolues depuis les portées, colonnes de début
+     * et abscisses en pixels (la marge s'ajoute au dessin ; la coupe du
+     * pli et la tranche de rangée lisent les colonnes). Une ligne sans
+     * jeton (ligne monstre, hors plafond moteur) se cuit en texte brut.
      */
     private LinePlan bakeLine(int line, Object stamp, CharSequence content) {
         SyntaxDocument.LineTokens entry = (SyntaxDocument.LineTokens) stamp;
@@ -5125,6 +5184,7 @@ public final class EditorView extends View {
             return new LinePlan(
                     new String[] {content.subSequence(0, drawn).toString()},
                     new int[] {theme.defaultColor()},
+                    new int[] {0},
                     new float[] {0.0f},
                     null);
         }
@@ -5147,6 +5207,7 @@ public final class EditorView extends View {
         }
         String[] texts = new String[kept];
         int[] colors = new int[kept];
+        int[] cols = new int[kept];
         float[] xs = new float[kept];
         boolean[] bolds = new boolean[kept];
         int at = 0;
@@ -5165,6 +5226,10 @@ public final class EditorView extends View {
             colors[at] = scope == null
                     ? theme.defaultColor() : theme.colorOf(scope);
             xs[at] = start * charWidth;
+            // la colonne de début vit au plan (la coupe du pli et la
+            // tranche de rangée y lisent des colonnes — l'abscisse
+            // seule y mensongeait à chasse réelle)
+            cols[at] = start;
             if (scope == null && !notes.isEmpty()) {
                 // fusion L3 > L2 > L1 : seul un neutre peut se colorer —
                 // une couleur L1 affichée ne change jamais
@@ -5201,7 +5266,7 @@ public final class EditorView extends View {
             }
             at++;
         }
-        return new LinePlan(texts, colors, xs, bolds);
+        return new LinePlan(texts, colors, cols, xs, bolds);
     }
 
     // -------------------------------------------- complétion et diagnostics

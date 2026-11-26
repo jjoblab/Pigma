@@ -49,7 +49,7 @@ qu'il propose.
 | 79 | Chaîne d'approvisionnement : verification-metadata.xml (401 composants, sha256+sha512), mode strict documenté | D11 | **fait** | `docs/chantiers/79.md` | à pousser |
 | 80 | Fins de ligne : CRLF au tampon et au protocole — la paire `"\r\n"` est UN terminateur (règle LSP), paires coupées/recollées aux deux bords de l'index incrémental, positionIn et countBreaks alignés | D13 | **fait** | `docs/chantiers/80.md` | à pousser |
 | 81 | Bugs d'usage résiduels : B6 (l'Entrée exige un choix explicite), B5 (le placeholder naît sur l'ouvrant), B4 (la pastille d'erreur du tap) | B6, B5, B4 | **fait** | `docs/chantiers/81.md` | à pousser |
-| 82 | Découpage, premier composant : LayoutModel (jo.pigma.editor.internal.layout) — la géométrie offset↔pixel, plis et soft wrap, bornes de défilement, extraite et testée en JVM (13 tests) ; la vue délègue | D6, R1 | **fait** | `docs/chantiers/82.md` | à pousser |
+| 82 | Découpage, premier composant : LayoutModel (jo.pigma.editor.internal.layout) — la géométrie offset↔pixel, plis et soft wrap, bornes de défilement, extraite et testée en JVM (13 tests) ; la vue délègue — puis le retour de terrain sur les plis : le chevron de l'ouvert renaît (il avait disparu avec celui de la fermante), la coupe de l'en-tête replié s'applique VRAIMENT (le « {…} » ne se peint plus par-dessus), le placeholder sans ouvrant vit à la fin du texte et ne dérive plus au défilement — FoldRenderingIT (rendu natif, aux pixels) éprouve chacun | D6, R1 | **fait** | `docs/chantiers/82.md` | à pousser |
 | 83 | Découpage, composants suivants : Painter (dessin), puis TouchController, ImeController, ScrollController, SearchController — un par livraison | D6, R1 | prévu | — | — |
 
 L'ordre suit le plan d'action du rapport (priorité 1 d'abord : les bugs
@@ -72,6 +72,17 @@ amputé de ce qui est déjà fait.
 
 ## Journal des mises à jour
 
+- 2026-11-26 — chantier 82 refermé sur un retour de terrain : les
+  deux régressions des plis réparées — le chevron du pli ouvert
+  renaît (le correctif du chevron bas l'avait emporté avec lui :
+  plus AUCUNE icône), la coupe de l'en-tête replié s'applique
+  VRAIMENT (reveal se calculait puis personne ne le lisait : le
+  « {…} » se peignait par-dessus l'en-tête entier), le placeholder
+  sans ouvrant vit à la fin du texte visible (plus dans la
+  gouttière, à la colonne −1) et ne dérive plus au défilement
+  horizontal (le scrollX s'y comptait deux fois). FoldRenderingIT
+  (rendu natif, à la leçon de la capture) éprouve les trois faits
+  aux pixels — chacun échoue sur le code d'avant.
 - 2026-11-26 — création ; historique des 113 commits réattribué à
   `jjoblab <olson12jb@gmail.com>` et poussé (force) — les 3 commits
   « Z User » de la période des vagues 44-46 rewriting.
