@@ -16,7 +16,11 @@ import jo.pigma.core.TextListener;
 import jo.pigma.editor.EditorView;
 import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.editor.popups.DiagnosticCard;
+import jo.pigma.editor.popups.GotoCard;
+import jo.pigma.editor.popups.ImportBubbleCard;
+import jo.pigma.editor.popups.PreviewCard;
 import jo.pigma.editor.popups.QuickActionCard;
+import jo.pigma.editor.popups.RenamePreviewCard;
 import jo.pigma.editor.popups.StructureCard;
 import jo.pigma.editor.popups.TargetCard;
 import jo.pigma.editor.popups.UsageCard;
@@ -35,6 +39,7 @@ import jo.pigma.lsp.LspRange;
 import jo.pigma.lsp.LspSemanticToken;
 import jo.pigma.lsp.LspSession;
 import jo.pigma.lsp.LspTextEdit;
+import jo.pigma.lsp.LspWorkspaceSymbol;
 
 /**
  * La façade du serveur de langage : l'hôte n'a plus RIEN à câbler.
@@ -360,6 +365,16 @@ public final class LspEditor {
     private final java.util.Map<String, List<DiagnosticCard.Fix>> diagnosticFixCache =
             Collections.synchronizedMap(new java.util.HashMap<>());
 
+    /**
+     * Les rangées de l'aller au symbole reçues (l'espace de travail
+     * — la réponse asynchrone y écrit, le fournisseur y lit : la
+     * carte vit aux rangées connues pendant l'attente).
+     */
+    private volatile List<GotoCard.GotoRow> gotoRows = List.of();
+
+    /** L'aller demandé, la réponse en vol (la carte s'ouvrira à l'arrivée). */
+    private volatile boolean gotoAsked;
+
     /** Le report du changement de document vers le serveur (la synchronisation intégrale s'amortit). */
     private final Runnable documentSync = this::pushDocumentToServer;
 
@@ -603,6 +618,13 @@ public final class LspEditor {
             // savoir — demander une fonction non déclarée offense le
             // protocole (la leçon de la référence)
             capabilities = LspCapabilities.fromResult(result);
+            // l'aller au symbole vit de la capacité déclarée : sans
+            // elle le fournisseur se retire (le débordement n'y
+            // propose rien — le câblage AVANT la négociation l'avait
+            // posé, la réponse le reprend)
+            if (!capabilities.workspaceSymbol()) {
+                view.setGotoProvider(null);
+            }
             // le document n'ouvre qu'APRÈS la poignée de main
             // complète (la leçon du branchement : un didOpen parti
             // pendant l'initialize, le serveur réel le rejette —
@@ -666,6 +688,7 @@ public final class LspEditor {
             view.setSignatureProvider(null);
             view.setDiagnosticProvider(null);
             view.setServerQuickActionProvider(null);
+            view.setGotoProvider(null);
             view.setServerHighlights(List.of());
             documentViewsGeneration.incrementAndGet();
             view.setInlayHints(List.of());
@@ -693,6 +716,7 @@ public final class LspEditor {
         view.setSignatureProvider(null);
         view.setDiagnosticProvider(null);
         view.setServerQuickActionProvider(null);
+        view.setGotoProvider(null);
         view.setServerHighlights(List.of());
         // la couverture du document se range pareillement : les
         // indices, les plis, les jetons sémantiques du serveur mort
@@ -870,6 +894,113 @@ public final class LspEditor {
         session.definition(uri, position).whenComplete((places, failure) ->
                 view.post(() -> navigateTo(places, view.wordAtCaret(),
                         "définition")));
+    }
+
+    /**
+     * LA DÉFINITION EN APERÇU (la définition en aperçu du rapport — le « Quick
+     * Definition » de l'atelier) : lire la déclaration du symbole au
+     * curseur SANS quitter la position — la question part au serveur
+     * ({@code textDocument/definition}, la MÊME question que l'aller-à),
+     * la carte s'ouvre sur les lignes de la déclaration (une douzaine
+     * au plafond, lues du document courant), le bouton « Ouvrir » y
+     * saute. La définition d'un AUTRE document se laisse à l'hôte
+     * (l'éditeur n'en tient qu'un — l'aller-à y va, l'aperçu n'y
+     * ment pas : il ne lit pas ce qu'il n'a pas).
+     */
+    public void requestDefinitionPreview() {
+        if (session == null || !capabilities.definition()) {
+            return;
+        }
+        String symbol = view.wordAtCaret();
+        LspPosition position = caretPosition();
+        session.definition(uri, position).whenComplete((places, failure) ->
+                view.post(() -> showDefinitionPreview(places, symbol)));
+    }
+
+    /**
+     * La carte de l'aperçu se construit des places reçues : la
+     * PREMIÈRE définition du MÊME document y vit (ses lignes se
+     * lisent, « Ouvrir » y saute), celle d'un autre document se
+     * laisse à l'hôte.
+     *
+     * @param places les places du serveur
+     * @param symbol le symbole questionné
+     */
+    private void showDefinitionPreview(List<LspLocation> places,
+            String symbol) {
+        if (places == null || places.isEmpty()) {
+            sayAtCaret("aucune définition trouvée");
+            return;
+        }
+        LspLocation place = places.get(0);
+        if (place == null || place.range() == null) {
+            sayAtCaret("aucune définition trouvée");
+            return;
+        }
+        if (uri == null || !uri.equals(place.uri())) {
+            sayAtCaret("la définition vit dans un autre document");
+            return;
+        }
+        TextBuffer buffer = view.getBuffer();
+        int offset = Math.min(offsetOf(buffer, place.range().start()),
+                buffer.length());
+        int line = buffer.lineOfOffset(offset);
+        List<String> lines = new ArrayList<>();
+        for (int at = line; at < Math.min(line + 12, buffer.getLineCount());
+                at++) {
+            lines.add(buffer.getText(buffer.getLineStart(at),
+                    buffer.getLineEnd(at)).toString());
+        }
+        view.showDefinitionPreview(new PreviewCard.Preview(
+                symbol == null ? "" : symbol, "", line, lines,
+                () -> view.caretTo(offset)));
+    }
+
+    /**
+     * La question des symboles de l'espace de travail part ({@code
+     * workspace/symbol} — l'aller au symbole du rapport) : la réponse
+     * construit les RANGÉES de la carte (le nom, l'icône de sa
+     * nature, le fichier · la ligne à droite, le saut au choix), la
+     * carte ouverte se rouvre fraîche à son arrivée (les rangées
+     * connues y tiennent l'attente — le fil d'interface n'attend
+     * jamais).
+     */
+    private void askWorkspaceSymbols() {
+        if (session == null || !capabilities.workspaceSymbol()) {
+            return;
+        }
+        session.workspaceSymbol("").whenComplete((answer, failure) ->
+                view.post(() -> {
+                    if (failure != null || answer == null || answer.isEmpty()) {
+                        return;
+                    }
+                    List<GotoCard.GotoRow> rows = new ArrayList<>();
+                    for (LspWorkspaceSymbol symbol : answer) {
+                        if (symbol == null || symbol.location() == null) {
+                            continue;
+                        }
+                        LspLocation place = symbol.location();
+                        final LspLocation target = place;
+                        int line = place.range() == null || place.range().start() == null
+                                ? 0 : Math.max(0, place.range().start().line());
+                        String where = fileNameOf(place.uri()) + " · ligne "
+                                + (line + 1);
+                        rows.add(new GotoCard.GotoRow(symbol.name(),
+                                kindOf(symbol.kind()), where,
+                                () -> jumpTo(target)));
+                    }
+                    gotoRows = List.copyOf(rows);
+                    // la carte ouverte se ROUVRE fraîche (la réponse
+                    // arrive après l'ouverture aux rangées d'avant) ;
+                    // l'aller demandé à un cache vide s'y OUVRE (le
+                    // premier tap ne reste pas sans effet)
+                    if (view.gotoCard() != null && view.gotoCard().isShown()) {
+                        view.showGotoPopup(gotoRows);
+                    } else if (gotoAsked) {
+                        gotoAsked = false;
+                        view.showGotoPopup(gotoRows);
+                    }
+                }));
     }
 
     /**
@@ -1115,7 +1246,21 @@ public final class LspEditor {
             return;
         }
         if (uri != null && uri.equals(place.uri())) {
-            view.caretTo(offsetOf(view.getBuffer(), place.range().start()));
+            TextBuffer buffer = view.getBuffer();
+            int offset = Math.min(offsetOf(buffer, place.range().start()),
+                    buffer.length());
+            // L'EMPLACEMENT RÉCENT (les fichiers récents — les fichiers récents) : chaque
+            // saut du document s'y enregistre (le fichier, la ligne,
+            // l'extrait — le retour y revient)
+            int line = buffer.lineOfOffset(offset);
+            String lineText = buffer.getText(buffer.getLineStart(line),
+                    buffer.getLineEnd(line)).toString();
+            String excerpt = lineText.length() > 60
+                    ? lineText.substring(0, 60) : lineText;
+            view.recentFiles().recordLocation(fileNameOf(uri), line,
+                    excerpt, android.os.SystemClock.uptimeMillis(),
+                    () -> view.caretTo(offset));
+            view.caretTo(offset);
             return;
         }
         if (navigationListener != null) {
@@ -1158,11 +1303,49 @@ public final class LspEditor {
         LspPosition position = caretPosition();
         session.rename(uri, position, newName).whenComplete((edits, failure) ->
                 view.post(() -> {
-                    if (!view.applyTextEdits(edits)) {
+                    if (edits == null || edits.isEmpty()) {
                         sayAtCaret("le renommage ne pose rien (dit le serveur)");
+                        return;
                     }
+                    // L'APERÇU DU RENOMMAGE (l'aperçu du renommage du rapport) : les
+                    // occurrences se VOIENT avant de se poser — les
+                    // cases les retiennent, le bouton « Appliquer » pose
+                    // les retenues (UNE unité d'annulation)
+                    view.showRenamePreview("Renommer « " + symbol
+                            + " » en « " + newName + " »",
+                            renameOccurrencesOf(edits));
                 }));
         return true;
+    }
+
+    /**
+     * LES OCCURRENCES DU RENOMMAGE (l'aperçu du renommage) : chaque
+     * remplacement du serveur devient une rangée — sa place à droite
+     * (la ligne), l'EXTRAIT de la ligne dessous (le code se lit), son
+     * remplacement attaché (la case cochée le pose à l'application).
+     *
+     * @param edits les remplacements du serveur
+     * @return les occurrences, jamais null
+     */
+    private List<RenamePreviewCard.Occurrence> renameOccurrencesOf(
+            List<LspTextEdit> edits) {
+        TextBuffer buffer = view.getBuffer();
+        List<RenamePreviewCard.Occurrence> occurrences = new ArrayList<>();
+        for (LspTextEdit edit : edits) {
+            if (edit == null || edit.range() == null) {
+                continue;
+            }
+            int offset = Math.min(offsetOf(buffer, edit.range().start()),
+                    buffer.length());
+            int line = buffer.lineOfOffset(offset);
+            String lineText = buffer.getText(buffer.getLineStart(line),
+                    buffer.getLineEnd(line)).toString();
+            String excerpt = lineText.length() > 60
+                    ? lineText.substring(0, 60) : lineText;
+            occurrences.add(new RenamePreviewCard.Occurrence(
+                    "ligne " + (line + 1), excerpt, List.of(edit)));
+        }
+        return occurrences;
     }
 
     /**
@@ -1187,6 +1370,11 @@ public final class LspEditor {
         if (capabilities.definition()) {
             actions.add(new QuickActionCard.Entry(
                     "Aller à la définition", this::requestDefinition));
+            // L'APERÇU DE LA DÉFINITION (la définition en aperçu) :
+            // lire la déclaration SANS quitter la position (le bouton «
+            // Ouvrir » y saute)
+            actions.add(new QuickActionCard.Entry(
+                    "Aperçu de la définition", this::requestDefinitionPreview));
         }
         if (capabilities.references()) {
             actions.add(new QuickActionCard.Entry(
@@ -1252,10 +1440,26 @@ public final class LspEditor {
                         return;
                     }
                     codeActionsCache.clear();
+                    List<ImportBubbleCard.Import> imports = new ArrayList<>();
                     for (LspCodeAction action : answer) {
-                        codeActionsCache.add(new QuickActionCard.Entry(
-                                "Correctif : " + action.title(),
-                                () -> view.applyTextEdits(action.edits())));
+                        // LA SUGGESTION D'IMPORT (la suggestion d'import — la bulle « Importer
+                        // x.y.Z ? ») : les correctifs d'import du serveur
+                        // (le genre du protocole le dit : quickfix.import)
+                        // se détournent à LEUR bulle — la carte d'actions
+                        // garde les correctifs ordinaires
+                        if (action.kind() != null
+                                && action.kind().endsWith("import")) {
+                            imports.add(new ImportBubbleCard.Import(
+                                    action.title(),
+                                    () -> view.applyTextEdits(action.edits())));
+                        } else {
+                            codeActionsCache.add(new QuickActionCard.Entry(
+                                    "Correctif : " + action.title(),
+                                    () -> view.applyTextEdits(action.edits())));
+                        }
+                    }
+                    if (!imports.isEmpty()) {
+                        view.showImportPopup(view.wordAtCaret(), imports);
                     }
                     // la carte ouverte à la ligne se rouvre fraîche ;
                     // la carte close y laisse la trame suivante lire —
@@ -1475,6 +1679,26 @@ public final class LspEditor {
         // du serveur remplacent la liste locale à leur arrivée (la
         // présentation ne change JAMAIS : la carte des usages)
         view.setUsageProvider(this::usagesFor);
+        // LE FOURNISSEUR DE L'ALLER AU SYMBOLE (l'aller au symbole — workspace/symbol) :
+        // la question part asynchrone, les RANGÉES en cache y tiennent
+        // l'attente (la carte s'ouvre aux rangées connues, la réponse
+        // la rouvre fraîche à son arrivée — la leçon du survol : le
+        // fil d'interface n'attend jamais). La capacité s'y lit À LA
+        // DEMANDE (le câblage court AVANT l'arrivée de la négociation
+        // — les capacités tombent asynchrones)
+        view.setGotoProvider(() -> {
+            if (!capabilities.workspaceSymbol()) {
+                return List.of();
+            }
+            askWorkspaceSymbols();
+            if (gotoRows.isEmpty()) {
+                // la réponse vole : la carte s'ouvrira à son
+                // arrivée (l'aller a été DEMANDÉ — le premier tap
+                // ne reste pas sans effet)
+                gotoAsked = true;
+            }
+            return gotoRows;
+        });
         // LE SURVOL ASYNCHRONE (D-P1 du rapport des popups — la
         // coquille au-dessus) : la question part, le fil d'interface
         // N'ATTEND JAMAIS (l'attente vivait SUR le fil, jusqu'à
@@ -1723,9 +1947,24 @@ public final class LspEditor {
                         return;
                     }
                     List<DiagnosticCard.Fix> fixes = new ArrayList<>();
+                    List<ImportBubbleCard.Import> imports = new ArrayList<>();
                     for (LspCodeAction action : answer) {
-                        fixes.add(new DiagnosticCard.Fix(action.title(),
-                                () -> view.applyTextEdits(action.edits())));
+                        // LA SUGGESTION D'IMPORT se détourne à SA
+                        // bulle ici aussi (l'étage des correctifs garde
+                        // les correctifs ordinaires — l'import se lit à
+                        // la bulle au-dessus du mot)
+                        if (action.kind() != null
+                                && action.kind().endsWith("import")) {
+                            imports.add(new ImportBubbleCard.Import(
+                                    action.title(),
+                                    () -> view.applyTextEdits(action.edits())));
+                        } else {
+                            fixes.add(new DiagnosticCard.Fix(action.title(),
+                                    () -> view.applyTextEdits(action.edits())));
+                        }
+                    }
+                    if (!imports.isEmpty()) {
+                        view.showImportPopup(view.wordAtCaret(), imports);
                     }
                     diagnosticFixCache.put(cacheKey, List.copyOf(fixes));
                     // la carte de diagnostic VIVANTE sur cette ligne se
@@ -1824,6 +2063,10 @@ public final class LspEditor {
         // plages du protocole vivent dans le document d'avant)
         codeActionsLine = -1;
         codeActionsCache.clear();
+        // les rangées de l'aller au symbole d'avant ne valent plus
+        // (la réponse fraîche les reposera)
+        gotoRows = List.of();
+        gotoAsked = false;
         // les symboles d'avant ne valent plus non plus (la pompe du
         // document reposera les frais)
         documentViewsGeneration.incrementAndGet();

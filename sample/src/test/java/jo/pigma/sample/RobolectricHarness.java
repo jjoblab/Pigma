@@ -25,8 +25,17 @@ import org.robolectric.annotation.Config;
 
 import jo.pigma.editor.EditorView;
 import jo.pigma.editor.popups.CompletionCard;
+import jo.pigma.editor.popups.GotoCard;
+import jo.pigma.editor.popups.ImportBubbleCard;
+import jo.pigma.editor.popups.PreviewCard;
+import jo.pigma.editor.popups.RenamePreviewCard;
+import jo.pigma.editor.popups.SnippetRegistry;
 import jo.pigma.editor.popups.StructureCard;
+import jo.pigma.editor.popups.SurroundCard;
 import jo.pigma.editor.popups.TargetCard;
+import jo.pigma.lsp.LspPosition;
+import jo.pigma.lsp.LspRange;
+import jo.pigma.lsp.LspTextEdit;
 import jo.pigma.syntax.SyntaxDocument;
 
 /**
@@ -109,6 +118,7 @@ public final class RobolectricHarness {
         popupMutualExclusion();
         popupContextLost();
         popupsP1();
+        popupsP2();
         stateSaveRestore();
         assertTrue(failures + " vérification(s) en échec", failures == 0);
         System.out.println("résumé harnais réel : " + scenarios
@@ -1243,6 +1253,294 @@ public final class RobolectricHarness {
      */
     private int bufferLineOf(int offset) {
         return editor.getBuffer().lineOfOffset(offset);
+    }
+
+    /**
+     * LES POPUPS P2 (le plan des popups du rapport — l'import, la
+     * définition en aperçu, l'aller, les récents, le renommage, l'entourage, les extraits) : l'entourage de la sélection, l'extrait au
+     * caret (le champ posé sélectionné), l'aller au symbole (le
+     * filtre à la frappe, le tampon ne bouge pas), les fichiers
+     * récents (le retour y revient), la définition en aperçu («
+     * Ouvrir » y saute), l'aperçu du renommage (la case retient, «
+     * Appliquer » pose les retenues), la bulle de l'import (compacte,
+     * ouverte en liste, le candidat posé).
+     *
+     * @throws InterruptedException si l'attente du fond s'interrompt
+     */
+    private void popupsP2() throws InterruptedException {
+        begin("popups P2 : import, aperçu, aller, récents, renommage, entourage, extraits");
+        String original = editor.getBuffer().toString();
+        // L'ENTOUREMENT (l'entourer de) : la sélection s'entoure d'une paire — les
+        // deux insertions en UNE unité d'annulation, la sélection
+        // demeure
+        int graine = original.indexOf("graine");
+        editor.setSelection(graine, graine + "graine".length());
+        frame();
+        editor.showSurroundPopup();
+        frame();
+        check("la carte d'entourage vit",
+                editor.surroundCard() != null && editor.surroundCard().isShown());
+        float surroundY = editor.surroundCard().rowCenterY(0);
+        if (surroundY > 0.0f) {
+            tap(editor.surroundCard().poseX() + 40.0f, surroundY);
+            idle();
+            frame();
+            check("la sélection s'entoure de la paire",
+                    editor.getBuffer().toString().contains("(graine)"));
+            check("la sélection demeure (le contenu entouré reste au doigt)",
+                    editor.selectionEnd() - editor.selectionStart()
+                            == "graine".length());
+            check("l'entourage se défait d'UN geste",
+                    editor.getUndoStack().canUndo());
+            while (!editor.getBuffer().toString().equals(original)
+                    && editor.getUndoStack().canUndo()) {
+                editor.getUndoStack().undo();
+            }
+            check("le texte revient à l'original",
+                    editor.getBuffer().toString().equals(original));
+        }
+        // LES EXTRAITS (les extraits) : le squelette s'inscrit au caret, le CHAMP
+        // se pose SÉLECTIONNÉ (la frappe le remplace)
+        editor.snippetRegistry().clear();
+        for (SnippetRegistry.Snippet snippet : SnippetRegistry.standard("Java")) {
+            editor.snippetRegistry().register(snippet);
+        }
+        int maxAt = original.indexOf("MAX");
+        editor.caretTo(maxAt);
+        frame();
+        editor.showSnippetsPopup();
+        frame();
+        check("la carte des extraits vit",
+                editor.snippetCard() != null && editor.snippetCard().isShown());
+        float snippetY = editor.snippetCard().rowCenterY(0);
+        if (snippetY > 0.0f) {
+            tap(editor.snippetCard().poseX() + 40.0f, snippetY);
+            idle();
+            frame();
+            check("le squelette s'inscrit au caret",
+                    editor.getBuffer().toString().contains(
+                            "for (int i = 0; i < 10; i++)"));
+            check("le champ se pose SÉLECTIONNÉ",
+                    editor.selectionEnd() - editor.selectionStart() == 1
+                            && "i".contentEquals(editor.getBuffer().getText(
+                                    editor.selectionStart(),
+                                    editor.selectionEnd())));
+            while (!editor.getBuffer().toString().equals(original)
+                    && editor.getUndoStack().canUndo()) {
+                editor.getUndoStack().undo();
+            }
+            check("l'extrait se défait, le texte revient",
+                    editor.getBuffer().toString().equals(original));
+        }
+        // L'ALLER AU SYMBOLE (l'aller au symbole) : le FILTRE à la frappe resserre la
+        // liste, le tampon ne bouge pas, la validation y va
+        java.util.List<GotoCard.GotoRow> where = java.util.Arrays.asList(
+                new GotoCard.GotoRow("total", CompletionCard.KIND_FUNCTION,
+                        "Lot.java · ligne 8", () -> editor.caretTo(
+                                original.indexOf("total"))),
+                new GotoCard.GotoRow("graine", CompletionCard.KIND_FIELD,
+                        "Lot.java · ligne 14", () -> editor.caretTo(graine)));
+        // le FOURNISSEUR de l'hôte (la façade du serveur le pose au
+        // branchement — le harnais y pose le sien : le débordement y
+        // propose l'aller à un fournisseur vivant)
+        editor.setGotoProvider(() -> where);
+        editor.showGotoPopup(where);
+        frame();
+        check("la carte de l'aller vit",
+                editor.gotoCard() != null && editor.gotoCard().isShown());
+        String beforeFilter = editor.getBuffer().toString();
+        connection.commitText("gra", 1);
+        idle(400L);
+        frame();
+        check("le filtre se pose à la frappe (la carte reçoit le clavier)",
+                editor.gotoCard() != null
+                        && "gra".equals(editor.gotoCard().filter()));
+        check("la liste se resserre au filtre",
+                editor.gotoCard().filtered().size() == 1);
+        check("le tampon ne bouge pas (les lettres vont au filtre)",
+                editor.getBuffer().toString().equals(beforeFilter));
+        editor.gotoCard().onArrow(1);
+        editor.gotoCard().onEnter();
+        frame();
+        check("la validation va au symbole filtré",
+                "graine".equals(editor.wordAtCaret()));
+        check("la carte se range après le saut",
+                editor.gotoCard() == null || !editor.gotoCard().isShown());
+        // LES FICHIERS RÉCENTS (les fichiers récents) : le fichier se pose, la carte
+        // liste, le choix ROUVRE le document
+        boolean[] reopened = new boolean[1];
+        editor.recentFiles().recordFile("Java (démo)", 1_000L,
+                () -> reopened[0] = true);
+        editor.recentFiles().recordLocation("Java (démo)",
+                bufferLineOf(graine), "l'extrait de la ligne", 2_000L,
+                () -> editor.caretTo(graine));
+        editor.showRecentFilesPopup();
+        frame();
+        check("la carte des récents vit",
+                editor.recentCard() != null && editor.recentCard().isShown());
+        float fileRowY = editor.recentCard().rowCenterY(1);
+        if (fileRowY > 0.0f) {
+            tap(editor.recentCard().poseX() + 40.0f, fileRowY);
+            idle();
+            frame();
+            check("le récent ROUVRE le document (le retour s'est joué)",
+                    reopened[0]);
+        }
+        // LA DÉFINITION EN APERÇU (la définition en aperçu) : les lignes se lisent, « Ouvrir »
+        // y saute
+        java.util.List<String> previewLines = new java.util.ArrayList<>();
+        int maxLine = bufferLineOf(maxAt);
+        for (int at = maxLine; at < maxLine + 4; at++) {
+            previewLines.add(editor.getBuffer().getText(
+                    editor.getBuffer().getLineStart(at),
+                    editor.getBuffer().getLineEnd(at)).toString());
+        }
+        editor.showDefinitionPreview(new PreviewCard.Preview("MAX", "",
+                maxLine, previewLines, () -> editor.caretTo(maxAt)));
+        frame();
+        check("la carte de la définition en aperçu vit",
+                editor.previewCard() != null && editor.previewCard().isShown());
+        if (editor.previewCard() != null && editor.previewCard().isShown()) {
+            check("les lignes de la déclaration se lisent",
+                    editor.previewCard().preview().lines().size() == 4);
+            // « Ouvrir » : la carte se range, le curseur SAUTE à la
+            // déclaration
+            editor.previewCard().onTouchArea(
+                    editor.previewCard().poseX() + editor.previewCard().width()
+                            - 60.0f,
+                    editor.previewCard().poseY() + editor.previewCard().height()
+                            - 20.0f);
+            editor.previewCard().onRelease();
+            idle();
+            frame();
+            check("« Ouvrir » saute à la déclaration",
+                    "MAX".contentEquals(editor.wordAtCaret()));
+            check("la carte se range après le saut",
+                    editor.previewCard() == null
+                            || !editor.previewCard().isShown());
+        }
+        // L'APERÇU DU RENOMMAGE (l'aperçu du renommage) : les occurrences se voient, la
+        // case retient, « Appliquer » pose les retenues SEULES (une
+        // unité d'annulation)
+        int secondMax = original.indexOf("MAX", maxAt + 1);
+        int firstColumn = maxAt - editor.getBuffer().getLineStart(
+                bufferLineOf(maxAt));
+        int secondColumn = secondMax - editor.getBuffer().getLineStart(
+                bufferLineOf(secondMax));
+        java.util.List<RenamePreviewCard.Occurrence> occurrences
+                = java.util.Arrays.asList(
+                        new RenamePreviewCard.Occurrence(
+                                "ligne " + (bufferLineOf(maxAt) + 1),
+                                "private static final int MAX",
+                                java.util.List.of(new LspTextEdit(
+                                        new LspRange(
+                                                new LspPosition(
+                                                        bufferLineOf(maxAt),
+                                                        firstColumn),
+                                                new LspPosition(
+                                                        bufferLineOf(maxAt),
+                                                        firstColumn + 3)),
+                                        "PLAFOND"))),
+                        new RenamePreviewCard.Occurrence(
+                                "ligne " + (bufferLineOf(secondMax) + 1),
+                                "return graine * taille * MAX",
+                                java.util.List.of(new LspTextEdit(
+                                        new LspRange(
+                                                new LspPosition(
+                                                        bufferLineOf(secondMax),
+                                                        secondColumn),
+                                                new LspPosition(
+                                                        bufferLineOf(secondMax),
+                                                        secondColumn + 3)),
+                                        "PLAFOND"))));
+        editor.showRenamePreview("Renommer « MAX » en « PLAFOND »",
+                occurrences);
+        frame();
+        check("la carte de l'aperçu du renommage vit",
+                editor.renamePreviewCard() != null
+                        && editor.renamePreviewCard().isShown());
+        if (editor.renamePreviewCard() != null
+                && editor.renamePreviewCard().isShown()) {
+            check("les cases partent cochées",
+                    editor.renamePreviewCard().checked(0)
+                            && editor.renamePreviewCard().checked(1));
+            // la SECONDE case se décoche (le renommage partiel vit)
+            editor.renamePreviewCard().onTouchArea(
+                    editor.renamePreviewCard().poseX() + 40.0f,
+                    editor.renamePreviewCard().rowCenterY(1));
+            editor.renamePreviewCard().onRelease();
+            frame();
+            check("la case se décoche au doigt",
+                    !editor.renamePreviewCard().checked(1));
+            // « Appliquer » : la retenue SEULE se pose (la seconde
+            // occurrence demeure)
+            editor.renamePreviewCard().onTouchArea(
+                    editor.renamePreviewCard().poseX()
+                            + editor.renamePreviewCard().width() - 60.0f,
+                    editor.renamePreviewCard().poseY()
+                            + editor.renamePreviewCard().height() - 20.0f);
+            editor.renamePreviewCard().onRelease();
+            idle();
+            frame();
+            String renamed = editor.getBuffer().toString();
+            check("la retenue se pose (la première occurrence)",
+                    renamed.contains("PLAFOND"));
+            check("la décochée demeure (le renommage partiel vit)",
+                    renamed.contains("MAX"));
+            check("l'aperçu se défait d'UN geste",
+                    editor.getUndoStack().canUndo());
+            while (!editor.getBuffer().toString().equals(original)
+                    && editor.getUndoStack().canUndo()) {
+                editor.getUndoStack().undo();
+            }
+            check("le texte revient à l'original",
+                    editor.getBuffer().toString().equals(original));
+        }
+        // LA BULLE DE L'IMPORT (la suggestion d'import) : compacte au-dessus du mot, la
+        // liste s'ouvre au tap, le candidat se pose
+        editor.caretTo(graine);
+        frame();
+        editor.showImportPopup("graine2", java.util.Arrays.asList(
+                new ImportBubbleCard.Import(
+                        "Importer « graine2 » du paquet pigma",
+                        () -> editor.insertAtCaret("import pigma.graine2;")),
+                new ImportBubbleCard.Import(
+                        "Importer « graine2 » de la bibliothèque",
+                        () -> editor.insertAtCaret("import biblio.graine2;"))));
+        frame();
+        check("la bulle de l'import vit",
+                editor.importBubbleCard() != null
+                        && editor.importBubbleCard().isShown());
+        if (editor.importBubbleCard() != null
+                && editor.importBubbleCard().isShown()) {
+            check("la bulle part compacte",
+                    !editor.importBubbleCard().expanded());
+            // le tap OUVRE la liste (plusieurs candidats)
+            tap(editor.importBubbleCard().poseX() + 40.0f,
+                    editor.importBubbleCard().poseY() + 20.0f);
+            idle();
+            frame();
+            check("la bulle s'ouvre en liste",
+                    editor.importBubbleCard().expanded());
+            float importY = editor.importBubbleCard().rowCenterY(0);
+            if (importY > 0.0f) {
+                tap(editor.importBubbleCard().poseX() + 40.0f, importY);
+                idle();
+                frame();
+                check("le candidat se pose (l'import s'inscrit)",
+                        editor.getBuffer().toString().contains(
+                                "import pigma.graine2;"));
+                check("la bulle se range après la pose",
+                        editor.importBubbleCard() == null
+                                || !editor.importBubbleCard().isShown());
+                while (!editor.getBuffer().toString().equals(original)
+                        && editor.getUndoStack().canUndo()) {
+                    editor.getUndoStack().undo();
+                }
+                check("le texte revient à l'original (l'import se défait)",
+                        editor.getBuffer().toString().equals(original));
+            }
+        }
     }
 
     /**

@@ -177,6 +177,9 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
         // symboles, les plis, les indices, les jetons sémantiques (la
         // légende y dit les noms des genres)
         capabilities.setDocumentSymbolProvider(true);
+        // l'aller au symbole s'y déclare pareillement (workspace/symbol —
+        // le nom cherché partout)
+        capabilities.setWorkspaceSymbolProvider(true);
         capabilities.setFoldingRangeProvider(true);
         capabilities.setInlayHintProvider(true);
         capabilities.setSemanticTokensProvider(
@@ -209,6 +212,36 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
 
             @Override
             public void didChangeWatchedFiles(DidChangeWatchedFilesParams params) {
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<
+                    org.eclipse.lsp4j.jsonrpc.messages.Either<
+                            java.util.List<? extends SymbolInformation>,
+                            java.util.List<? extends org.eclipse.lsp4j.WorkspaceSymbol>>>
+                    symbol(org.eclipse.lsp4j.WorkspaceSymbolParams params) {
+                // L'ALLER AU SYMBOLE (l'aller au symbole — workspace/
+                // symbol) : chaque déclaration du document s'y rend en
+                // information à plat (la forme ordinaire du protocole —
+                // sa place y vit entière), la question posée y resserre
+                // les noms (la casse ne compte pas)
+                String asked = params.getQuery() == null ? "" : params.getQuery();
+                String current = currentText();
+                java.util.List<SymbolInformation> found = new ArrayList<>();
+                for (int[] declaration : declarations()) {
+                    String name = current.substring(declaration[0], declaration[1]);
+                    if (!asked.isEmpty()
+                            && !name.toLowerCase(java.util.Locale.ROOT)
+                                    .contains(asked.toLowerCase(java.util.Locale.ROOT))) {
+                        continue;
+                    }
+                    found.add(new SymbolInformation(name,
+                            declaration[2] == 1 ? SymbolKind.Method : SymbolKind.Field,
+                            new Location(target(),
+                                    rangeOf(new int[]{declaration[0], declaration[1]}))));
+                }
+                return java.util.concurrent.CompletableFuture.completedFuture(
+                        org.eclipse.lsp4j.jsonrpc.messages.Either.forLeft(found));
             }
         };
     }
@@ -480,12 +513,40 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
     public CompletableFuture<List<Either<org.eclipse.lsp4j.Command, CodeAction>>> codeAction(
             CodeActionParams params) {
         String current = documentOf(params.getTextDocument().getUri());
-        // le correctif de la démonstration : les espaces de fin de la
-        // ligne interrogée s'y coupent (la correction du protocole
-        // porte son remplacement — l'ampoule l'applique)
+        // LA SUGGESTION D'IMPORT (l'import du rapport des popups — la
+        // bulle « Importer x.y.Z ? ») : le mot SANS déclaration et
+        // SANS autre occurrence (le mot qui vient d'être tapé — le
+        // serveur qui connaît sa bibliothèque y rend ses candidats
+        // d'import, DEUX ici : la bulle compacte ouvre la liste). Le
+        // genre du protocole le dit (« quickfix.import ») — la bulle
+        // s'y distingue des correctifs ordinaires.
         int line = params.getRange().getStart().getLine();
         int[] bounds = lineBounds(line);
         String lineText = current.substring(bounds[0], bounds[1]);
+        String unresolved = unresolvedWordOf(lineText);
+        if (unresolved != null) {
+            List<Either<org.eclipse.lsp4j.Command, CodeAction>> imports
+                    = new ArrayList<>();
+            int insertAt = importInsertOffset(current);
+            Range hole = new Range(positionOf(insertAt), positionOf(insertAt));
+            String packageWord = unresolved;
+            CodeAction fromPackage = new CodeAction(
+                    "Importer « " + packageWord + " » du paquet pigma");
+            fromPackage.setKind("quickfix.import");
+            fromPackage.setEdit(editOf(new TextEdit(hole,
+                    "import pigma." + packageWord + ";\n")));
+            imports.add(Either.forRight(fromPackage));
+            CodeAction fromLibrary = new CodeAction(
+                    "Importer « " + packageWord + " » de la bibliothèque");
+            fromLibrary.setKind("quickfix.import");
+            fromLibrary.setEdit(editOf(new TextEdit(hole,
+                    "import biblio." + packageWord + ";\n")));
+            imports.add(Either.forRight(fromLibrary));
+            return CompletableFuture.completedFuture(imports);
+        }
+        // le correctif de la démonstration : les espaces de fin de la
+        // ligne interrogée s'y coupent (la correction du protocole
+        // porte son remplacement — l'ampoule l'applique)
         int content = lineText.stripTrailing().length();
         if (content == lineText.length()) {
             // LE CORRECTIF SUR DIAGNOSTIC (la démonstration de l'étage
@@ -518,6 +579,125 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
         CodeAction fix = new CodeAction("Supprimer les espaces de fin de ligne");
         fix.setEdit(edit);
         return CompletableFuture.completedFuture(List.of(Either.forRight(fix)));
+    }
+
+    /**
+     * Le mot NON RÉSOLU d'une ligne (la suggestion d'import y vit) : le
+     * mot ni mot-clé ni déclaré, dont l'occurrence de la ligne est la
+     * SEULE du document — le mot qui vient d'être tapé, celui qu'un
+     * serveur qui connaît sa bibliothèque propose d'importer.
+     *
+     * @param lineText la ligne interrogée
+     * @return le mot non résolu, null quand la ligne n'en porte pas
+     */
+    private String unresolvedWordOf(String lineText) {
+        // la PARTIE DE CODE de la ligne : le commentaire de fin s'y
+        // coupe, la ligne de commentaire entière se tait (les mots d'un
+        // commentaire ne sont pas des symboles), les chaînes s'y vident
+        String trimmed = lineText.trim();
+        if (trimmed.startsWith("//") || trimmed.startsWith("/*")
+                || trimmed.startsWith("*")) {
+            return null;
+        }
+        String code = lineText;
+        int commentAt = code.indexOf("//");
+        if (commentAt >= 0) {
+            code = code.substring(0, commentAt);
+        }
+        StringBuilder withoutStrings = new StringBuilder();
+        boolean inString = false;
+        for (int at = 0; at < code.length(); at++) {
+            char c = code.charAt(at);
+            if (c == '"') {
+                inString = !inString;
+                withoutStrings.append(' ');
+            } else {
+                withoutStrings.append(inString ? ' ' : c);
+            }
+        }
+        code = withoutStrings.toString();
+        int at = 0;
+        while (at < code.length()) {
+            if (wordBreak(code.charAt(at))) {
+                at++;
+                continue;
+            }
+            int start = at;
+            while (at < code.length() && !wordBreak(code.charAt(at))) {
+                at++;
+            }
+            String word = code.substring(start, at);
+            // le mot s'écrit : une LETTRE en tête (le littéral numérique
+            // — 0x1F_FF, 125e — n'est pas un symbole)
+            boolean keyword = false;
+            for (String[] entry : KEYWORDS) {
+                if (entry[0].equals(word)) {
+                    keyword = true;
+                    break;
+                }
+            }
+            // le mot DÉCLARÉ l'y vit aussi : le mot qui suit un mot
+            // déclarant (class, function, local…) se déclare là, le mot
+            // qui précède une ouvrante ou un signe égal s'y nomme — le
+            // serveur qui connaît son langage ne propose pas d'importer
+            // une déclaration
+            boolean declaredHere = false;
+            for (String declaring : new String[]{"class", "interface", "enum",
+                    "record", "struct", "function", "local", "field"}) {
+                if (start >= declaring.length() + 1
+                        && code.startsWith(declaring + " ",
+                                start - declaring.length() - 1)) {
+                    declaredHere = true;
+                    break;
+                }
+            }
+            int after = at;
+            while (after < code.length()
+                    && Character.isWhitespace(code.charAt(after))) {
+                after++;
+            }
+            boolean namesSomething = after < code.length()
+                    && (code.charAt(after) == '{' || code.charAt(after) == '('
+                            || code.charAt(after) == '=');
+            if (Character.isLetter(word.charAt(0))
+                    && !keyword && !declaredHere && !namesSomething
+                    && declarationOf(word) == null
+                    && occurrencesOf(word).size() <= 1) {
+                return word;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * L'offset D'INSERTION d'un import : après la ligne de paquetage
+     * (la déclaration de paquet du document), sinon le début du
+     * document.
+     *
+     * @param current le document entier
+     * @return l'offset où l'import se pose
+     */
+    private static int importInsertOffset(String current) {
+        int packageEnd = current.indexOf(';');
+        int firstLineEnd = current.indexOf('\n');
+        if (packageEnd >= 0
+                && (firstLineEnd < 0 || packageEnd < firstLineEnd)
+                && current.startsWith("package")) {
+            return firstLineEnd < 0 ? current.length() : firstLineEnd + 1;
+        }
+        return 0;
+    }
+
+    /**
+     * L'édition d'espace de travail d'un remplacement seul.
+     *
+     * @param edit le remplacement du protocole
+     * @return l'édition qui le porte
+     */
+    private WorkspaceEdit editOf(TextEdit edit) {
+        WorkspaceEdit fresh = new WorkspaceEdit();
+        fresh.setChanges(java.util.Map.of(target(), List.of(edit)));
+        return fresh;
     }
 
     @Override

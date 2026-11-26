@@ -74,6 +74,7 @@ import org.eclipse.lsp4j.TextDocumentSyncKind;
 import org.eclipse.lsp4j.TextDocumentSyncOptions;
 import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.eclipse.lsp4j.WorkspaceEdit;
+import org.eclipse.lsp4j.WorkspaceSymbolParams;
 import org.eclipse.lsp4j.jsonrpc.messages.Either3;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
 import org.eclipse.lsp4j.launch.LSPLauncher;
@@ -908,6 +909,24 @@ public final class LspSession {
                 new TextDocumentIdentifier(uri));
         return launcher.getRemoteProxy().getTextDocumentService()
                 .documentSymbol(params).thenApply(LspDocumentSymbol::fromAnswer);
+    }
+
+    /**
+     * Demande les symboles de L'ESPACE DE TRAVAIL ({@code workspace/
+     * symbol}) : le nom cherché partout sans quitter le document —
+     * chaque réponse y porte sa place (le document et l'intervalle du
+     * nom). L'aller au symbole s'y nourrit (la forme à plat du protocole
+     * est la réponse ordinaire ; la forme neuve y vit aussi).
+     *
+     * @param query la question posée (la suite tapée, vide pour tout)
+     * @return le futur des symboles, jamais null (vide : aucun, ou le
+     *         serveur ne sait pas)
+     */
+    public CompletableFuture<List<LspWorkspaceSymbol>> workspaceSymbol(String query) {
+        WorkspaceSymbolParams params = new WorkspaceSymbolParams(
+                query == null ? "" : query);
+        return launcher.getRemoteProxy().getWorkspaceService()
+                .symbol(params).thenApply(LspWorkspaceSymbol::fromAnswer);
     }
 
     /**

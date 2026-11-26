@@ -30,6 +30,8 @@ import org.eclipse.lsp4j.SemanticTokensWithRegistrationOptions;
  * @param formatting        le formatage du document
  * @param documentSymbol    les symboles du document (la table des
  *                          matières)
+ * @param workspaceSymbol   les symboles de l'espace de travail
+ *                          (l'aller au symbole)
  * @param foldingRange      les plis du serveur
  * @param inlayHint         les indices posés dans le texte
  * @param semanticTokens    les jetons sémantiques (la coloration du
@@ -39,13 +41,13 @@ public record LspCapabilities(boolean hover, boolean completion,
         boolean completionResolve, boolean signatureHelp,
         boolean definition, boolean references, boolean prepareRename, boolean rename,
         boolean codeAction, boolean documentHighlight, boolean formatting,
-        boolean documentSymbol, boolean foldingRange, boolean inlayHint,
-        boolean semanticTokens) {
+        boolean documentSymbol, boolean workspaceSymbol, boolean foldingRange,
+        boolean inlayHint, boolean semanticTokens) {
 
     /** Le serveur qui n'a rien déclaré (la liaison sans initialisation). */
     public static final LspCapabilities NONE = new LspCapabilities(
             false, false, false, false, false, false, false, false, false, false,
-            false, false, false, false, false);
+            false, false, false, false, false, false);
 
     /**
      * Les capacités de la réponse d'initialisation : chaque
@@ -90,6 +92,7 @@ public record LspCapabilities(boolean hover, boolean completion,
                 declared(capabilities.getDocumentHighlightProvider()),
                 declared(capabilities.getDocumentFormattingProvider()),
                 declared(capabilities.getDocumentSymbolProvider()),
+                declared(capabilities.getWorkspaceSymbolProvider()),
                 declared(capabilities.getFoldingRangeProvider()),
                 declared(capabilities.getInlayHintProvider()),
                 capabilities.getSemanticTokensProvider() != null);

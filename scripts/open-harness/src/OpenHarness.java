@@ -30,6 +30,7 @@ import jo.pigma.editor.popups.PopupStyle;
 import jo.pigma.editor.popups.QuickActionCard;
 import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.editor.popups.SignatureCard;
+import jo.pigma.editor.popups.GotoCard;
 import jo.pigma.lsp.LspFoldingRange;
 import jo.pigma.lsp.LspInlayHint;
 import jo.pigma.lsp.LspSemanticToken;
@@ -137,6 +138,7 @@ public final class OpenHarness {
         lspEditorFacade();
         lspProtocolFunctions();
         lspDocumentCoverage();
+        popupsStepFiveOfTheServer();
         workspaceSharedRegistry();
         twoAxisScroll();
         pinchZoom();
@@ -2893,6 +2895,40 @@ public final class OpenHarness {
         check("le nom corrigé se lit à la carte",
                 editor.renameBar() != null && "PLAFOND".equals(editor.renameBar().nameText()));
         pressKey(KeyEvent.KEYCODE_ENTER);
+        // L'APERÇU DU RENOMMAGE (l'aperçu du renommage du rapport) : la
+        // validation n'applique PLUS d'office — les occurrences se
+        // VOIENT d'abord (chaque occurrence en rangée, sa case
+        // cochée), le bouton « Appliquer » pose les retenues
+        for (int wait = 0; wait < 100
+                && !(editor.renamePreviewCard() != null
+                        && editor.renamePreviewCard().isShown()); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(500L);
+            frame();
+        }
+        check("l'aperçu du renommage vit (la validation l'ouvre)",
+                editor.renamePreviewCard() != null
+                        && editor.renamePreviewCard().isShown());
+        check("la carte de renommage se range",
+                editor.renameBar() == null || !editor.renameBar().isShown());
+        check("chaque occurrence vit en rangée cochée",
+                editor.renamePreviewCard() != null
+                        && editor.renamePreviewCard().occurrences().size() == 2
+                        && editor.renamePreviewCard().checked(0)
+                        && editor.renamePreviewCard().checked(1));
+        // « Appliquer » : les retenues se posent (les DEUX
+        // occurrences — une unité d'annulation)
+        if (editor.renamePreviewCard() != null
+                && editor.renamePreviewCard().isShown()) {
+            editor.renamePreviewCard().onTouchArea(
+                    editor.renamePreviewCard().poseX()
+                            + editor.renamePreviewCard().width() - 60.0f,
+                    editor.renamePreviewCard().poseY()
+                            + editor.renamePreviewCard().height() - 20.0f);
+            editor.renamePreviewCard().onRelease();
+            View.harnessDrain(500L);
+            frame();
+        }
         for (int wait = 0; wait < 100 && !editor.getBuffer().toString()
                 .contains("int PLAFOND"); wait++) {
             Thread.sleep(20L);
@@ -2904,8 +2940,9 @@ public final class OpenHarness {
                 renamed.contains("private static final int PLAFOND = 0x1F_FF")
                         && renamed.contains("graine > PLAFOND &&")
                         && !renamed.contains("MAX"));
-        check("la carte de renommage se range",
-                editor.renameBar() == null || !editor.renameBar().isShown());
+        check("l'aperçu du renommage se range après l'application",
+                editor.renamePreviewCard() == null
+                        || !editor.renamePreviewCard().isShown());
         // UNE unité d'annulation : le geste suivant rend le texte
         // d'avant entier (les DEUX occurrences d'un geste)
         click("Annuler");
@@ -3182,6 +3219,248 @@ public final class OpenHarness {
      * plat défile en largeur ; le traîné de sélection au bord
      * latéral y défile aussi (la colonne atteinte s'y révèle).
      */
+    /**
+     * LES POPUPS P2 DU SERVEUR (le plan des popups du rapport —
+     * l'aller, l'aperçu, l'import) : l'aller au symbole (workspace/symbol — le filtre
+     * à la frappe, le tampon ne bouge pas, la validation y va), la
+     * définition en aperçu (les lignes de la déclaration se lisent, «
+     * Ouvrir » y saute), la bulle de l'import (le mot non résolu que
+     * le serveur sait importer — compacte, ouverte en liste, le
+     * candidat posé).
+     */
+    private static void popupsStepFiveOfTheServer() throws Exception {
+        begin("popups P2 du serveur : aller au symbole, définition en aperçu, bulle d'import");
+        LspEditor facade = activity.harnessLsp();
+        click("LSP");
+        check("les diagnostics du serveur arrivent", awaitText("LSP :", 8000L));
+        // la capacité de l'espace de travail se négocie (la réponse
+        // d'initialisation y tombe asynchrone)
+        for (int wait = 0; wait < 200 && !facade.capabilities()
+                .workspaceSymbol(); wait++) {
+            Thread.sleep(20L);
+            View.harnessDrain(50L);
+        }
+        check("la capacité de l'espace de travail se déclare",
+                facade.capabilities().workspaceSymbol());
+
+        // L'ALLER AU SYMBOLE (l'aller au symbole) : le débordement y porte l'aller (le
+        // fournisseur vit), la question part, la carte s'ouvre à
+        // l'arrivée des rangées. Le débordement vit de la SÉLECTION
+        // (sa famille au gestionnaire) : un mot s'y choisit d'abord
+        int graineAt = editor.getBuffer().toString().indexOf("graine");
+        editor.setSelection(graineAt, graineAt + "graine".length());
+        frame();
+        editor.showOverflowMenu();
+        frame();
+        java.util.List<String> overflowRows = editor.overflowCard().labels();
+        int gotoRow = overflowRows.indexOf("Aller au symbole…");
+        check("le débordement porte l'aller au symbole", gotoRow >= 0);
+        if (gotoRow >= 0) {
+            tap(editor.overflowCard().poseX() + 10.0f,
+                    editor.overflowCard().rowCenterY(gotoRow));
+            frame();
+            for (int wait = 0; wait < 100
+                    && !(editor.gotoCard() != null
+                            && editor.gotoCard().isShown()); wait++) {
+                Thread.sleep(20L);
+                View.harnessDrain(200L);
+                frame();
+            }
+        }
+        check("la carte de l'aller s'ouvre aux rangées de l'espace",
+                editor.gotoCard() != null && editor.gotoCard().isShown());
+        boolean totalThere = false;
+        if (editor.gotoCard() != null && editor.gotoCard().isShown()) {
+            for (jo.pigma.editor.popups.GotoCard.GotoRow row
+                    : editor.gotoCard().rows()) {
+                if ("total".equals(row.name())) {
+                    totalThere = true;
+                }
+            }
+        }
+        check("les symboles de l'espace y vivrent (la méthode total)",
+                totalThere);
+        // LE FILTRE à la frappe : les lettres resserrent la liste, le
+        // tampon ne bouge pas, la validation y va
+        String beforeFilter = editor.getBuffer().toString();
+        connection.commitText("tot", 1);
+        View.harnessDrain(400L);
+        frame();
+        check("le filtre se pose à la frappe (la carte reçoit le clavier)",
+                editor.gotoCard() != null
+                        && "tot".equals(editor.gotoCard().filter()));
+        check("la liste se resserre au filtre",
+                editor.gotoCard().filtered().size() == 1);
+        check("le tampon ne bouge pas (les lettres vont au filtre)",
+                editor.getBuffer().toString().equals(beforeFilter));
+        if (editor.gotoCard() != null && editor.gotoCard().isShown()) {
+            editor.gotoCard().onArrow(1);
+            editor.gotoCard().onEnter();
+            frame();
+            View.harnessDrain(200L);
+            frame();
+            check("la validation va au symbole filtré",
+                    "total".equals(editor.wordAtCaret()));
+            check("la carte se range après le saut",
+                    editor.gotoCard() == null || !editor.gotoCard().isShown());
+        }
+
+        // LA DÉFINITION EN APERÇU (la définition en aperçu) : le caret sur l'USAGE de « MAX »,
+        // l'aperçu porte les lignes de la DÉCLARATION, « Ouvrir » y saute
+        TextBuffer text = editor.getBuffer();
+        int usageLine = -1;
+        for (int line = 0; line < text.getLineCount(); line++) {
+            if (text.getText(text.getLineStart(line), text.getLineEnd(line))
+                    .contains("graine > MAX")) {
+                usageLine = line;
+                break;
+            }
+        }
+        check("la ligne d'usage se trouve", usageLine >= 0);
+        if (usageLine >= 0) {
+            String usageRow = text.getText(
+                    text.getLineStart(usageLine), text.getLineEnd(usageLine));
+            editor.caretTo(text.getLineStart(usageLine)
+                    + usageRow.indexOf("MAX") + 1);
+            frame();
+            facade.requestDefinitionPreview();
+            for (int wait = 0; wait < 100
+                    && !(editor.previewCard() != null
+                            && editor.previewCard().isShown()); wait++) {
+                Thread.sleep(20L);
+                View.harnessDrain(200L);
+                frame();
+            }
+            check("la définition en aperçu vit",
+                    editor.previewCard() != null
+                            && editor.previewCard().isShown());
+            boolean carriesDeclaration = false;
+            if (editor.previewCard() != null
+                    && editor.previewCard().isShown()) {
+                for (String row : editor.previewCard().preview().lines()) {
+                    if (row.contains("private static final int MAX")) {
+                        carriesDeclaration = true;
+                    }
+                }
+            }
+            check("l'aperçu porte les lignes de la déclaration",
+                    carriesDeclaration);
+            // « Ouvrir » : la carte se range, le curseur SAUTE à la
+            // déclaration
+            int usageBefore = editor.caretLine();
+            if (editor.previewCard() != null
+                    && editor.previewCard().isShown()) {
+                editor.previewCard().onTouchArea(
+                        editor.previewCard().poseX()
+                                + editor.previewCard().width() - 60.0f,
+                        editor.previewCard().poseY()
+                                + editor.previewCard().height() - 20.0f);
+                editor.previewCard().onRelease();
+                View.harnessDrain(200L);
+                frame();
+            }
+            check("« Ouvrir » saute à la déclaration (sans quitter la position avant)",
+                    "MAX".equals(editor.wordAtCaret())
+                            && editor.caretLine() != usageBefore);
+            check("la carte se range après le saut",
+                    editor.previewCard() == null
+                            || !editor.previewCard().isShown());
+        }
+
+        // LA BULLE DE L'IMPORT (la suggestion d'import) : un mot non résolu se tape, l'
+        // ampoule de sa ligne y va, les correctifs du serveur
+        // arrivent — la bulle compacte vit AU-DESSUS DU MOT, le tap
+        // l'OUVRE en liste, le choix POSE l'import
+        String original = editor.getBuffer().toString();
+        int seuilLine = -1;
+        for (int line = 0; line < text.getLineCount(); line++) {
+            if (text.getText(text.getLineStart(line), text.getLineEnd(line))
+                    .contains("SEUIL")) {
+                seuilLine = line;
+                break;
+            }
+        }
+        check("la ligne du SEUIL se trouve", seuilLine >= 0);
+        if (seuilLine >= 0) {
+            editor.caretTo(text.getLineEnd(seuilLine));
+            frame();
+            connection.commitText(" xyzzy", 1);
+            View.harnessDrain(2_000L);
+            frame();
+            check("le mot non résolu se tape",
+                    editor.getBuffer().toString().contains("SEUIL xyzzy")
+                            || editor.getBuffer().toString().contains(" xyzzy"));
+            // l'ampoule de la ligne : la carte d'actions s'y ouvre, la
+            // question des corrections part — la bulle naît à l'arrivée
+            float bulbY = lineTop(seuilLine) + LINE_HEIGHT / 2.0f;
+            editor.onTouchEvent(MotionEvent.obtain(
+                    MotionEvent.ACTION_DOWN, 24.0f, bulbY));
+            editor.onTouchEvent(MotionEvent.obtain(
+                    MotionEvent.ACTION_UP, 24.0f, bulbY));
+            frame();
+            for (int wait = 0; wait < 100
+                    && !(editor.importBubbleCard() != null
+                            && editor.importBubbleCard().isShown()); wait++) {
+                Thread.sleep(20L);
+                View.harnessDrain(200L);
+                frame();
+            }
+            check("la bulle de l'import vit au-dessus du mot",
+                    editor.importBubbleCard() != null
+                            && editor.importBubbleCard().isShown());
+            check("le mot non résolu se lit à la bulle",
+                    editor.importBubbleCard() != null
+                            && "xyzzy".equals(editor.importBubbleCard().word()));
+            check("les candidats du serveur se lisent (DEUX)",
+                    editor.importBubbleCard() != null
+                            && editor.importBubbleCard().imports().size() == 2);
+            // le tap OUVRE la liste (plusieurs candidats)
+            if (editor.importBubbleCard() != null
+                    && editor.importBubbleCard().isShown()) {
+                tap(editor.importBubbleCard().poseX() + 40.0f,
+                        editor.importBubbleCard().poseY() + 20.0f);
+                View.harnessDrain(200L);
+                frame();
+            }
+            check("la bulle s'ouvre en liste (plusieurs candidats)",
+                    editor.importBubbleCard() != null
+                            && editor.importBubbleCard().expanded());
+            if (editor.importBubbleCard() != null
+                    && editor.importBubbleCard().expanded()
+                    && editor.importBubbleCard().rowCenterY(0) > 0.0f) {
+                tap(editor.importBubbleCard().poseX() + 40.0f,
+                        editor.importBubbleCard().rowCenterY(0));
+                View.harnessDrain(500L);
+                frame();
+            }
+            for (int wait = 0; wait < 100 && !editor.getBuffer().toString()
+                    .contains("import pigma.xyzzy;"); wait++) {
+                Thread.sleep(20L);
+                View.harnessDrain(200L);
+                frame();
+            }
+            check("le candidat se pose (l'import s'inscrit après le paquetage)",
+                    editor.getBuffer().toString().contains("import pigma.xyzzy;"));
+            check("la bulle se range après la pose",
+                    editor.importBubbleCard() == null
+                            || !editor.importBubbleCard().isShown());
+            // le texte revient (l'import et le mot tapé se défont)
+            while (!editor.getBuffer().toString().equals(original)
+                    && editor.getUndoStack().canUndo()) {
+                editor.getUndoStack().undo();
+            }
+            check("le texte revient à l'original",
+                    editor.getBuffer().toString().equals(original));
+        }
+
+        // le débranchement range la carte de l'aller (le fournisseur
+        // meurt avec la liaison)
+        click("LSP ✔");
+        check("le débranchement rend le bouton",
+                findButton(activity.harnessRootView(), "LSP") != null
+                        && !facade.isConnected());
+    }
+
     /**
      * Le registre partagé (la leçon de Sora Editor) : DEUX éditeurs
      * branchés au MÊME espace de travail — un seul serveur vit

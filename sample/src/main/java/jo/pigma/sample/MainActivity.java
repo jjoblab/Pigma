@@ -28,6 +28,7 @@ import jo.pigma.editor.lsp.LspEditor;
 import jo.pigma.lsp.LspWorkspace;
 import jo.pigma.editor.popups.PopupStyle;
 import jo.pigma.editor.popups.QuickActionCard;
+import jo.pigma.editor.popups.SnippetRegistry;
 import jo.pigma.core.TextBuffer;
 import jo.pigma.core.TextListener;
 import jo.pigma.core.TextPosition;
@@ -259,8 +260,11 @@ public final class MainActivity extends Activity {
         editorView.getBuffer().addListener(statusListener);
         // la vue de bibliothèque démarre vide : l'hôte charge son
         // contenu — ici la démo Java (le chargement n'est pas une
-        // édition à défaire, l'histoire repart vide)
+        // édition à défaire, l'histoire repart vide) ; LES EXTRAITS du
+        // langage s'y posent, le document s'y enregistre AUX RÉCENTS
+        // (l'hôte y vit : le registre et la mémoire sont à lui)
         editorView.setLanguage(Languages.JAVA, DemoTexts.JAVA);
+        hostAppliesLanguage("Java", () -> openDocument("Java"));
         // le style des popups : l'hôte pose le sien — fond translucide
         // un peu plus léger, coins plus ronds, largeur accrue (l'API
         // de la bibliothèque, tout y se règle)
@@ -419,11 +423,33 @@ public final class MainActivity extends Activity {
      */
     private void openDocument(String name) {
         editorView.setLanguage(languageOf(name), textOf(name));
+        // LES EXTRAITS du langage s'y posent, le document s'y
+        // enregistre AUX RÉCENTS (l'hôte y vit)
+        hostAppliesLanguage(name, () -> openDocument(name));
         currentScenario = name + " (démo)";
         CrashJournal.setSection(currentScenario);
         loggedFirstColoration = false;
         updateStatus();
         watchDiagnostics();
+    }
+
+    /**
+     * L'HÔTE POSE SON LANGAGE : les EXTRAITS du langage s'y inscrivent
+     * au registre (le squelette au caret — le rapport des popups dit « l'hôte y
+     * vit »), le document s'y enregistre aux FICHIERS RÉCENTS (les fichiers récents —
+     * la carte des récents y le rouvre au doigt).
+     *
+     * @param name    le nom du langage posé
+     * @param reopen  la réouverture du document (le récent y part)
+     */
+    private void hostAppliesLanguage(String name, Runnable reopen) {
+        editorView.snippetRegistry().clear();
+        for (SnippetRegistry.Snippet snippet : SnippetRegistry.standard(
+                languageOf(name).name())) {
+            editorView.snippetRegistry().register(snippet);
+        }
+        editorView.recentFiles().recordFile(name + " (démo)",
+                android.os.SystemClock.uptimeMillis(), reopen);
     }
 
     /**

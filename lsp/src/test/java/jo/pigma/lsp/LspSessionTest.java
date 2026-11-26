@@ -159,6 +159,7 @@ public class LspSessionTest {
                 capabilities.setDocumentFormattingProvider(true);
                 capabilities.setRenameProvider(true);
                 capabilities.setDocumentSymbolProvider(true);
+                capabilities.setWorkspaceSymbolProvider(true);
                 capabilities.setFoldingRangeProvider(true);
                 capabilities.setInlayHintProvider(true);
                 capabilities.setSemanticTokensProvider(
@@ -197,8 +198,42 @@ public class LspSessionTest {
                 public void didChangeWatchedFiles(
                         org.eclipse.lsp4j.DidChangeWatchedFilesParams params) {
                 }
+
+                @Override
+                public java.util.concurrent.CompletableFuture<
+                        org.eclipse.lsp4j.jsonrpc.messages.Either<
+                                java.util.List<? extends SymbolInformation>,
+                                java.util.List<? extends org.eclipse.lsp4j.WorkspaceSymbol>>>
+                        symbol(org.eclipse.lsp4j.WorkspaceSymbolParams params) {
+                    // L'ESPACE DE TRAVAIL du procès : la forme à plat y
+                    // vit (l'information à plat — la réponse ordinaire),
+                    // la question posée s'y lit
+                    lastSymbolQuery = params.getQuery() == null ? ""
+                            : params.getQuery();
+                    return java.util.concurrent.CompletableFuture
+                            .completedFuture(
+                                    org.eclipse.lsp4j.jsonrpc.messages.Either
+                                            .forLeft(java.util.List.of(
+                                                    new SymbolInformation("total",
+                                                            SymbolKind.Method,
+                                                            new org.eclipse.lsp4j.Location(
+                                                                    "file:///demo.java",
+                                                                    new Range(
+                                                                            new Position(0, 0),
+                                                                            new Position(0, 5)))),
+                                                    new SymbolInformation("graine",
+                                                            SymbolKind.Field,
+                                                            new org.eclipse.lsp4j.Location(
+                                                                    "file:///demo.java",
+                                                                    new Range(
+                                                                            new Position(1, 4),
+                                                                            new Position(1, 10)))))));
+                }
             };
         }
+
+        /** La question des symboles reçue. */
+        volatile String lastSymbolQuery;
 
         /** L'URI du dernier changement reçu. */
         volatile String lastChangeUri;
@@ -381,6 +416,7 @@ public class LspSessionTest {
                 edit.setDocumentChanges(List.of(Either.forLeft(documentChange)));
             }
             CodeAction quickFix = new CodeAction(quickFixTitle);
+            quickFix.setKind("quickfix.import");
             quickFix.setEdit(edit);
             return CompletableFuture.completedFuture(
                     List.of(Either.forRight(quickFix)));
@@ -881,6 +917,8 @@ public class LspSessionTest {
         assertEquals("une action rendue", 1, actions.size());
         assertEquals("le titre suit", "Supprimer la parenthèse en trop",
                 actions.get(0).title());
+        assertEquals("le genre suit (l'import s'y distingue)", "quickfix.import",
+                actions.get(0).kind());
         assertEquals("un remplacement porte", 1, actions.get(0).edits().size());
         assertEquals("la plage du remplacement suit",
                 new LspPosition(0, 0), actions.get(0).edits().get(0).range().start());
@@ -891,6 +929,30 @@ public class LspSessionTest {
                 List.of()).get(5, TimeUnit.SECONDS);
         assertEquals("l'action de la carte par URI porte ses remplacements",
                 1, mapped.get(0).edits().size());
+        session.shutdown();
+    }
+
+    /** L'ALLER AU SYMBOLE : la question part, la forme à plat y rentre entière. */
+    @Test
+    public void workspaceSymbolAnswersTheFlatForm() throws Exception {
+        TrialServer server = new TrialServer();
+        server.declareAll = true;
+        LspSession session = LspSession.beside(server, null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        assertTrue("la capacité se déclare",
+                session.capabilities().workspaceSymbol());
+        List<jo.pigma.lsp.LspWorkspaceSymbol> symbols = session
+                .workspaceSymbol("tot").get(5, TimeUnit.SECONDS);
+        assertEquals("la question posée se lit", "tot", server.lastSymbolQuery);
+        assertEquals("les symboles se rendent", 2, symbols.size());
+        assertEquals("le nom suit", "total", symbols.get(0).name());
+        assertEquals("le genre suit", 6, symbols.get(0).kind());
+        assertEquals("l'URI de la place suit", "file:///demo.java",
+                symbols.get(0).location().uri());
+        assertEquals("la ligne de la place suit", 0,
+                symbols.get(0).location().range().start().line());
+        assertEquals("le second symbole vit aussi", "graine",
+                symbols.get(1).name());
         session.shutdown();
     }
 

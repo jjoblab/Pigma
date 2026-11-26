@@ -70,7 +70,7 @@ popups manquantes `M*` — la table suit son §9.
 | 89 | Popups, l'étape 2 : les modèles LSP COMPLETS — LspCompletionItem (kind, detail, documentation, insertText/textEdit, sortText, deprecated ; `completionItem/resolve` à la sélection), LspSignatureHelp (les surcharges, la documentation du paramètre), LspHover (le Markdown) | D-P2, D-P5, D-P6, M8, M9 | **fait** | `docs/chantiers/89.md` | `398b845` |
 | 90 | Popups, l'étape 3 : PopupHost (le gestionnaire — un seul état « popup active », l'exclusion mutuelle, la fermeture au changement de contexte, la fin des 23 fermetures manuelles et du popup fantôme) ; CardBase/ListCard (la pose, le style, le défilement, la croix) ; migration d'une carte à la fois (UsageCard et DiagnosticCard d'abord) | D-P4, R-E, R-F | **fait** | `docs/chantiers/90.md` | `f945ac0` |
 | 91 | Popups, l'étape 4 — les P1 manquantes : le CHOIX DE CIBLES (plusieurs définitions), la STRUCTURE DU FICHIER (l'arbre des symboles, le filtre à la frappe), la LISTE DES PROBLÈMES (parcourir les erreurs), l'HISTORIQUE DU PRESSE-PAPIERS ; la suggestion d'IMPORT (M14) part à l'étape suivante (le serveur de démo Lua n'en rend aucun correctif — l'éprouver y serait mensonge) | M1, M2, M13, M20, D-P3, R-D | **fait** | `docs/chantiers/91.md` | `d046c97` |
-| 92 | Popups, l'étape 5 — les P2 ET LA SUGGESTION D'IMPORT (M14, la bulle « Importer x.y.Z ? » — les correctifs du serveur s'y surfacent) : la définition en APERÇU, l'aller au symbole/fichier, les fichiers récents, l'APERÇU du renommage, l'entourer de, les extraits | M3–M5, M14, M15, M18, M21 | prévu | — | — |
+| 92 | Popups, l'étape 5 — les P2 ET LA SUGGESTION D'IMPORT (M14, la bulle « Importer x.y.Z ? » — les correctifs du serveur s'y surfacent) : la définition en APERÇU, l'aller au symbole/fichier, les fichiers récents, l'APERÇU du renommage, l'entourer de, les extraits | M3–M5, M14, M15, M18, M21 | **fait** | `docs/chantiers/92.md` | à pousser |
 | 93 | Popups, l'étape 6 : l'ACCESSIBILITÉ des cartes (annonce à l'ouverture, rangées en nœuds virtuels, cible ≥ 48 dp) et les chaînes LOCALISÉES (PopupStrings posé par l'hôte) | D-P8, D-P9 | prévu | — | — |
 
 
@@ -89,6 +89,21 @@ popups manquantes `M*` — la table suit son §9.
   corrigent en passant).
 
 ## Journal des mises à jour
+
+- 2026-11-27 — chantier 92 fermé : la cinquième étape du plan des
+  popups — M14 réglé (la bulle de la suggestion d'import : compacte
+  AU-DESSUS DU MOT, ouverte en liste à plusieurs candidats, les
+  correctifs d'import du serveur y surfacent — le genre du protocole
+  les y distingue, le serveur de démo en rend deux à un mot non
+  résolu), M3 née (la définition en aperçu — les lignes de la
+  déclaration se lisent, « Ouvrir » y saute), M4 née (l'aller au
+  symbole — `workspace/symbol` à la session, le filtre à la
+  frappe, les deux sources), M5 née (les fichiers récents — la
+  mémoire plafonnée, les emplacements suivis aux sauts), M15 née
+  (l'aperçu du renommage — les cases retiennent, « Appliquer » pose
+  les retenues), M18 née (l'entourer de — les paires et les blocs du
+  langage, une unité d'annulation), M21 née (les extraits — le
+  registre de l'hôte, le champ posé sélectionné).
 
 - 2026-11-27 — chantier 91 fermé : la quatrième étape du plan des
   popups — D-P3 réglé (le choix de cibles : l'aller-à à plusieurs

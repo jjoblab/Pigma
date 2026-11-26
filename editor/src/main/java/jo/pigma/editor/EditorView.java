@@ -42,6 +42,15 @@ import jo.pigma.editor.popups.ClipboardCard;
 import jo.pigma.editor.popups.ClipboardHistory;
 import jo.pigma.editor.popups.StructureCard;
 import jo.pigma.editor.popups.TargetCard;
+import jo.pigma.editor.popups.ImportBubbleCard;
+import jo.pigma.editor.popups.PreviewCard;
+import jo.pigma.editor.popups.GotoCard;
+import jo.pigma.editor.popups.RecentCard;
+import jo.pigma.editor.popups.RecentFiles;
+import jo.pigma.editor.popups.RenamePreviewCard;
+import jo.pigma.editor.popups.SurroundCard;
+import jo.pigma.editor.popups.SnippetCard;
+import jo.pigma.editor.popups.SnippetRegistry;
 import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.editor.popups.OverflowCard;
@@ -51,6 +60,7 @@ import jo.pigma.lsp.LspFoldingRange;
 import jo.pigma.lsp.LspInlayHint;
 import jo.pigma.lsp.LspRange;
 import jo.pigma.lsp.LspSemanticToken;
+import jo.pigma.lsp.LspTextEdit;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -495,6 +505,68 @@ public final class EditorView extends View {
      * langage l'ouvre.
      */
     private StructureCard structureCard;
+
+    /**
+     * LA BULLE DE LA SUGGESTION D'IMPORT (la suggestion d'import — le
+     * mot non résolu que le serveur sait importer) : paresseuse —
+     * les correctifs du serveur l'ouvrent.
+     */
+    private ImportBubbleCard importBubbleCard;
+
+    /**
+     * LA CARTE DE LA DÉFINITION EN APERÇU (la définition en aperçu —
+     * lire la déclaration sans quitter la position) : paresseuse —
+     * la façade du serveur l'ouvre.
+     */
+    private PreviewCard previewCard;
+
+    /**
+     * LA CARTE DE L'ALLER AU SYMBOLE / FICHIER (l'aller au symbole —
+     * le filtre à la frappe, les deux sources) : paresseuse — la
+     * façade du serveur et l'index de l'hôte la nourrissent.
+     */
+    private GotoCard gotoCard;
+
+    /**
+     * LA CARTE DES FICHIERS RÉCENTS (les fichiers récents — revenir à
+     * un document ou un emplacement d'avant) et sa mémoire :
+     * paresseuse — l'hôte y pose ses documents, la façade y suit les
+     * navigations.
+     */
+    private RecentCard recentCard;
+
+    /** LA MÉMOIRE DES RÉCENTS (fichiers et emplacements — plafonnée, dédupliquée). */
+    private final RecentFiles recentFiles = new RecentFiles();
+
+    /**
+     * LA CARTE DE L'APERÇU DU RENOMMAGE (l'aperçu du renommage — les
+     * occurrences, les cases, l'application) : paresseuse — la
+     * façade du serveur l'ouvre.
+     */
+    private RenamePreviewCard renamePreviewCard;
+
+    /**
+     * LA CARTE DE L'ENTOUREMENT (l'entourer de — les patrons sur la
+     * sélection) : paresseuse.
+     */
+    private SurroundCard surroundCard;
+
+    /**
+     * LA CARTE DES EXTRAITS (les extraits — les squelettes au caret)
+     * et son registre : paresseuse — l'hôte y pose ses squelettes.
+     */
+    private SnippetCard snippetCard;
+
+    /** LE REGISTRE DES EXTRAITS (les squelettes de l'hôte — part vide). */
+    private final SnippetRegistry snippetRegistry = new SnippetRegistry();
+
+    /**
+     * LE FOURNISSEUR DE L'ALLER AU SYMBOLE (l'aller au symbole — la
+     * façade du serveur y rend ses rangées, l'hôte y rend ses
+     * fichiers) : null tant que personne n'y vit (le débordement n'y
+     * propose rien).
+     */
+    private java.util.function.Supplier<List<GotoCard.GotoRow>> gotoProvider;
 
     /**
      * LE GESTIONNAIRE DES POPUPS (D-P4 du rapport : 23 fermetures
@@ -1334,6 +1406,27 @@ public final class EditorView extends View {
         if (structureCard != null) {
             structureCard.setStyle(popupStyle);
         }
+        if (importBubbleCard != null) {
+            importBubbleCard.setStyle(popupStyle);
+        }
+        if (previewCard != null) {
+            previewCard.setStyle(popupStyle);
+        }
+        if (gotoCard != null) {
+            gotoCard.setStyle(popupStyle);
+        }
+        if (recentCard != null) {
+            recentCard.setStyle(popupStyle);
+        }
+        if (renamePreviewCard != null) {
+            renamePreviewCard.setStyle(popupStyle);
+        }
+        if (surroundCard != null) {
+            surroundCard.setStyle(popupStyle);
+        }
+        if (snippetCard != null) {
+            snippetCard.setStyle(popupStyle);
+        }
         invalidate();
     }
 
@@ -1613,6 +1706,18 @@ public final class EditorView extends View {
         for (ActionRegistry.Action action : editActions.live()) {
             actions.add(new QuickActionCard.Entry(
                     action.label(), action::run));
+        }
+        // L'ENTOUREMENT (l'entourer de du rapport) : la sélection vivante
+        // seule s'y propose (le rapport : « sélection de lignes »)
+        if (hasSelection()) {
+            actions.add(new QuickActionCard.Entry(
+                    "Entourer de…", this::showSurroundPopup));
+        }
+        // LES EXTRAITS (les extraits du rapport) : le registre vivant seul
+        // s'y propose (l'hôte y pose ses squelettes)
+        if (!snippetRegistry.snippets().isEmpty()) {
+            actions.add(new QuickActionCard.Entry(
+                    "Insérer un extrait…", this::showSnippetsPopup));
         }
         if (quickActionProvider != null) {
             int caretOffset = Math.min(selection.caret(), buffer.length());
@@ -2766,6 +2871,27 @@ public final class EditorView extends View {
         if (card == structureCard) {
             return "Structure du fichier ouverte";
         }
+        if (card == importBubbleCard) {
+            return "Suggestion d'import ouverte";
+        }
+        if (card == previewCard) {
+            return "Définition en aperçu ouverte";
+        }
+        if (card == gotoCard) {
+            return "Aller au symbole ouvert";
+        }
+        if (card == recentCard) {
+            return "Fichiers récents ouverts";
+        }
+        if (card == renamePreviewCard) {
+            return "Aperçu du renommage ouvert";
+        }
+        if (card == surroundCard) {
+            return "Entourer de ouvert";
+        }
+        if (card == snippetCard) {
+            return "Extraits ouverts";
+        }
         return "Carte ouverte";
     }
 
@@ -2789,6 +2915,13 @@ public final class EditorView extends View {
         // resserrent la liste, le tampon ne bouge pas)
         if (structureCard != null && structureCard.isShown()) {
             return structureCard;
+        }
+        // L'ALLER AU SYMBOLE reçoit le clavier pareillement : son
+        // FILTRE s'y vit à la frappe (la carte de l'aller — les
+        // lettres tapées y resserrent la liste, le tampon ne bouge
+        // pas)
+        if (gotoCard != null && gotoCard.isShown()) {
+            return gotoCard;
         }
         return null;
     }
@@ -3373,6 +3506,31 @@ public final class EditorView extends View {
             boolean caretOnStructure = structureCard != null
                     && structureCard.isShown()
                     && structureCard.onTouchArea(event.getX(), event.getY());
+            // LES SEPT NOUVELLES du plan des popups (l'import, la
+            // définition en aperçu, l'aller au symbole, les fichiers
+            // récents, l'aperçu du renommage, l'entourer de, les
+            // extraits) : posées au caret pareillement — le tap qui
+            // les VISE les prend, le tap ailleurs les range
+            boolean caretOnImport = importBubbleCard != null
+                    && importBubbleCard.isShown()
+                    && importBubbleCard.onTouchArea(event.getX(), event.getY());
+            boolean caretOnPreview = previewCard != null
+                    && previewCard.isShown()
+                    && previewCard.onTouchArea(event.getX(), event.getY());
+            boolean caretOnGoto = gotoCard != null && gotoCard.isShown()
+                    && gotoCard.onTouchArea(event.getX(), event.getY());
+            boolean caretOnRecent = recentCard != null
+                    && recentCard.isShown()
+                    && recentCard.onTouchArea(event.getX(), event.getY());
+            boolean caretOnRenamePreview = renamePreviewCard != null
+                    && renamePreviewCard.isShown()
+                    && renamePreviewCard.onTouchArea(event.getX(), event.getY());
+            boolean caretOnSurround = surroundCard != null
+                    && surroundCard.isShown()
+                    && surroundCard.onTouchArea(event.getX(), event.getY());
+            boolean caretOnSnippet = snippetCard != null
+                    && snippetCard.isShown()
+                    && snippetCard.onTouchArea(event.getX(), event.getY());
             if (!caretOnUsage) {
                 popups.dismiss(usageCard);
             }
@@ -3390,6 +3548,27 @@ public final class EditorView extends View {
             }
             if (!caretOnStructure) {
                 popups.dismiss(structureCard);
+            }
+            if (!caretOnImport) {
+                popups.dismiss(importBubbleCard);
+            }
+            if (!caretOnPreview) {
+                popups.dismiss(previewCard);
+            }
+            if (!caretOnGoto) {
+                popups.dismiss(gotoCard);
+            }
+            if (!caretOnRecent) {
+                popups.dismiss(recentCard);
+            }
+            if (!caretOnRenamePreview) {
+                popups.dismiss(renamePreviewCard);
+            }
+            if (!caretOnSurround) {
+                popups.dismiss(surroundCard);
+            }
+            if (!caretOnSnippet) {
+                popups.dismiss(snippetCard);
             }
             boolean touchedSearch = searchBar != null && searchBar.isShown()
                     && searchBar.onTouchArea(event.getX(), event.getY());
@@ -3424,6 +3603,20 @@ public final class EditorView extends View {
                             && clipboardCard.onTouchArea(event.getX(), event.getY()))
                     || (structureCard != null && structureCard.isShown()
                             && structureCard.onTouchArea(event.getX(), event.getY()))
+                    || (importBubbleCard != null && importBubbleCard.isShown()
+                            && importBubbleCard.onTouchArea(event.getX(), event.getY()))
+                    || (previewCard != null && previewCard.isShown()
+                            && previewCard.onTouchArea(event.getX(), event.getY()))
+                    || (gotoCard != null && gotoCard.isShown()
+                            && gotoCard.onTouchArea(event.getX(), event.getY()))
+                    || (recentCard != null && recentCard.isShown()
+                            && recentCard.onTouchArea(event.getX(), event.getY()))
+                    || (renamePreviewCard != null && renamePreviewCard.isShown()
+                            && renamePreviewCard.onTouchArea(event.getX(), event.getY()))
+                    || (surroundCard != null && surroundCard.isShown()
+                            && surroundCard.onTouchArea(event.getX(), event.getY()))
+                    || (snippetCard != null && snippetCard.isShown()
+                            && snippetCard.onTouchArea(event.getX(), event.getY()))
                     || (diagnosticCard != null && diagnosticCard.isShown()
                             && diagnosticCard.onTouchArea(event.getX(), event.getY()))
                     || (quickActionCard != null && quickActionCard.isShown()
@@ -3466,6 +3659,27 @@ public final class EditorView extends View {
                 }
                 if (structureCard != null) {
                     structureCard.onRelease();
+                }
+                if (importBubbleCard != null) {
+                    importBubbleCard.onRelease();
+                }
+                if (previewCard != null) {
+                    previewCard.onRelease();
+                }
+                if (gotoCard != null) {
+                    gotoCard.onRelease();
+                }
+                if (recentCard != null) {
+                    recentCard.onRelease();
+                }
+                if (renamePreviewCard != null) {
+                    renamePreviewCard.onRelease();
+                }
+                if (surroundCard != null) {
+                    surroundCard.onRelease();
+                }
+                if (snippetCard != null) {
+                    snippetCard.onRelease();
                 }
                 if (clipboardCard != null && clipboardCard.onRelease()) {
                     // la copie choisie se COLLE au caret (l'historique du presse-papiers — le
@@ -4174,6 +4388,67 @@ public final class EditorView extends View {
                     + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
             structureCard.draw(canvas, caretTop, caretTop + lineHeight,
                     caretLineIndex, popupMetrics());
+        }
+        // LES SEPT NOUVELLES du plan des popups,
+        // posées au caret pareillement : la bulle de l'import (AU-DESSUS
+        // DU MOT — la leçon de la pastille du diagnostic), la
+        // définition en aperçu, l'aller au symbole, les fichiers
+        // récents, l'aperçu du renommage, l'entourer de, les extraits
+        if (importBubbleCard != null && importBubbleCard.isShown()) {
+            int caretLineIndex = buffer.lineOfOffset(
+                    Math.min(selection.caret(), buffer.length()));
+            float caretTop = getPaddingTop()
+                    + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            importBubbleCard.draw(canvas, caretTop, caretTop + lineHeight,
+                    popupMetrics());
+        }
+        if (previewCard != null && previewCard.isShown()) {
+            int caretLineIndex = buffer.lineOfOffset(
+                    Math.min(selection.caret(), buffer.length()));
+            float caretTop = getPaddingTop()
+                    + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            previewCard.draw(canvas, caretTop, caretTop + lineHeight,
+                    popupMetrics());
+        }
+        if (gotoCard != null && gotoCard.isShown()) {
+            int caretLineIndex = buffer.lineOfOffset(
+                    Math.min(selection.caret(), buffer.length()));
+            float caretTop = getPaddingTop()
+                    + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            gotoCard.draw(canvas, caretTop, caretTop + lineHeight,
+                    popupMetrics());
+        }
+        if (recentCard != null && recentCard.isShown()) {
+            int caretLineIndex = buffer.lineOfOffset(
+                    Math.min(selection.caret(), buffer.length()));
+            float caretTop = getPaddingTop()
+                    + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            recentCard.draw(canvas, caretTop, caretTop + lineHeight,
+                    popupMetrics());
+        }
+        if (renamePreviewCard != null && renamePreviewCard.isShown()) {
+            int caretLineIndex = buffer.lineOfOffset(
+                    Math.min(selection.caret(), buffer.length()));
+            float caretTop = getPaddingTop()
+                    + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            renamePreviewCard.draw(canvas, caretTop, caretTop + lineHeight,
+                    popupMetrics());
+        }
+        if (surroundCard != null && surroundCard.isShown()) {
+            int caretLineIndex = buffer.lineOfOffset(
+                    Math.min(selection.caret(), buffer.length()));
+            float caretTop = getPaddingTop()
+                    + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            surroundCard.draw(canvas, caretTop, caretTop + lineHeight,
+                    popupMetrics());
+        }
+        if (snippetCard != null && snippetCard.isShown()) {
+            int caretLineIndex = buffer.lineOfOffset(
+                    Math.min(selection.caret(), buffer.length()));
+            float caretTop = getPaddingTop()
+                    + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            snippetCard.draw(canvas, caretTop, caretTop + lineHeight,
+                    popupMetrics());
         }
         // le sélecteur de couleur, par-dessus tout : posé au littéral
         // #RRGGBB du caret, la teinte y vit sous le doigt
@@ -6087,6 +6362,21 @@ public final class EditorView extends View {
             navigation.add(new OverflowCard.Row("Liste des problèmes…",
                     this::showProblemsPopup));
         }
+        // L'ALLER AU SYMBOLE / FICHIER (l'aller au symbole du rapport) : le
+        // fournisseur vivant seul y propose (la façade du serveur y
+        // rend les symboles de l'espace de travail, l'hôte ses
+        // fichiers)
+        if (gotoProvider != null) {
+            navigation.add(new OverflowCard.Row("Aller au symbole…",
+                    () -> showGotoPopup(gotoProvider.get())));
+        }
+        // LES FICHIERS RÉCENTS (les fichiers récents du rapport) : la
+        // mémoire vivante seule y propose (les fichiers et les
+        // emplacements d'avant)
+        if (!recentFiles.isEmpty()) {
+            navigation.add(new OverflowCard.Row("Fichiers récents…",
+                    this::showRecentFilesPopup));
+        }
         families.add(new OverflowCard.Section("Navigation", navigation));
         // LE REGISTRE DES ACTIONS D'ÉDITION (R-A) : la MÊME
         // définition que la carte d'actions rapides — l'étage se
@@ -6640,6 +6930,376 @@ public final class EditorView extends View {
     /** La carte de structure, null si jamais ouverte (le harnais la lit). */
     public StructureCard structureCard() {
         return structureCard;
+    }
+
+    /**
+     * LA BULLE DE LA SUGGESTION D'IMPORT (la suggestion d'import du
+     * rapport des popups — la bulle « Importer x.y.Z ? ») : les correctifs
+     * du serveur d'import s'y surfacent (le genre du protocole y
+     * distingue : {@code quickfix.import}) — la bulle vit AU-DESSUS
+     * DU MOT, compacte (un candidat : le choix le pose ; plusieurs :
+     * elle s'ouvre en liste). La liste vide n'ouvre rien.
+     *
+     * @param word        le mot non résolu, jamais null
+     * @param candidates  les candidats d'import, jamais null
+     */
+    public void showImportPopup(String word,
+            List<ImportBubbleCard.Import> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return;
+        }
+        if (importBubbleCard == null) {
+            importBubbleCard = new ImportBubbleCard(dp(1));
+            importBubbleCard.bind(this);
+            popups.register(importBubbleCard, PopupHost.Role.FLOATING,
+                    importBubbleCard::close, importBubbleCard::isShown);
+        }
+        importBubbleCard.setStyle(popupStyle);
+        importBubbleCard.open(word, candidates);
+        popups.shown(importBubbleCard);
+        invalidate();
+    }
+
+    /** La bulle de l'import, null si jamais ouverte (le harnais la lit). */
+    public ImportBubbleCard importBubbleCard() {
+        return importBubbleCard;
+    }
+
+    /**
+     * LA DÉFINITION EN APERÇU (la définition en aperçu du rapport des popups —
+     * lire la déclaration sans quitter la position) : l'en-tête
+     * dit le fichier et la ligne, le corps porte les lignes de la
+     * déclaration, le pied porte le bouton « Ouvrir » (le saut y
+     * part). Null n'ouvre rien.
+     *
+     * @param definition la définition à montrer, null pour rien
+     */
+    public void showDefinitionPreview(PreviewCard.Preview definition) {
+        if (definition == null) {
+            return;
+        }
+        if (previewCard == null) {
+            previewCard = new PreviewCard(dp(1));
+            previewCard.bind(this);
+            popups.register(previewCard, PopupHost.Role.FLOATING,
+                    previewCard::close, previewCard::isShown);
+        }
+        previewCard.setStyle(popupStyle);
+        previewCard.open(definition);
+        popups.shown(previewCard);
+        invalidate();
+    }
+
+    /** La carte de l'aperçu de définition, null si jamais ouverte. */
+    public PreviewCard previewCard() {
+        return previewCard;
+    }
+
+    /**
+     * LE FOURNISSEUR DE L'ALLER AU SYMBOLE (l'aller au symbole du
+     * rapport des popups) : la façade du serveur y rend ses rangées ({@code
+     * workspace/symbol}), l'hôte y rend ses fichiers — le
+     * débordement n'y propose l'aller qu'à un fournisseur vivant.
+     *
+     * @param provider le fournisseur des rangées, null pour le ranger
+     */
+    public void setGotoProvider(
+            java.util.function.Supplier<List<GotoCard.GotoRow>> provider) {
+        gotoProvider = provider;
+    }
+
+    /**
+     * L'ALLER AU SYMBOLE / FICHIER (l'aller au symbole du rapport des
+     * popups) : la carte vit du FILTRE À LA FRAPPE (elle reçoit le
+     * clavier — elle ne prend jamais le focus, le tampon ne bouge
+     * pas), les rangées viennent des DEUX sources (les symboles de
+     * l'espace de travail, les fichiers de l'hôte), le choix y
+     * navigue. La liste vide n'ouvre rien.
+     *
+     * @param rows les rangées, jamais null
+     */
+    public void showGotoPopup(List<GotoCard.GotoRow> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        if (gotoCard == null) {
+            gotoCard = new GotoCard(dp(1));
+            gotoCard.bind(this);
+            popups.register(gotoCard, PopupHost.Role.KEYBOARD,
+                    gotoCard::close, gotoCard::isShown);
+        }
+        gotoCard.setStyle(popupStyle);
+        gotoCard.open(rows);
+        popups.shown(gotoCard);
+        invalidate();
+    }
+
+    /** La carte de l'aller au symbole, null si jamais ouverte. */
+    public GotoCard gotoCard() {
+        return gotoCard;
+    }
+
+    /**
+     * LES FICHIERS RÉCENTS (les fichiers récents du rapport des popups) :
+     * la mémoire vit chez la vue (l'hôte y pose ses documents, la
+     * façade y suit les navigations), la carte y liste — les
+     * fichiers d'abord, les emplacements ensuite (leur extrait s'y
+     * lit), le choix y revient. La mémoire vide n'ouvre rien.
+     */
+    public void showRecentFilesPopup() {
+        if (recentFiles.isEmpty()) {
+            return;
+        }
+        if (recentCard == null) {
+            recentCard = new RecentCard(dp(1));
+            recentCard.bind(this);
+            popups.register(recentCard, PopupHost.Role.FLOATING,
+                    recentCard::close, recentCard::isShown);
+        }
+        recentCard.setStyle(popupStyle);
+        recentCard.open(recentFiles, android.os.SystemClock.uptimeMillis());
+        popups.shown(recentCard);
+        invalidate();
+    }
+
+    /** La carte des fichiers récents, null si jamais ouverte. */
+    public RecentCard recentCard() {
+        return recentCard;
+    }
+
+    /** LA MÉMOIRE DES RÉCENTS (le harnais la lit — l'hôte y pose). */
+    public RecentFiles recentFiles() {
+        return recentFiles;
+    }
+
+    /**
+     * L'APERÇU DU RENOMMAGE (l'aperçu du renommage du rapport des
+     * popups) : chaque occurrence vit en rangée (sa place, son
+     * extrait), la case à cocher la retient ou l'ôte, le bouton «
+     * Appliquer » POSE les remplacements retenus (UNE unité
+     * d'annulation). La liste vide n'ouvre rien.
+     *
+     * @param title       le titre (« Renommer « x » en « y » »)
+     * @param occurrences les occurrences du renommage, jamais null
+     */
+    public void showRenamePreview(String title,
+            List<RenamePreviewCard.Occurrence> occurrences) {
+        if (occurrences == null || occurrences.isEmpty()) {
+            return;
+        }
+        if (renamePreviewCard == null) {
+            renamePreviewCard = new RenamePreviewCard(dp(1));
+            renamePreviewCard.bind(this, retained -> {
+                // les remplacements retenus se posent EN UNE unité
+                // d'annulation (la leçon du protocole : le renommage
+                // entier se défait d'un geste)
+                List<jo.pigma.lsp.LspTextEdit> edits = new ArrayList<>();
+                for (RenamePreviewCard.Occurrence occurrence : retained) {
+                    if (occurrence != null && occurrence.edits() != null) {
+                        edits.addAll(occurrence.edits());
+                    }
+                }
+                applyTextEdits(edits);
+            });
+            popups.register(renamePreviewCard, PopupHost.Role.FLOATING,
+                    renamePreviewCard::close, renamePreviewCard::isShown);
+        }
+        renamePreviewCard.setStyle(popupStyle);
+        renamePreviewCard.open(title, occurrences);
+        popups.shown(renamePreviewCard);
+        invalidate();
+    }
+
+    /** La carte de l'aperçu du renommage, null si jamais ouverte. */
+    public RenamePreviewCard renamePreviewCard() {
+        return renamePreviewCard;
+    }
+
+    /**
+     * L'ENTOUREMENT (l'entourer de du rapport des popups) : la SÉLECTION
+     * s'entoure d'un patron — les PAIRES de signes (parenthèses,
+     * accolades, crochets, guillemets) et les BLOCS du langage
+     * courant (la vue sait son langage). Sans sélection : rien (le
+     * rapport : « sélection de lignes »).
+     */
+    public void showSurroundPopup() {
+        if (!hasSelection()) {
+            return;
+        }
+        if (surroundCard == null) {
+            surroundCard = new SurroundCard(dp(1));
+            surroundCard.bind(this);
+            popups.register(surroundCard, PopupHost.Role.FLOATING,
+                    surroundCard::close, surroundCard::isShown);
+        }
+        surroundCard.setStyle(popupStyle);
+        surroundCard.open(surroundChoices());
+        popups.shown(surroundCard);
+        invalidate();
+    }
+
+    /** La carte de l'entourage, null si jamais ouverte. */
+    public SurroundCard surroundCard() {
+        return surroundCard;
+    }
+
+    /**
+     * LES PATRONS D'ENTOUREMENT courants : les PAIRES de signes
+     * toujours, les BLOCS du langage courant (les mots-clés
+     * d'encadrement du langage posé — la vue sait son langage).
+     */
+    private List<SurroundCard.Choice> surroundChoices() {
+        List<SurroundCard.Choice> found = new ArrayList<>();
+        found.add(new SurroundCard.Choice("( )", "(…)", () -> wrapSelection("(", ")")));
+        found.add(new SurroundCard.Choice("{ }", "{…}", () -> wrapSelection("{", "}")));
+        found.add(new SurroundCard.Choice("[ ]", "[…]", () -> wrapSelection("[", "]")));
+        found.add(new SurroundCard.Choice("\" \"", "\"…\"", () -> wrapSelection("\"", "\"")));
+        found.add(new SurroundCard.Choice("' '", "'…'", () -> wrapSelection("'", "'")));
+        String name = language == null || language.name() == null
+                ? "" : language.name();
+        if ("Lua".equals(name)) {
+            found.add(new SurroundCard.Choice("if", "if … then … end",
+                    () -> wrapLines("if ", " then", "end")));
+            found.add(new SurroundCard.Choice("for", "for … do … end",
+                    () -> wrapLines("for ", " do", "end")));
+            found.add(new SurroundCard.Choice("while", "while … do … end",
+                    () -> wrapLines("while ", " do", "end")));
+            found.add(new SurroundCard.Choice("function", "function … end",
+                    () -> wrapLines("function ", "", "end")));
+        } else {
+            // les blocs d'accolades (Java, Kotlin, C… — le défaut des
+            // langages d'accolades)
+            found.add(new SurroundCard.Choice("if", "if (…) { … }",
+                    () -> wrapLines("if (", ") {", "}")));
+            found.add(new SurroundCard.Choice("for", "for (…) { … }",
+                    () -> wrapLines("for (", ") {", "}")));
+            found.add(new SurroundCard.Choice("while", "while (…) { … }",
+                    () -> wrapLines("while (", ") {", "}")));
+            found.add(new SurroundCard.Choice("try", "try { … } catch { … }",
+                    () -> wrapLines("try {", "", "} catch (Exception e) {\n    \n}")));
+        }
+        return found;
+    }
+
+    /**
+     * ENTOURE LA SÉLECTION d'une paire de signes : l'ouvrant se pose
+     * au début, le fermant à la fin — UNE unité d'annulation (les
+     * deux insertions y passent ensemble), la sélection DEMEURE (le
+     * contenu se retravaille aussitôt).
+     *
+     * @param opening l'ouvrant qui coiffe
+     * @param closing le fermant qui clôt
+     */
+    private void wrapSelection(String opening, String closing) {
+        int start = selectionStart();
+        int end = selectionEnd();
+        List<jo.pigma.lsp.LspTextEdit> edits = new ArrayList<>();
+        edits.add(new jo.pigma.lsp.LspTextEdit(rangeAt(start, start), opening));
+        edits.add(new jo.pigma.lsp.LspTextEdit(rangeAt(end, end), closing));
+        applyTextEdits(edits);
+        // la sélection DEMEURE (le contenu entouré reste au doigt)
+        setSelection(start + opening.length(), end + opening.length());
+    }
+
+    /**
+     * ENTOURE LES LIGNES de la sélection d'un bloc : la tête coiffe
+     * la première ligne (au début de son texte), la queue clôt (au
+     * bout de la dernière), l'intervalle s'y insère à la fin de la
+     * première — UNE unité d'annulation, la sélection demeure.
+     *
+     * @param head      la tête du bloc (elle coiffe la première ligne)
+     * @param between   l'intervalle entre la tête et le corps
+     * @param tail      la queue du bloc (elle clôt la dernière)
+     */
+    private void wrapLines(String head, String between, String tail) {
+        int start = selectionStart();
+        int end = selectionEnd();
+        int firstLine = buffer.lineOfOffset(start);
+        int lastLine = buffer.lineOfOffset(Math.min(end, buffer.length() - 1));
+        int lineStart = buffer.getLineStart(firstLine);
+        int lineEnd = buffer.getLineEnd(Math.min(lastLine,
+                buffer.getLineCount() - 1));
+        List<jo.pigma.lsp.LspTextEdit> edits = new ArrayList<>();
+        edits.add(new jo.pigma.lsp.LspTextEdit(rangeAt(lineStart, lineStart),
+                head + "\n"));
+        if (!between.isEmpty()) {
+            edits.add(new jo.pigma.lsp.LspTextEdit(rangeAt(lineEnd, lineEnd),
+                    "\n" + between));
+        }
+        edits.add(new jo.pigma.lsp.LspTextEdit(rangeAt(lineEnd, lineEnd),
+                "\n" + tail));
+        applyTextEdits(edits);
+        // la sélection DEMEURE (le contenu entouré reste au doigt)
+        setSelection(lineStart + head.length() + 1,
+                Math.min(lineStart + head.length() + 1 + (end - start),
+                        buffer.length()));
+    }
+
+    /**
+     * La plage LSP d'un trou d'insertion (une ligne, deux colonnes) :
+     * les remplacements du protocole s'y posent, l'unité d'annulation
+     * en découle (les insertions d'un entourage y passent ensemble).
+     */
+    private jo.pigma.lsp.LspRange rangeAt(int start, int end) {
+        int line = buffer.lineOfOffset(Math.min(start, buffer.length()));
+        int lineStart = buffer.getLineStart(line);
+        return new jo.pigma.lsp.LspRange(
+                new jo.pigma.lsp.LspPosition(line, Math.max(0, start - lineStart)),
+                new jo.pigma.lsp.LspPosition(line, Math.max(0, end - lineStart)));
+    }
+
+    /**
+     * LES EXTRAITS (les extraits du rapport des popups — les « live
+     * templates ») : la carte liste le registre (l'abréviation, l'
+     * aperçu), le choix INSCRIT le squelette au caret et POSE LE CHAMP
+     * sélectionné. Le registre vide n'ouvre rien.
+     */
+    public void showSnippetsPopup() {
+        if (snippetRegistry.snippets().isEmpty()) {
+            return;
+        }
+        if (snippetCard == null) {
+            snippetCard = new SnippetCard(dp(1));
+            snippetCard.bind(this, this::insertSnippet);
+            popups.register(snippetCard, PopupHost.Role.FLOATING,
+                    snippetCard::close, snippetCard::isShown);
+        }
+        snippetCard.setStyle(popupStyle);
+        snippetCard.open(snippetRegistry.snippets());
+        popups.shown(snippetCard);
+        invalidate();
+    }
+
+    /** La carte des extraits, null si jamais ouverte. */
+    public SnippetCard snippetCard() {
+        return snippetCard;
+    }
+
+    /** LE REGISTRE DES EXTRAITS (l'hôte y pose ses squelettes). */
+    public SnippetRegistry snippetRegistry() {
+        return snippetRegistry;
+    }
+
+    /**
+     * INSCRIT UN EXTRAIT au caret : le corps s'y pose (la sélection
+     * d'avant se remplace), le CHAMP se pose SÉLECTIONNÉ (la frappe
+     * le remplace — le trou se remplit d'un geste).
+     *
+     * @param body     le corps du squelette
+     * @param fieldAt  le début du champ dans le corps
+     * @param fieldEnd la fin du champ dans le corps
+     */
+    public void insertSnippet(String body, int fieldAt, int fieldEnd) {
+        if (body == null || body.isEmpty()) {
+            return;
+        }
+        int caret = Math.min(selection.caret(), buffer.length());
+        pendingEditLabel = "extrait";
+        applyEdit(caret, caret, body);
+        int fieldStart = caret + Math.min(fieldAt, body.length());
+        int fieldStop = caret + Math.min(Math.max(fieldEnd, fieldAt),
+                body.length());
+        setSelection(fieldStart, fieldStop);
     }
 
     /**

@@ -11,19 +11,24 @@ import org.eclipse.lsp4j.WorkspaceEdit;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 
 /**
- * Une action du serveur : un titre et les remplacements qu'elle pose —
- * le correctif de l'ampoule (la correction rapide), l'action de
- * source (l'import, l'organiseur). La réponse du protocole porte la
- * commande ou l'action ; l'action seule porte ses remplacements —
- * la commande vit d'un serveur qui la connaît, l'action ici s'y
- * applique. Les remplacements des AUTRES documents que celui-ci se
- * laissent : un éditeur vit sur un document, l'hôte qui tient
- * plusieurs documents y lit l'action du protocole lui-même.
+ * Une action du serveur : un titre, son genre ({@code quickfix},
+ * {@code refactor…} — le genre du protocole y dit la nature de
+ * l'action, la SUGGESTION D'IMPORT s'y distingue : {@code quickfix.import})
+ * et les remplacements qu'elle pose — le correctif de l'ampoule (la
+ * correction rapide), l'action de source (l'import, l'organiseur).
+ * La réponse du protocole porte la commande ou l'action ; l'action
+ * seule porte ses remplacements — la commande vit d'un serveur qui la
+ * connaît, l'action ici s'y applique. Les remplacements des AUTRES
+ * documents que celui-ci se laissent : un éditeur vit sur un
+ * document, l'hôte qui tient plusieurs documents y lit l'action du
+ * protocole lui-même.
  *
  * @param title le titre montré à l'ampoule
+ * @param kind  le genre du protocole (vide : la correction rapide
+ *              ordinaire)
  * @param edits les remplacements du document courant
  */
-public record LspCodeAction(String title, List<LspTextEdit> edits) {
+public record LspCodeAction(String title, String kind, List<LspTextEdit> edits) {
 
     /**
      * L'adaptation d'une réponse d'action : la commande garde son
@@ -42,13 +47,15 @@ public record LspCodeAction(String title, List<LspTextEdit> edits) {
         if (action.isLeft()) {
             Command command = action.getLeft();
             return command == null || command.getTitle() == null
-                    ? null : new LspCodeAction(command.getTitle(), List.of());
+                    ? null : new LspCodeAction(command.getTitle(), "", List.of());
         }
         CodeAction rich = action.getRight();
         if (rich == null || rich.getTitle() == null) {
             return null;
         }
-        return new LspCodeAction(rich.getTitle(), editsOf(rich.getEdit(), uri));
+        return new LspCodeAction(rich.getTitle(),
+                rich.getKind() == null ? "" : rich.getKind(),
+                editsOf(rich.getEdit(), uri));
     }
 
     /**
