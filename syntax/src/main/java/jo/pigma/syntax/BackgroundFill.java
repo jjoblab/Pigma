@@ -4,6 +4,7 @@ import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Fil de fond du remplissage : les tranches se prennent en cliché
@@ -37,6 +38,17 @@ public final class BackgroundFill {
 
     /** Début de la passe en cours, 0 au repos (fil du fond seul). */
     private long passBeginNanos;
+
+    /**
+     * Les échecs de tranche comptés (D9 : l'erreur avalisée se voit —
+     * un lexeur qui échoue de façon déterministe ne doit pas échapper
+     * à tout le monde, chaque kick relançait la même tentative vouée
+     * à l'échec sans que personne ne le sache).
+     */
+    private final AtomicLong sliceFailures = new AtomicLong();
+
+    /** Le message du dernier échec (null : aucun). */
+    private volatile String lastFailure;
 
     private BackgroundFill(SyntaxDocument document) {
         this.document = document;
@@ -134,6 +146,25 @@ public final class BackgroundFill {
      *
      * @return le nombre de tranches, 0 si aucune passe n'a fini
      */
+    /**
+     * Les échecs de tranche comptés (D9) : un lexeur déterministe en
+     * échec s'y voit — zéro est la normale.
+     *
+     * @return le nombre d'échecs depuis l'ouverture
+     */
+    public long sliceFailures() {
+        return sliceFailures.get();
+    }
+
+    /**
+     * Le message du dernier échec de tranche (D9).
+     *
+     * @return le message, null si aucun échec
+     */
+    public String lastFailure() {
+        return lastFailure;
+    }
+
     public long sliceCount() {
         return sliceCount;
     }
@@ -159,7 +190,18 @@ public final class BackgroundFill {
                 // un cliché déchiré par une édition concomitante peut
                 // lever avant l'application ; la boucle s'arrête et le
                 // prochain kick (chaque édition, chaque dessin) repart
-                // sur un cliché propre
+                // sur un cliché propre. L'échec se COMPTE et son
+                // message se garde (D9) : la montre se referme (la
+                // prochaine passe ne mesurera pas une durée fausse),
+                // le journal en dit la cause une fois
+                sliceFailures.incrementAndGet();
+                lastFailure = unexpected.toString();
+                System.err.println("pigma-fill : la tranche " + sliceCount
+                        + " a échoué (" + unexpected + ")");
+                if (passBeginNanos != 0L) {
+                    fillNanos = System.nanoTime() - passBeginNanos;
+                    passBeginNanos = 0L;
+                }
                 return;
             }
         }
