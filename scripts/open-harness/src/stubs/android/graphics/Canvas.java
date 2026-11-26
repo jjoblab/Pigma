@@ -160,6 +160,9 @@ public final class Canvas {
      * @param rect  le rectangle
      * @param paint pinceau
      */
+    public void drawRoundRect(RectF rect, float rx, float ry, Paint paint) {
+    }
+
     public void drawRect(RectF rect, Paint paint) {
         drawRect(rect.left, rect.top, rect.right, rect.bottom, paint);
     }

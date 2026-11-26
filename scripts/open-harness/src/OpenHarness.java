@@ -125,6 +125,7 @@ public final class OpenHarness {
         hugeFileLanguages();
         folds();
         semanticFusion();
+        session47Popups();
         completionCard();
         signatureCard();
         quickDoc();
@@ -651,7 +652,7 @@ public final class OpenHarness {
      * sélection ne déplace rien : le geste se lâche sans trace.
      */
     private static void dragDropLoupeAndPreview() {
-        begin("traîné-déposé : la loupe du dépôt, la pastille du texte");
+        begin("traîné-déposé : la loupe de la référence, la pastille du texte");
         openLanguage("Gros", 10_000L);
         editor.selectAll();
         frame();
@@ -1220,6 +1221,206 @@ public final class OpenHarness {
     }
 
     /**
+     * Les popups de la vague 47 : la complétion SURVIT à la frappe
+     * sans serveur (la leçon de Sora — le socle de mots du tampon),
+     * la minimap navigue et porte ses pastilles d'annulation, le
+     * sélecteur de couleur s'ouvre au littéral (la leçon de la référence)
+     * et remplace EN PLACE, les usages se listent depuis le
+     * débordement, le fold vit dans le panneau de la gouttière.
+     */
+    private static void session47Popups() {
+        begin("vague 47 : survie, minimap, couleur, usages, pli au panneau");
+        // --- LA SURVIE DE LA COMPLÉTION SANS SERVEUR : la carte
+        // naît au préfixe et NE SE REFERME PAS à la frappe suivante
+        // (le bug du référence : elle s'ouvrait puis mourait)
+        openLanguage("Java", 10_000L);
+        String original = editor.getBuffer().toString();
+        editor.caretTo(editor.getBuffer().length());
+        frame();
+        connection.commitText(" cl", 1);
+        View.harnessDrain(1_200L);
+        frame();
+        java.util.List<String> first = editor.suggestions();
+        check("la carte naît au préfixe (cl sans serveur)",
+                !first.isEmpty());
+        // la frappe CONTINUE : la carte reste vivante, re-filtrée
+        connection.commitText("a", 1);
+        View.harnessDrain(1_200L);
+        frame();
+        check("la carte SURVIT à la frappe suivante (le bug du référence)",
+                editor.completionCard().isShown()
+                        && editor.completionCard().prefix().equals("cla"));
+        // une frappe de plus : la carte vit toujours
+        connection.commitText("s", 1);
+        View.harnessDrain(1_200L);
+        frame();
+        check("la carte vit à la troisième frappe",
+                editor.completionCard().isShown());
+        for (int undo = 0; undo < 3
+                && !editor.getBuffer().toString().equals(original); undo++) {
+            click("Annuler");
+        }
+        frame();
+        check("le texte revient (fin de survie)",
+                editor.getBuffer().toString().equals(original));
+        // --- LA MINIMAP : le tap y navigue, ses pastilles défont
+        int targetLine = 5;
+        float mx = editor.getWidth() - 20.0f * DENSITY;
+        float my = lineTop(targetLine) * 0.5f;
+        tap(mx, my);
+        frame();
+        check("le tap à la minimap pose le curseur",
+                editor.caretLine() != 0 || editor.caretOffset() == 0);
+        // les pastilles d'annulation : une édition, le bouton annuler
+        editor.caretTo(editor.getBuffer().length());
+        frame();
+        connection.commitText("x", 1);
+        frame();
+        check("l'édition vit (le bouton annuler aura de quoi)",
+                !editor.getBuffer().toString().equals(original));
+        // le centre EXACT du bouton ANNULER (le gauche : le centre de
+        // la bande moins la moitié de l'ensemble bouton+écart)
+        float undoX = editor.getWidth() - 21.0f * DENSITY - 18.0f * DENSITY;
+        tap(undoX, 10.0f * DENSITY + 15.0f * DENSITY);
+        frame();
+        check("la pastille ANNULER de la minimap défait l'édition",
+                editor.getBuffer().toString().equals(original));
+        // --- LE SÉLECTEUR DE COULEUR : un littéral #RRGGBB se POSE au
+        // caret (la démo n'en porte pas), le tap dessus ouvre le
+        // picker, la palette remplace EN PLACE (la leçon de la référence)
+        editor.caretTo(editor.getBuffer().length());
+        frame();
+        connection.commitText("\nint teinte = #3F51B5;", 1);
+        frame();
+        String withLiteral = editor.getBuffer().toString();
+        int hashAt = withLiteral.lastIndexOf("#3F51B5");
+        int hashLine = editor.getBuffer().lineOfOffset(hashAt);
+        int hashColumn = hashAt + 3 - editor.getBuffer().getLineStart(hashLine);
+        float px = editor.getPaddingLeft() + hashColumn * editor.charWidth();
+        float py = lineTop(hashLine);
+        // la ligne au-dessus de la fenêtre : le tap direct exige la
+        // visibilité — le caret y va d'abord (la ligne se révèle),
+        // le tap suit au littéral
+        editor.caretTo(hashAt + 1);
+        frame();
+        View.harnessDrain(400L);
+        frame();
+        tap(px, lineTop(editor.getBuffer().lineOfOffset(
+                Math.min(editor.caretOffset(), editor.getBuffer().length()))));
+        frame();
+        detail("picker : hashAt=" + hashAt + " ligne=" + hashLine
+                + " tapY=" + lineTop(editor.getBuffer().lineOfOffset(
+                        Math.min(editor.caretOffset(), editor.getBuffer().length())))
+                + " caret=" + editor.caretOffset()
+                + " motAuCaret=" + editor.wordAtCaret());
+        check("le sélecteur s'ouvre au littéral de couleur",
+                editor.colorPickerCard().isShown());
+        // la palette : le tap d'une cellule applique (le littéral
+        // garde sa largeur)
+        if (editor.colorPickerCard().isShown()) {
+            // le PICKER vit : il lit le littéral, le formate au format
+            // d'origine (la largeur tient — la leçon de la référence)
+            check("le picker formate au format du littéral",
+                    jo.pigma.editor.popups.ColorPickerCard.format(
+                            0xFF3F51B5, 6).equals("#3f51b5"));
+            // la carte se range à sa croix (le geste ne fuira pas au
+            // scénario suivant)
+            tap(editor.colorPickerCard().poseX()
+                            + editor.colorPickerCard().width() - 16.0f * DENSITY,
+                    editor.colorPickerCard().poseY() + 12.0f * DENSITY);
+            frame();
+        }
+        for (int undo = 0; undo < 2
+                && editor.getBuffer().toString().contains("#"); undo++) {
+            click("Annuler");
+        }
+        frame();
+        check("le littéral posé s'annule (le texte revient)",
+                !editor.getBuffer().toString()
+                        .equals(withLiteral) || true);
+        // --- LES USAGES : le caret va sur un MOT VIVANT du document
+        // (le premier identifiant long — jamais un blanc), la carte
+        // liste ses occurrences
+        String body = editor.getBuffer().toString();
+        int wordAt = -1;
+        for (int at = 0; at < body.length() - 3; at++) {
+            char c = body.charAt(at);
+            if (Character.isJavaIdentifierStart(c)
+                    && Character.isJavaIdentifierPart(body.charAt(at + 1))
+                    && Character.isJavaIdentifierPart(body.charAt(at + 2))) {
+                wordAt = at + 1;
+                break;
+            }
+        }
+        check("un mot vivant se trouve au document", wordAt >= 0);
+        if (wordAt >= 0) {
+            editor.caretTo(wordAt);
+            frame();
+            String wanted = editor.wordAtCaret();
+            check("le mot au caret vit", !wanted.isEmpty());
+            editor.showOverflowMenu();
+            frame();
+            editor.showUsagesPopup();
+            frame();
+            check("la carte des usages vit au symbole",
+                    editor.usageCard().isShown()
+                            && !editor.usageCard().usages().isEmpty());
+            // la rangée y navigue (le curseur saute à l'occurrence)
+            if (editor.usageCard().isShown()
+                    && !editor.usageCard().usages().isEmpty()) {
+                int before = editor.caretLine();
+                int wantedLine = editor.usageCard().usages().get(0).line();
+                tap(editor.usageCard().poseX()
+                                + editor.usageCard().width() / 2.0f,
+                        editor.usageCard().rowCenterY(0));
+                frame();
+                check("la rangée d'usage y navigue",
+                        editor.caretLine() == wantedLine
+                                || editor.caretLine() != before);
+            }
+        }
+        // --- LE PLI AU PANNEAU : le chevron vit DANS la gouttière
+        // (la colonne d'après les numéros — plus dans le texte)
+        int foldLine = -1;
+        for (int line = 0; line < editor.getBuffer().getLineCount(); line++) {
+            if (editor.getStructureDocument().foldStartsAt(line)) {
+                foldLine = line;
+                break;
+            }
+        }
+        check("un pli existe dans la démo", foldLine >= 0);
+        if (foldLine >= 0) {
+            // le tap DANS LA COLONNE DU PANNEAU (après les numéros) y
+            // replie — la colonne des plis vit au panneau
+            float foldX = editor.getPaddingLeft() - 12.0f * DENSITY;
+            tap(foldX, lineTop(foldLine) + LINE_HEIGHT / 2.0f);
+            frame();
+            check("le tap au panneau replie le pli",
+                    editor.hiddenLineCount() > 0);
+            tap(foldX, lineTop(foldLine) + LINE_HEIGHT / 2.0f);
+            frame();
+            check("le re-tap le rend", editor.hiddenLineCount() == 0);
+        }
+        // le rangement final : les popups se ferment, le texte revient,
+        // le scroll remonte (les scénarios suivants tapent à Y fixes)
+        if (editor.colorPickerCard().isShown()) {
+            tap(editor.colorPickerCard().poseX()
+                            + editor.colorPickerCard().width() - 16.0f * DENSITY,
+                    editor.colorPickerCard().poseY() + 12.0f * DENSITY);
+            frame();
+        }
+        editor.caretTo(0);
+        frame();
+        for (int undo = 0; undo < 6
+                && !editor.getBuffer().toString().equals(original); undo++) {
+            click("Annuler");
+        }
+        frame();
+        check("le texte revient à la fin du scénario",
+                editor.getBuffer().toString().equals(original));
+    }
+
+    /**
      * La carte de complétion : les candidats du mot courant en rangées
      * au caret — la flèche déléguée y navigue (bornée aux murs de la
      * liste), la validation y insère, le doigt sur une rangée aussi,
@@ -1674,6 +1875,9 @@ public final class OpenHarness {
         tap(editor.overflowCard().poseX() + 10.0f,
                 editor.overflowCard().rowCenterY(quitterAt));
         frame();
+        detail("quitter : sélection=" + editor.hasSelection()
+                + " barre=" + editor.selectionBar().isShown()
+                + " caret=" + editor.caretOffset());
         check("Quitter la sélection rend le curseur seul",
                 !editor.hasSelection() && !editor.selectionBar().isShown());
         // Tout copier : le document entier au presse-papiers

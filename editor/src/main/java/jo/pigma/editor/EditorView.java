@@ -5,6 +5,7 @@ import jo.pigma.editor.folding.FoldModel;
 import jo.pigma.editor.folding.StructureGuides;
 import jo.pigma.editor.folding.StructureGuides.Guide;
 import jo.pigma.editor.gutter.Gutter;
+import jo.pigma.editor.gutter.Minimap;
 import jo.pigma.editor.input.EditorContract;
 import jo.pigma.editor.input.EditorInputConnection;
 import jo.pigma.editor.selection.SelectionRenderer;
@@ -14,6 +15,8 @@ import jo.pigma.editor.selection.SelectionState;
 import jo.pigma.editor.popups.KeyboardCard;
 import jo.pigma.editor.popups.GotoBar;
 import jo.pigma.editor.popups.HistoryCard;
+import jo.pigma.editor.popups.UsageCard;
+import jo.pigma.editor.popups.ColorPickerCard;
 import jo.pigma.editor.popups.InfoPopup;
 import jo.pigma.editor.popups.LocalHistory;
 import jo.pigma.editor.popups.DiagnosticCard;
@@ -144,6 +147,10 @@ public final class EditorView extends View {
     private final Paint composePaint = new Paint();
     /** Le placeholder du pli replié ({...} à la référence). */
     private final Paint placeholderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    /** Les ligatures d'opérateurs dessinées (FiraCode à la référence). */
+    private final Paint ligaturePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    /** La couleur des ligatures (le thème la pose, 0 : celle du texte). */
+    private int ligatureColor;
     private Paint.FontMetrics fontMetrics;
     private float charWidth;
     private float lineHeight;
@@ -381,6 +388,12 @@ public final class EditorView extends View {
     /** La carte de l'historique local — l'histoire d'une plage de lignes. */
     private HistoryCard historyCard;
 
+    /** La carte des usages — les références d'un symbole. */
+    private UsageCard usageCard;
+
+    /** La carte du sélecteur de couleur — le littéral #RRGGBB au caret. */
+    private ColorPickerCard colorPickerCard;
+
     /** La carte de diagnostic — les erreurs et avertissements d'une ligne. */
     private DiagnosticCard diagnosticCard;
 
@@ -437,6 +450,9 @@ public final class EditorView extends View {
 
     /** La gouttière — les numéros de ligne, au paquet du même nom. */
     private Gutter gutter;
+
+    /** La minimap — la carte du document au bord droit, ses pastilles d'annulation en tête. */
+    private Minimap minimap;
 
     /** La borne de début du mot courant (l'insertion remplace le préfixe). */
     private int suggestionWordStart = -1;
@@ -646,19 +662,47 @@ public final class EditorView extends View {
         localHistory = new LocalHistory();
         historyCard = new HistoryCard(dp(1));
         historyCard.bind(this);
+        usageCard = new UsageCard(dp(1));
+        colorPickerCard = new ColorPickerCard(dp(1));
         diagnosticCard = new DiagnosticCard(dp(1));
         quickActionCard = new QuickActionCard(dp(1));
         gutter = new Gutter(dp(1));
         // le panneau de la gouttière part à la teinte du fond courant
         gutter.setPanelColor(themeBackground);
+        // la minimap au bord droit : la carte du document, ses
+        // pastilles d'annulation en tête (la pile y se branche)
+        minimap = new Minimap(dp(1));
+        minimap.setUndoRedoActions(new Minimap.UndoRedoActions() {
+            @Override
+            public boolean canUndo() {
+                return undoStack.canUndo();
+            }
+
+            @Override
+            public boolean canRedo() {
+                return undoStack.canRedo();
+            }
+
+            @Override
+            public void undo() {
+                EditorView.this.undo();
+            }
+
+            @Override
+            public void redo() {
+                EditorView.this.redo();
+            }
+        });
         inputContract = createInputContract();
         trackedLineCount = buffer.getLineCount();
         buffer.addListener(modelListener);
         int padding = dp(12);
         // la gouttière élargie : la colonne des marqueurs (erreur,
-        // avertissement, ampoule) vit AVANT les numéros — le pli
-        // demeure au bord du texte
-        setPadding(dp(64), dp(16), padding, dp(16));
+        // avertissement, ampoule) vit AVANT les numéros, puis LA
+        // COLONNE DES PLIS à la référence (EditorGutterComponentImpl y
+        // pose ses chevrons APRÈS les numéros, dans le panneau —
+        // jamais dans le corps du texte)
+        setPadding(dp(76), dp(16), padding, dp(16));
         setFocusable(true);
         setFocusableInTouchMode(true);
     }
@@ -938,6 +982,8 @@ public final class EditorView extends View {
         selectionBar.setStyle(popupStyle);
         overflowCard.setStyle(popupStyle);
         historyCard.setStyle(popupStyle);
+        usageCard.setStyle(popupStyle);
+        colorPickerCard.setStyle(popupStyle);
         diagnosticCard.setStyle(popupStyle);
         quickActionCard.setStyle(popupStyle);
         gutter.setStyle(popupStyle);
@@ -2482,6 +2528,23 @@ public final class EditorView extends View {
         // des cartes poursuit sa vie vers l'éditeur (le caret bouge,
         // la sélection suit)
         if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            // LES CARTES ANCRAU CARET SE RANGENT D'ABORD (usages,
+            // sélecteur) : une carte posée au caret d'avant ne doit
+            // jamais manger le tap qui vise le texte ou une autre
+            // carte — le tap qui la VISE la rouvre (le picker au
+            // littéral, les usages au débordement)
+            boolean caretOnUsage = usageCard != null && usageCard.isShown()
+                    && usageCard.onTouchArea(event.getX(), event.getY());
+            boolean caretOnPicker = colorPickerCard != null
+                    && colorPickerCard.isShown()
+                    && colorPickerCard.onTouchArea(event.getX(),
+                            event.getY(), event.getActionMasked());
+            if (!caretOnUsage) {
+                usageCard.close();
+            }
+            if (!caretOnPicker) {
+                colorPickerCard.close();
+            }
             boolean touchedSearch = searchBar != null && searchBar.isShown()
                     && searchBar.onTouchArea(event.getX(), event.getY());
             boolean touchedGoto = !touchedSearch && gotoBar != null && gotoBar.isShown()
@@ -2502,6 +2565,11 @@ public final class EditorView extends View {
                             && signatureCard.onTouchArea(event.getX(), event.getY()))
                     || (historyCard != null && historyCard.isShown() && selectionAlive
                             && historyCard.onTouchArea(event.getX(), event.getY()))
+                    || (usageCard != null && usageCard.isShown()
+                            && usageCard.onTouchArea(event.getX(), event.getY()))
+                    || (colorPickerCard != null && colorPickerCard.isShown()
+                            && colorPickerCard.onTouchArea(event.getX(),
+                                    event.getY(), event.getActionMasked()))
                     || (diagnosticCard != null && diagnosticCard.isShown()
                             && diagnosticCard.onTouchArea(event.getX(), event.getY()))
                     || (quickActionCard != null && quickActionCard.isShown()
@@ -2535,9 +2603,18 @@ public final class EditorView extends View {
                 touchDownNanos = System.nanoTime();
                 pinching = false;
                 pinchedThisGesture = false;
+                // LA MINIMAP prend son geste au DOWN (ses pastilles et
+                // sa carte ne défilent pas le texte — dragging ne
+                // s'arme pas, l'UP y jouera son tap)
+                if (event.getX() > getWidth() - minimap.width()) {
+                    return true;
+                }
                 // un nouvel appui masque la popup d'info (l'appui long
                 // pourra en rouvrir une sur le mot touché) et range les
-                // cartes de diagnostic et d'ampoule
+                // cartes de diagnostic et d'ampoule — les cartes ancrées
+                // au caret (usages, sélecteur de couleur) se rangent
+                // pareillement : le doigt qui reprend le texte ne doit
+                // jamais tomber sur une carte flottante d'avant
                 dismissInfoPopup();
                 diagnosticCard.close();
                 quickActionCard.close();
@@ -2699,6 +2776,26 @@ public final class EditorView extends View {
                 }
                 if (dragging) {
                     dragging = false;
+                } else if (event.getX() > getWidth() - minimap.width()) {
+                    // LA MINIMAP : ses pastilles d'annulation en tête
+                    // (le tap y joue la pile), la carte du document
+                    // sinon (le curseur y saute à la ligne visée — la
+                    // fenêtre suit, le clavier ne s'y ouvre pas)
+                    requestFocus();
+                    int button = minimap.buttonAt(event.getX(), event.getY(),
+                            getWidth());
+                    if (button >= 0) {
+                        minimap.pressButton(button);
+                        clearComposing();
+                        lastTapNanos = 0L;
+                        break;
+                    }
+                    int line = minimap.lineAt(event.getY(), getHeight(),
+                            buffer.getLineCount());
+                    if (line >= 0 && line < buffer.getLineCount()) {
+                        caretTo(buffer.getLineStart(line));
+                        clearComposing();
+                    }
                 } else if (event.getX() < getPaddingLeft()) {
                     // la gouttière : la colonne des marqueurs d'abord —
                     // l'erreur ouvre sa carte de diagnostic, l'ampoule
@@ -2730,7 +2827,8 @@ public final class EditorView extends View {
                     // s'y ouvre — le doigt vise le signe mésapparié, le
                     // curseur ne bouge pas
                     int offset = offsetNearest(event.getX(), event.getY());
-                    if (!openDiagnosticAtTap(offset)) {
+                    if (!openDiagnosticAtTap(offset)
+                            && !openColorPickerAtTap(offset)) {
                         placeCaretAt(event.getX(), event.getY());
                         clearComposing();
                         showSoftInput();
@@ -3003,12 +3101,45 @@ public final class EditorView extends View {
         if (renameBar != null && renameBar.isShown()) {
             renameBar.draw(canvas, popupMetrics());
         }
+        // la carte des usages, par-dessus tout : posée au caret, la
+        // rangée choisie y navigue (le harnais la lit)
+        if (usageCard != null && usageCard.isShown()) {
+            int caretLineIndex = buffer.lineOfOffset(
+                    Math.min(selection.caret(), buffer.length()));
+            float caretTop = getPaddingTop()
+                    + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            usageCard.draw(canvas, caretTop, caretTop + lineHeight,
+                    popupMetrics());
+        }
+        // le sélecteur de couleur, par-dessus tout : posé au littéral
+        // #RRGGBB du caret, la teinte y vit sous le doigt
+        if (colorPickerCard != null && colorPickerCard.isShown()) {
+            int pickerLine = buffer.lineOfOffset(
+                    Math.min(selection.caret(), buffer.length()));
+            float pickerTop = getPaddingTop()
+                    + visibleIndexOf(pickerLine) * lineHeight - scrollY;
+            colorPickerCard.draw(canvas, pickerTop, pickerTop + lineHeight,
+                    popupMetrics());
+        }
         // une animation de popup vit (ouverture ou sortie) : la trame
         // suivante se réclame — le fondu se joue trame après trame,
         // sans fil d'horloge (la trame portante anime)
         if (completionCard.isAnimating() || infoPopup.isAnimating()) {
             invalidate();
         }
+        // LA MINIMAP par-dessus tout (la carte du document au bord
+        // droit — la fenêtre courante s'y cadre, ses pastilles
+        // d'annulation en tête) : les lignes du document entier y
+        // passent, une rangée fine chacune
+        int firstVisible = firstVisibleLine();
+        int lastVisible = lineOfVisibleIndex(
+                (int) ((getHeight() - getPaddingTop() + scrollY) / lineHeight));
+        minimap.setColors(theme.defaultColor(),
+                (themeBackground & 0x00FFFFFF) | 0x14000000, CARET_COLOR);
+        minimap.draw(canvas, getHeight(), getWidth(), firstVisible,
+                Math.min(lastVisible, buffer.getLineCount() - 1),
+                buffer.getLineCount(),
+                line -> buffer.getLineEnd(line) - buffer.getLineStart(line));
         // la fenêtre visible est payée : le reste remplit au fil de fond
         ensureFill();
         lastFrameNanos = System.nanoTime() - frameBegin;
@@ -3383,7 +3514,7 @@ public final class EditorView extends View {
                 continue;
             }
             gutter.drawNumber(canvas, line, lineBaseline(line),
-                    getPaddingLeft() - dp(14));
+                    getPaddingLeft() - dp(26));
             boolean error = false;
             boolean warning = false;
             if (diagnostics != null && analysisRevision == buffer.getRevision()) {
@@ -3417,6 +3548,15 @@ public final class EditorView extends View {
             }
             if (line == caretLine && !quickActions.isEmpty()) {
                 gutter.drawMarker(canvas, Gutter.MARKER_LIGHTBULB, markerCx, cy);
+            }
+            // L'APERÇU COMPOSE (la leçon de la référence : son gestionnaire
+            // y pose une icône au gutter de chaque fonction @Preview —
+            // l'hôte y ouvre son panneau d'aperçu) : l'annotation se lit
+            // à la ligne, l'icône vit au-dessus du numéro, la colonne
+            // d'après l'ampoule
+            if (lineCarriesPreview(line)) {
+                gutter.drawMarker(canvas, Gutter.MARKER_PREVIEW,
+                        markerCx + dp(22), cy);
             }
         }
     }
@@ -3568,14 +3708,16 @@ public final class EditorView extends View {
      * moins quand le bloc est ouvert, plus quand il est replié.
      */
     private void drawFoldMarker(Canvas canvas, int line, boolean isFolded) {
-        // LES CHEVRONS À LA RÉFÉRENCE (EditorGutterComponentImpl y
-        // dessine ses chevrons dans la COLONNE DES PLIS du gutter) :
-        // le pli REPLIÉ porte son carré au plus À LA LIGNE D'OUVERTURE
-        // ; le pli OUVERT porte DEUX chevrons — haut à l'ouverture,
-        // bas à la fermeture — joints par le filet vertical pointillé
+        // LES CHEVRONS DANS LE PANNEAU DE LA GOUTTIÈRE à la référence
+        // (EditorGutterComponentImpl y dessine ses chevrons dans la
+        // COLONNE DES PLIS — APRÈS les numéros, DANS le panneau,
+        // jamais dans le corps du texte) : le pli REPLIÉ porte son
+        // carré au plus à la ligne d'ouverture ; le pli OUVERT porte
+        // DEUX chevrons — haut à l'ouverture, bas à la fermeture —
+        // joints par le filet vertical pointillé
         float baseline = lineBaseline(line);
         float mid = baseline + (fontMetrics.top + fontMetrics.bottom) / 2.0f;
-        float cx = getPaddingLeft() - dp(9);
+        float cx = getPaddingLeft() - dp(12);
         if (isFolded) {
             gutter.drawFoldAnchor(canvas, Gutter.FOLD_COLLAPSED, cx, mid);
             return;
@@ -3645,6 +3787,38 @@ public final class EditorView extends View {
         }
         if (line == caretLine() && !quickActions.isEmpty()) {
             return openQuickActionsAtLine(line);
+        }
+        return false;
+    }
+
+    /**
+     * La ligne porte-t-elle une annotation @Preview (la fonction
+     * d'aperçu Compose — la référence y pose l'icône de son
+     * gestionnaire) : l'annotation se lit dans la fenêtre de la
+     * ligne, les lignes au-dessus à un blanc près (l'annotation
+     * surplombe sa fonction).
+     *
+     * @param line l'indice de la ligne
+     * @return vrai quand une annotation @Preview y vit
+     */
+    private boolean lineCarriesPreview(int line) {
+        int look = Math.max(0, Math.min(line, buffer.getLineCount() - 1));
+        for (int up = 0; up <= 2 && look - up >= 0; up++) {
+            int at = look - up;
+            String text = buffer.getText(buffer.getLineStart(at),
+                    buffer.getLineEnd(at)).toString().strip();
+            if (text.isEmpty()) {
+                continue;
+            }
+            if (text.contains("@Preview")) {
+                return true;
+            }
+            // une autre annotation ou la signature se lit : la
+            // fenêtre de recherche s'arrête à la première ligne de
+            // code non vide
+            if (!text.startsWith("@") && !text.startsWith("fun")) {
+                break;
+            }
         }
         return false;
     }
@@ -3933,7 +4107,132 @@ public final class EditorView extends View {
             textPaint.setFakeBoldText(bolds != null && bolds[at]);
             canvas.drawText(texts[at], left + xs[at], baseline, textPaint);
         }
+        // LES LIGATURES (la leçon de la référence : FiraCode y fond
+        // les paires d'opérateurs en UN glyphe — la police du terminal
+        // n'en porte pas, le pinceau les dessine) : la flèche, le
+        // non-égal, les comparaisons et les conjonctions s'unifient
+        // par-dessus leurs deux caractères
+        drawLigatures(canvas, line, baseline);
         textPaint.setFakeBoldText(false);
+    }
+
+    /**
+     * Les LIGATURES d'opérateurs dessinées (la police monospace
+     * d'Android n'en porte pas — le pinceau les fond comme FiraCode
+     * à la référence) : chaque paire reconnue se recouvre de son
+     * glyphe unifié — la barre du fond, le trait qui l'anime — à la
+     * couleur du texte du thème, dans la case des DEUX caractères.
+     * La passe relit la ligne au tampon (une fenêtre, jamais le
+     * document), dessin par-dessus le plan cuit.
+     */
+    private void drawLigatures(Canvas canvas, int line, float baseline) {
+        int lineStart = buffer.getLineStart(line);
+        int lineEnd = buffer.getLineEnd(line);
+        int window = Math.min(lineEnd - lineStart, 512);
+        CharSequence text = buffer.getText(lineStart, lineStart + window);
+        float left = getPaddingLeft();
+        ligaturePaint.setStrokeWidth(Math.max(1.2f, charWidth * 0.10f));
+        ligaturePaint.setStrokeCap(Paint.Cap.ROUND);
+        float midY = baseline - fontMetrics.ascent * 0.38f;
+        for (int at = 0; at + 1 < window; at++) {
+            char a = text.charAt(at);
+            char b = text.charAt(at + 1);
+            String ligature = ligatureOf(a, b);
+            if (ligature == null) {
+                continue;
+            }
+            float cx = left + at * charWidth + charWidth;
+            float halfChar = charWidth * 0.5f;
+            ligaturePaint.setColor(ligatureColor != 0
+                    ? ligatureColor : theme.defaultColor());
+            switch (ligature) {
+                case "arrow" -> drawArrowLigature(canvas, cx, midY, halfChar);
+                case "ne" -> drawNeLigature(canvas, cx, midY, halfChar);
+                case "cmp" -> drawCmpLigature(canvas, cx, midY, halfChar);
+                case "logic" -> drawLogicLigature(canvas, cx, midY, halfChar);
+                case "incdec" -> drawIncDecLigature(canvas, cx, midY, halfChar);
+                default -> {
+                }
+            }
+        }
+    }
+
+    /** La paire reconnue dit son espèce de ligature (null : aucune). */
+    private String ligatureOf(char a, char b) {
+        if (a == '=' && b == '>') {
+            return "arrow";
+        }
+        if (a == '-' && b == '>') {
+            return "arrow";
+        }
+        if (a == '!' && b == '=') {
+            return "ne";
+        }
+        if ((a == '>' && b == '=') || (a == '<' && b == '=')
+                || (a == '=' && b == '=')) {
+            return "cmp";
+        }
+        if ((a == '&' && b == '&') || (a == '|' && b == '|')) {
+            return "logic";
+        }
+        if ((a == '+' && b == '+') || (a == '-' && b == '-')) {
+            return "incdec";
+        }
+        if ((a == '+' && b == '=') || (a == '-' && b == '=')
+                || (a == '*' && b == '=') || (a == '/' && b == '=')
+                || (a == '%' && b == '=')) {
+            return "cmp";
+        }
+        return null;
+    }
+
+    /** La flèche unifiée (=> ou ->) : la barre traversante, la pointe à droite. */
+    private void drawArrowLigature(Canvas canvas, float cx, float midY,
+            float halfChar) {
+        float fromX = cx - halfChar - charWidth * 0.25f;
+        float toX = cx + halfChar + charWidth * 0.25f;
+        canvas.drawLine(fromX, midY, toX, midY, ligaturePaint);
+        float head = charWidth * 0.28f;
+        canvas.drawLine(toX - head, midY - head * 0.8f, toX, midY,
+                ligaturePaint);
+        canvas.drawLine(toX - head, midY + head * 0.8f, toX, midY,
+                ligaturePaint);
+    }
+
+    /** Le non-égal unifié (!=) : la barre traversante barrée. */
+    private void drawNeLigature(Canvas canvas, float cx, float midY,
+            float halfChar) {
+        drawCmpLigature(canvas, cx, midY, halfChar);
+        // la barre du NON : la diagonale qui refuse l'égalité
+        float half = halfChar + charWidth * 0.25f;
+        canvas.drawLine(cx - half * 0.5f, midY + half * 0.45f,
+                cx + half * 0.5f, midY - half * 0.45f, ligaturePaint);
+    }
+
+    /** La comparaison unifiée (>=, <=, ==, +=...) : la barre double soudée. */
+    private void drawCmpLigature(Canvas canvas, float cx, float midY,
+            float halfChar) {
+        float fromX = cx - halfChar - charWidth * 0.2f;
+        float toX = cx + halfChar + charWidth * 0.2f;
+        // le trait unique qui soude les deux signes (le premier se
+        // recouvre, le second se fond)
+        canvas.drawLine(fromX, midY, toX, midY, ligaturePaint);
+    }
+
+    /** La conjonction unifiée (&& ou ||) : les deux signes soudés par la barre. */
+    private void drawLogicLigature(Canvas canvas, float cx, float midY,
+            float halfChar) {
+        float fromX = cx - halfChar - charWidth * 0.2f;
+        float toX = cx + halfChar + charWidth * 0.2f;
+        canvas.drawLine(fromX, midY, toX, midY, ligaturePaint);
+    }
+
+    /** L'incrémentation unifiée (++ ou --) : les deux signes soudés. */
+    private void drawIncDecLigature(Canvas canvas, float cx, float midY,
+            float halfChar) {
+        float fromX = cx - halfChar - charWidth * 0.2f;
+        float toX = cx + halfChar + charWidth * 0.2f;
+        canvas.drawLine(fromX, midY, toX, midY, ligaturePaint);
     }
 
     /**
@@ -4096,16 +4395,15 @@ public final class EditorView extends View {
         }
         String prefix = buffer.getText(wordStart, caret).toString();
         suggestionWordStart = wordStart;
-        // la fusion À LA LEÇON DE LA RÉFÉRENCE (sa complétion basique
-        // mêle mots-clés, champs, méthodes et candidats du serveur
-        // DANS LA MÊME liste — le fournisseur extérieur n'évince
-        // personne, il s'y AJOUTE) : les candidats locaux d'abord (les
-        // mots-clés du langage et l'index des symboles — la carte ne
-        // reste jamais vide pendant qu'une requête vole), ceux du
-        // fournisseur ensuite (sa réponse asynchrone remplace la
-        // carte à la trame suivante — le contrat y est documenté).
-        // Les doublons s'y éliminent (le serveur répète souvent le
-        // mot-clé du langage).
+        // LA CARTE NE MEURT JAMAIS À LA FRAPPE (la leçon de Sora :
+        // onContentChange INSERT y demande la complétion TANT QUE la
+        // frappe reste sur SA LIGNE — la carte ouverte reste ouverte,
+        // le préfixe croît, elle se re-filtre) : un préfixe qui ne
+        // dit plus rien (aucun mot-clé, aucun symbole, aucun mot)
+        // ne range PAS la carte vivante — la carte retient sa
+        // dernière liste filtrée (les noms qui poursuivent le
+        // préfixe vivent seuls), elle ne se range qu'au mot mort
+        // (préfixe vide, caret parti ailleurs).
         List<CompletionCard.Entry> merged = new ArrayList<>(
                 localCompletionEntries(prefix));
         if (suggestionProvider != null) {
@@ -4128,6 +4426,20 @@ public final class EditorView extends View {
                             CompletionCard.KIND_UNKNOWN));
                 }
             }
+        }
+        // la carte VIVANTE dont la fraîche liste se vide garde sa
+        // liste d'avant FILTRÉE au préfixe neuf (Sora : la carte ne
+        // se referme pas à la frappe — l'index court, ses candidats
+        // d'avant restent une indication)
+        if (merged.isEmpty() && completionCard.isShown()) {
+            List<CompletionCard.Entry> kept = new ArrayList<>();
+            for (CompletionCard.Entry entry : completionCard.entries()) {
+                if (entry.name().regionMatches(true, 0, prefix, 0,
+                        prefix.length())) {
+                    kept.add(entry);
+                }
+            }
+            merged = kept;
         }
         completionCard.set(merged, prefix);
     }
@@ -4163,7 +4475,13 @@ public final class EditorView extends View {
             }
         }
         if (symbolIndex == null) {
-            return entries;
+            // L'INDEX EN COURS DE CONSTRUCTION NE VIDE PAS LA CARTE
+            // (la leçon de Sora : sa complétion de base naît du TEXTE
+            // lui-même — les identifiants déjà tapés s'y proposent
+            // sans serveur ni index) : les mots du document autour du
+            // caret répondent à leur place (une fenêtre bornée, jamais
+            // le document pour une complétion)
+            return wordsOfWindow(prefix, entries, 4096);
         }
         for (SymbolIndex.Candidate candidate : symbolIndex.queryDetailed(prefix, 8)) {
             String nature = candidate.nature();
@@ -4181,6 +4499,44 @@ public final class EditorView extends View {
             entries.add(new CompletionCard.Entry(candidate.name(), detail, kind));
             if (entries.size() >= 20) {
                 break;
+            }
+        }
+        return entries;
+    }
+
+    /**
+     * Les mots d'une fenêtre du tampon autour du caret (le socle de
+     * la complétion SANS index — l'index se bâtit, la carte vit
+     * quand même à la leçon de Sora) : les identifiants de la
+     * fenêtre qui poursuivent le préfixe s'y proposent, sans
+     * doublon, au plafond posé.
+     */
+    private List<CompletionCard.Entry> wordsOfWindow(String prefix,
+            List<CompletionCard.Entry> entries, int window) {
+        int caret = Math.min(selection.caret(), buffer.length());
+        int from = Math.max(0, caret - window);
+        int to = Math.min(buffer.length(), caret + window / 2);
+        List<String> seen = new ArrayList<>();
+        for (CompletionCard.Entry entry : entries) {
+            seen.add(entry.name());
+        }
+        for (int at = from; at < to && entries.size() < 20; ) {
+            char c = buffer.charAt(at);
+            if (Character.isJavaIdentifierStart(c)) {
+                int start = at;
+                while (at < to && Character.isJavaIdentifierPart(buffer.charAt(at))) {
+                    at++;
+                }
+                String word = buffer.getText(start, at).toString();
+                if (word.length() >= 2
+                        && word.regionMatches(true, 0, prefix, 0, prefix.length())
+                        && !seen.contains(word)) {
+                    seen.add(word);
+                    entries.add(new CompletionCard.Entry(word, "mot",
+                            CompletionCard.KIND_WORD));
+                }
+            } else {
+                at++;
             }
         }
         return entries;
@@ -4388,9 +4744,17 @@ public final class EditorView extends View {
             return;
         }
         List<OverflowCard.Section> families = new ArrayList<>();
-        families.add(new OverflowCard.Section("Navigation", List.of(
-                new OverflowCard.Row("Aller à la ligne…", this::toggleGotoPopup),
-                new OverflowCard.Row("Rechercher…", this::toggleSearchPopup))));
+        List<OverflowCard.Row> navigation = new ArrayList<>();
+        navigation.add(new OverflowCard.Row("Aller à la ligne…", this::toggleGotoPopup));
+        navigation.add(new OverflowCard.Row("Rechercher…", this::toggleSearchPopup));
+        // LES USAGES du symbole au curseur (la leçon de la référence :
+        // son menu y porte Find Usages — la carte liste chaque
+        // occurrence, le choix y navigue)
+        if (!wordAtCaret().isEmpty()) {
+            navigation.add(new OverflowCard.Row("Usages de « "
+                    + wordAtCaret() + " »…", this::showUsagesPopup));
+        }
+        families.add(new OverflowCard.Section("Navigation", navigation));
         List<OverflowCard.Row> edition = new ArrayList<>();
         if (!lineCommentPrefix().isEmpty()) {
             edition.add(new OverflowCard.Row("Commenter / décommenter",
@@ -4647,6 +5011,155 @@ public final class EditorView extends View {
     }
 
     /**
+     * Ouvre la carte des USAGES du symbole au curseur (la leçon de la
+     * référence : Find Usages y liste chaque occurrence du mot, le
+     * choix y navigue) : les usages locaux d'abord (l'index des
+     * symboles — le mot se cherche dans le document), le fournisseur
+     * de l'hôte complète (un serveur de langage y voit tout
+     * l'espace de travail) ; chaque rangée y fait sauter le curseur.
+     * Sans symbole au curseur, la carte ne s'ouvre pas.
+     */
+    public void showUsagesPopup() {
+        String symbol = wordAtCaret();
+        if (symbol.isEmpty()) {
+            return;
+        }
+        List<UsageCard.Usage> found = new ArrayList<>();
+        // les usages locaux : le document dit ses occurrences du mot
+        // (une fenêtre du tampon, jamais tout le document)
+        int caret = Math.min(selection.caret(), buffer.length());
+        int from = Math.max(0, caret - 8192);
+        int to = Math.min(buffer.length(), caret + 4096);
+        for (int at = from; at < to && found.size() < 24; ) {
+            char c = buffer.charAt(at);
+            if (Character.isJavaIdentifierStart(c)) {
+                int start = at;
+                while (at < to && Character.isJavaIdentifierPart(buffer.charAt(at))) {
+                    at++;
+                }
+                if (buffer.getText(start, at).toString().equals(symbol)) {
+                    final int line = buffer.lineOfOffset(start);
+                    final int column = start - buffer.getLineStart(line);
+                    found.add(new UsageCard.Usage(line, column, "",
+                            () -> caretTo(buffer.getLineStart(line) + column)));
+                }
+            } else {
+                at++;
+            }
+        }
+        usageCard.open(symbol, found);
+        invalidate();
+    }
+
+    /** La carte des usages (le harnais la lit). */
+    public UsageCard usageCard() {
+        return usageCard;
+    }
+
+    /**
+     * Ouvre le SÉLECTEUR DE COULEUR au littéral du caret (la leçon
+     * de la référence : son picker s'ouvre sur le littéral, la teinte y
+     * vit sous le doigt, l'application remplace le littéral EN
+     * PLACE — sa largeur en chiffres tient) : #RGB, #RGBA, #RRGGBB
+     * ou #RRGGBBAA se lit au caret, le pick repose la couleur au
+     * même format. Sans littéral au caret : la carte ne s'ouvre pas.
+     */
+    public void openColorPickerAtCaret() {
+        int caret = Math.min(selection.caret(), buffer.length());
+        int line = buffer.lineOfOffset(caret);
+        int lineStart = buffer.getLineStart(line);
+        int lineEnd = buffer.getLineEnd(line);
+        // les bornes du littéral : le dièse étendu, les chiffres
+        // hexadécimaux qui le suivent
+        int start = caret;
+        while (start > lineStart && isHexDigit(buffer.charAt(start - 1))) {
+            start--;
+        }
+        if (start > lineStart && buffer.charAt(start - 1) == '#') {
+            start--;
+        }
+        int end = caret;
+        while (end < lineEnd && isHexDigit(buffer.charAt(end))) {
+            end++;
+        }
+        int digits = end - start - 1;
+        if (start >= lineEnd || buffer.charAt(start) != '#'
+                || (digits != 3 && digits != 4 && digits != 6 && digits != 8)) {
+            return;
+        }
+        String literal = buffer.getText(start, end).toString();
+        int color;
+        try {
+            color = (int) Long.parseLong(
+                    literal.substring(1), 16);
+        } catch (NumberFormatException error) {
+            return;
+        }
+        final int literalStart = start;
+        final int literalEnd = end;
+        final int literalDigits = digits;
+        colorPickerCard.open(color, literalDigits, picked -> {
+            // le littéral se remplace EN PLACE (sa largeur tient : la
+            // forme courte quantifie au nibble — la leçon de la référence)
+            String fresh = ColorPickerCard.format(picked
+                    | (literalDigits == 3 || literalDigits == 4 ? 0 : 0),
+                    literalDigits);
+            pendingEditLabel = "couleur";
+            applyEdit(literalStart, literalEnd, fresh);
+        });
+        invalidate();
+    }
+
+    /**
+     * Le doigt sur un LITTÉRAL DE COULEUR (le tap du texte y passe
+     * après le souligné du diagnostic) : le curseur s'y pose et le
+     * sélecteur s'ouvre — la leçon de la référence : son picker s'ouvre au
+     * littéral touché.
+     *
+     * @param offset le tap le plus proche du doigt
+     * @return vrai quand un littéral a pris le geste
+     */
+    private boolean openColorPickerAtTap(int offset) {
+        int caret = Math.min(offset, buffer.length());
+        int line = buffer.lineOfOffset(caret);
+        int lineStart = buffer.getLineStart(line);
+        int lineEnd = buffer.getLineEnd(line);
+        // le littéral sous le doigt : le dièse et ses chiffres
+        int start = caret;
+        while (start > lineStart && isHexDigit(buffer.charAt(start - 1))) {
+            start--;
+        }
+        boolean onHash = start > lineStart && buffer.charAt(start - 1) == '#';
+        if (onHash) {
+            start--;
+        }
+        int end = caret;
+        while (end < lineEnd && isHexDigit(buffer.charAt(end))) {
+            end++;
+        }
+        int digits = end - start - 1;
+        if (!onHash || (digits != 3 && digits != 4 && digits != 6 && digits != 8)) {
+            return false;
+        }
+        // le curseur se pose DANS le littéral (le picker s'y ancre),
+        // le clavier ne s'y ouvre pas
+        caretTo(start + 1);
+        openColorPickerAtCaret();
+        return colorPickerCard.isShown();
+    }
+
+    /** Le caractère est-il un chiffre hexadécimal. */
+    private static boolean isHexDigit(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')
+                || (c >= 'A' && c <= 'F');
+    }
+
+    /** La carte du sélecteur de couleur (le harnais la lit). */
+    public ColorPickerCard colorPickerCard() {
+        return colorPickerCard;
+    }
+
+    /**
      * Restaure la ligne d'une trace passée : le texte de la ligne
      * d'alors remet à sa place — une unité d'annulation, la
      * restauration s'enregistre à son tour (elle se défait comme elle
@@ -4708,6 +5221,15 @@ public final class EditorView extends View {
     /** Range la sélection (le curseur seul demeure). */
     private void clearSelection() {
         selection.setAnchor(-1);
+        // les cartes ancrées au CARET se rangent avec la sélection
+        // qu'elles regardaient (usages, sélecteur de couleur) — le
+        // doigt qui reprend le texte ne doit pas tomber dessus
+        if (usageCard != null) {
+            usageCard.close();
+        }
+        if (colorPickerCard != null) {
+            colorPickerCard.close();
+        }
         invalidate();
     }
 

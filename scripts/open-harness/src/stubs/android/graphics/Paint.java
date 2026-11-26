@@ -82,6 +82,19 @@ public class Paint {
      *
      * @param style remplissage, contour ou les deux
      */
+    public void setShader(Shader shader) {
+    }
+
+    public void setStrokeCap(Cap cap) {
+    }
+
+    /** Le bout d'un trait (le ROUND des ligatures). */
+    public enum Cap {
+        ROUND,
+        BUTT,
+        SQUARE
+    }
+
     public void setStyle(Style style) {
         this.style = style;
     }

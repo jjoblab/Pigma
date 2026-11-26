@@ -20,6 +20,10 @@ public final class Path {
      * @param x abscisse
      * @param y ordonnée
      */
+    public void arcTo(RectF oval, float startAngle, float sweepAngle,
+            boolean forceMoveTo) {
+    }
+
     public void moveTo(float x, float y) {
         ops++;
     }

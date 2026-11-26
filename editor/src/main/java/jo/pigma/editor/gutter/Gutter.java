@@ -53,6 +53,14 @@ public final class Gutter {
     /** Le code du marqueur de point d'arrêt (le rond plein de la ligne). */
     public static final int MARKER_BREAKPOINT = 4;
 
+    /**
+     * Le code du marqueur d'APERÇU (la leçon de la référence : son
+     * ComposePreviewManager y pose une icône au gutter de chaque
+     * fonction @Preview — le carré arrondi à la petite fente, la
+     * teinte accent de Compose).
+     */
+    public static final int MARKER_PREVIEW = 5;
+
     /** Le pli REPLIÉ : le carré au plus (la référence le dessine ainsi). */
     public static final int FOLD_COLLAPSED = 10;
 
@@ -77,8 +85,8 @@ public final class Gutter {
     /** Le côté d'un marqueur (dp). */
     private static final int MARKER_SIDE_DP = 18;
 
-    /** Le corps de repos des numéros (dp). */
-    private static final float NUMBER_SIZE_DP = 12.0f;
+    /** Le corps de repos des numéros (dp) — 15 : la référence les pose plus lisibles. */
+    private static final float NUMBER_SIZE_DP = 15.0f;
 
     /** L'alpha du panneau de la gouttière (45 pour cent — discret). */
     private static final float PANEL_ALPHA = 0.45f;
@@ -369,6 +377,35 @@ public final class Gutter {
             // du débogueur — l'hôte y connectera le sien)
             markerPaint.setColor(style.accentArgb());
             canvas.drawCircle(cx, cy, dp(MARKER_SIDE_DP) / 2.0f, markerPaint);
+        } else if (kind == MARKER_PREVIEW) {
+            // L'APERÇU COMPOSE à la référence : le petit ÉCRAN (le
+            // carré arrondi, la fente en bas — l'icône de son
+            // gestionnaire d'aperçu), la teinte accent
+            float side = dp(MARKER_SIDE_DP);
+            float half = side / 2.0f;
+            markerPaint.setColor(style.accentArgb());
+            markerPaint.setStyle(Paint.Style.STROKE);
+            markerPaint.setStrokeWidth(1.6f * density);
+            canvas.drawRoundRect(cx - half * 0.9f, cy - half * 0.75f,
+                    cx + half * 0.9f, cy + half * 0.6f,
+                    dp(2), dp(2), markerPaint);
+            // le pied de l'écran (la petite barre en bas — le pied
+            // du panneau d'aperçu)
+            canvas.drawRect(cx - half * 0.35f, cy + half * 0.85f,
+                    cx + half * 0.35f, cy + half * 1.05f, markerPaint);
+            markerPaint.setStyle(Paint.Style.FILL);
+            // l'éclair discret au centre (l'aperçu qui SE CONSTRUIT —
+            // la teinte pleine du Compose)
+            markerPaint.setColor(style.accentArgb());
+            android.graphics.Path bolt = new android.graphics.Path();
+            bolt.moveTo(cx + half * 0.1f, cy - half * 0.55f);
+            bolt.lineTo(cx - half * 0.25f, cy + half * 0.05f);
+            bolt.lineTo(cx, cy + half * 0.05f);
+            bolt.lineTo(cx - half * 0.1f, cy + half * 0.55f);
+            bolt.lineTo(cx + half * 0.25f, cy - half * 0.05f);
+            bolt.lineTo(cx, cy - half * 0.05f);
+            bolt.close();
+            canvas.drawPath(bolt, markerPaint);
         }
     }
 

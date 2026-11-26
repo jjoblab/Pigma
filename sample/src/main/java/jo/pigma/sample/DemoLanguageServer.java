@@ -488,6 +488,26 @@ final class DemoLanguageServer implements LanguageServer, TextDocumentService,
         String lineText = current.substring(bounds[0], bounds[1]);
         int content = lineText.stripTrailing().length();
         if (content == lineText.length()) {
+            // LE CORRECTIF SUR DIAGNOSTIC (la démonstration de l'étage
+            // des correctifs de la carte de diagnostic) : la ligne qui
+            // COMMENCE par un fermant orphelin porte son correctif —
+            // le signe superflu se coupe, la carte l'applique au
+            // doigt (aucune action sinon)
+            int parenAt = lineText.indexOf(')');
+            if (parenAt >= 0 && lineText.substring(0, parenAt).isBlank()) {
+                int cutStart = bounds[0] + parenAt;
+                Range cut = new Range(positionOf(cutStart),
+                        positionOf(cutStart + 1));
+                TextEdit remove = new TextEdit(cut, "");
+                WorkspaceEdit orphanEdit = new WorkspaceEdit();
+                orphanEdit.setChanges(
+                        java.util.Map.of(target(), List.of(remove)));
+                CodeAction orphanFix = new CodeAction(
+                        "Supprimer le fermant orphelin");
+                orphanFix.setEdit(orphanEdit);
+                return CompletableFuture.completedFuture(
+                        List.of(Either.forRight(orphanFix)));
+            }
             // rien à corriger sur la ligne : aucune action
             return CompletableFuture.completedFuture(List.of());
         }
