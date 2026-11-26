@@ -16,6 +16,12 @@ import java.util.List;
  * sans la place), bornée aux murs de la vue ; le fond translucide et
  * la taille viennent du style posé par l'hôte.
  *
+ * <p>La carte vit de {@link ListCard} (R-F du rapport des popups —
+ * la migration une carte à la fois) : la pose et les murs de
+ * {@link CardBase}, la fenêtre de rangées et la barre de défilement
+ * de la base de liste ; son étage des correctifs y paie sa hauteur
+ * et sa largeur.</p>
+ *
  * <p>La carte ne prend jamais le focus ; le doigt sur une rangée la
  * referme (le message se lit), le reste de la carte consomme sans
  * agir ; hors d'elle le geste poursuit sa vie vers l'éditeur, qui y
@@ -28,7 +34,7 @@ import java.util.List;
  * la carte qui se REMPLIT (les correctifs du serveur arrivent)
  * reste posée.</p>
  */
-public final class DiagnosticCard {
+public final class DiagnosticCard extends ListCard {
 
     /** La sévérité d'une erreur (le rond rouge barré). */
     public static final int SEVERITY_ERROR = 1;
@@ -91,23 +97,8 @@ public final class DiagnosticCard {
     /** La ligne ancrée (les touches s'y adressent). */
     private int line;
 
-    /** La première rangée de la fenêtre (le défilement de la carte). */
-    private int topRow;
-
-    /** Le nombre de rangées visibles à la pose courante. */
-    private int visibleRows;
-
-    private float poseX;
-
-    private float poseY;
-
-    private float cardW;
-
-    private float cardH;
-
-    private float density = 1.0f;
-
-    private PopupStyle style = PopupStyle.defaults();
+    /** Le bas des rangées de messages (l'étage des correctifs y naît). */
+    private float rowsBottomCached;
 
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -138,28 +129,13 @@ public final class DiagnosticCard {
      * @param density la densité de l'écran (le dp en pixels)
      */
     public DiagnosticCard(float density) {
-        this.density = density;
-        applyStyle(style);
-    }
-
-    /**
-     * Pose le style de l'hôte : le fond translucide, les encres, la
-     * taille des textes, la forme — la carte s'y reconfigure entière.
-     *
-     * @param fresh le style posé, null pour celui par défaut
-     */
-    public void setStyle(PopupStyle fresh) {
-        style = fresh == null ? PopupStyle.defaults() : fresh;
-        applyStyle(style);
-    }
-
-    /** Le style courant (le harnais le lit). */
-    public PopupStyle style() {
-        return style;
+        super(density);
+        applyStyle();
     }
 
     /** Reconfigure les pinceaux au style courant. */
-    private void applyStyle(PopupStyle style) {
+    @Override
+    protected void applyStyle() {
         cardPaint.setColor(style.backgroundArgb());
         borderPaint.setColor(style.borderArgb());
         borderPaint.setStyle(Paint.Style.STROKE);
@@ -186,7 +162,7 @@ public final class DiagnosticCard {
      * Ouvre la carte sur les diagnostics d'une ligne — la liste vide
      * range la carte. La NAISSANCE se joue en pop (l'échelle et la
      * montée de la référence) : une carte DÉJÀ VIVANTE qui se
-     re-remplit — les correctifs du serveur qui arrivent — reste
+     * re-remplit — les correctifs du serveur qui arrivent — reste
      * POSE, sans rejouer le ressort.
      *
      * @param shownLine la ligne ancrée
@@ -209,21 +185,25 @@ public final class DiagnosticCard {
         }
     }
 
-    /** Range la carte (le choix, un nouvel appui, l'édition). */
-    public void close() {
+    /** Ramasse les restes de la fermeture. */
+    @Override
+    protected void onClosed() {
         entries = List.of();
         line = -1;
         topRow = 0;
         visibleRows = 0;
     }
 
-    /** L'animation d'entrée vit-elle (la vue y réclame la trame
-     * suivante tant que le ressort joue). */
+    /**
+     * L'animation d'entrée vit-elle (la vue y réclame la trame
+     * suivante tant que le ressort joue).
+     */
     public boolean isAnimating() {
         return animation.isRunning();
     }
 
-    /** La carte vit-elle ? */
+    /** La carte vit de ses entrées (vide : elle se range). */
+    @Override
     public boolean isShown() {
         return !entries.isEmpty();
     }
@@ -249,8 +229,7 @@ public final class DiagnosticCard {
      * @return vrai quand la carte a pris le geste
      */
     public boolean onTouchArea(float x, float y) {
-        if (!isShown() || x < poseX || x >= poseX + cardW
-                || y < poseY || y >= poseY + cardH) {
+        if (!isShown() || !contains(x, y)) {
             return false;
         }
         // L'ÉTAGE DES CORRECTIFS D'ABORD : le doigt sur un correctif
@@ -290,13 +269,12 @@ public final class DiagnosticCard {
         return dp(style.rowHeightDp() - 10);
     }
 
-    /** Le bas des rangées de messages (l'étage des correctifs y naît). */
-    private float rowsBottomCached;
-
-    /** Une rangée de correctif : la petite ampoule AU TRAIT à la
+    /**
+     * Une rangée de correctif : la petite ampoule AU TRAIT à la
      * COLONNE FIXE des icônes (le retour du terrain : elle vivait à
      * l'ABSCISSE DU CENTRE VERTICAL de sa rangée — elle dérivait à
-     * chaque rangée, hors du cadre), le titre à l'accent. */
+     * chaque rangée, hors du cadre), le titre à l'accent.
+     */
     private void drawFix(Canvas canvas, Fix fix, float top) {
         float rowH = fixRowHeight();
         float cy = top + rowH / 2.0f;
@@ -316,7 +294,7 @@ public final class DiagnosticCard {
         // coupe à l'excédent, jamais au-delà du mur
         float available = Math.max(0.0f, poseX + cardW - dp(14)
                 - (poseX + dp(14) + dp(ICON_DP) + dp(8)));
-        String title = ellipsize("Corriger : " + fix.title(), fixTextPaint,
+        String title = ellipsizeHead("Corriger : " + fix.title(), fixTextPaint,
                 available);
         canvas.drawText(title, poseX + dp(14) + dp(ICON_DP) + dp(8),
                 baseline, fixTextPaint);
@@ -397,30 +375,11 @@ public final class DiagnosticCard {
         } else {
             fixesBottom = fixesTop;
         }
-        drawScrollbar(canvas, rowsTop + headerH, rowsBottom);
+        drawScrollbar(canvas, scrollbarPaint, rowsTop + headerH, rowsBottom,
+                poseX + cardW - dp(5));
         drawFooter(canvas, Math.max(rowsBottom, fixesBottom));
         canvas.restore();
         canvas.restore();
-    }
-
-    /** L'abscisse posée (le harnais la lit). */
-    public float poseX() {
-        return poseX;
-    }
-
-    /** L'ordonnée posée (le harnais la lit). */
-    public float poseY() {
-        return poseY;
-    }
-
-    /** La largeur de la carte (le harnais la lit). */
-    public float width() {
-        return cardW;
-    }
-
-    /** La hauteur de la carte (le harnais la lit). */
-    public float height() {
-        return cardH;
     }
 
     /**
@@ -445,41 +404,34 @@ public final class DiagnosticCard {
      */
     private void place(float anchorTop, float anchorBottom, PopupMetrics metrics) {
         float margin = dp(MARGIN_DP);
-        float gap = dp(GAP_DP);
-        cardW = Math.min(Math.max(measuredWidth(),
-                dp(style.minCardWidthDp() - 80)),
-                Math.min(dp(style.maxCardWidthDp() - 80),
-                        metrics.viewWidth() - 2 * margin));
-        int rows = Math.min(MAX_VISIBLE_ROWS, entries.size());
+        cardW = clampWidth(measuredWidth(), style.minCardWidthDp() - 80,
+                style.maxCardWidthDp() - 80, margin, metrics);
         // l'étage des correctifs PAIE sa hauteur (la carte qui le
         // porte se pose plus haute — le pied compte les deux étages)
         int fixCount = fixes().size();
         float fixesHeight = fixCount == 0 ? 0.0f
                 : dp(3) + fixCount * fixRowHeight() + dp(3);
-        float available = metrics.viewHeight() - 2 * margin - 2 * padY()
-                - dp(style.headerHeightDp()) - dp(FOOTER_DP) - fixesHeight;
-        while (rows > 1 && 2 * padY() + dp(style.headerHeightDp())
-                + dp(FOOTER_DP) + fixesHeight
-                + rows * rowHeight() > available) {
-            rows--;
-        }
-        visibleRows = rows;
+        visibleRows = fitRows(MAX_VISIBLE_ROWS, entries.size(),
+                2 * padY() + dp(style.headerHeightDp()) + dp(FOOTER_DP)
+                        + fixesHeight,
+                rowHeight(), metrics.viewHeight(), margin);
         cardH = 2 * padY() + dp(style.headerHeightDp())
                 + visibleRows * rowHeight() + fixesHeight + dp(FOOTER_DP);
-        float belowTop = anchorBottom + gap;
-        if (belowTop + cardH <= metrics.viewHeight() - margin) {
-            poseY = belowTop;
-        } else {
-            poseY = Math.max(margin, anchorTop - gap - cardH);
-        }
-        poseX = Math.max(margin,
-                Math.min(metrics.paddingLeft(),
-                        metrics.viewWidth() - cardW - margin));
+        placeY(anchorTop, anchorBottom, margin, dp(GAP_DP), cardH,
+                metrics.viewHeight());
+        placeX(margin, metrics);
     }
 
     /** La hauteur d'une rangée : le style la porte, l'icône y respire. */
-    private float rowHeight() {
+    @Override
+    protected float rowHeight() {
         return dp(style.rowHeightDp() - 8);
+    }
+
+    /** Le compte des rangées vivantes. */
+    @Override
+    protected int rowCount() {
+        return entries.size();
     }
 
     /** La respiration intérieure (px). */
@@ -510,26 +462,10 @@ public final class DiagnosticCard {
         float baseline = top + rowH * 0.68f;
         severityIcon.draw(canvas, entry.severity(),
                 poseX + dp(14) + dp(ICON_DP) / 2.0f, cy, dp(ICON_DP));
-        String message = ellipsize(entry.message(), textPaint,
+        String message = ellipsizeHead(entry.message(), textPaint,
                 cardW - dp(ICON_DP) - 3 * dp(14));
         canvas.drawText(message, poseX + dp(14) + dp(ICON_DP) + dp(8),
                 baseline, textPaint);
-    }
-
-    /**
-     * La barre de défilement : la fenêtre montre-t-elle moins que la
-     * liste ? Le pouce se pose au prorata des rangées visibles.
-     */
-    private void drawScrollbar(Canvas canvas, float trackTop, float trackBottom) {
-        if (visibleRows >= entries.size()) {
-            return;
-        }
-        float thumb = (trackBottom - trackTop) * visibleRows / entries.size();
-        float trackSpan = trackBottom - trackTop - thumb;
-        float thumbTop = entries.size() <= 1 ? trackTop
-                : trackTop + trackSpan * topRow / (entries.size() - visibleRows);
-        canvas.drawRect(poseX + cardW - dp(5), thumbTop,
-                poseX + cardW - dp(3), thumbTop + thumb, scrollbarPaint);
     }
 
     /** Le pied de carte : le compte des diagnostics de la ligne. */
@@ -542,29 +478,5 @@ public final class DiagnosticCard {
         canvas.drawText(hint,
                 poseX + cardW - dp(14) - footerPaint.measureText(hint),
                 baseline, footerPaint);
-    }
-
-    /**
-     * Coupe un texte à la largeur disponible — la queue se garde,
-     * la tête s'abrège en « … ».
-     */
-    private String ellipsize(String text, Paint paint, float maxWidth) {
-        if (paint.measureText(text) <= maxWidth || text.length() < 2) {
-            return text;
-        }
-        String tail = text.substring(1);
-        while (tail.length() > 1
-                && paint.measureText("…" + tail) > maxWidth) {
-            tail = tail.substring(1);
-        }
-        return "…" + tail;
-    }
-
-    private float dp(int value) {
-        return value * density;
-    }
-
-    private float dp(float value) {
-        return value * density;
     }
 }

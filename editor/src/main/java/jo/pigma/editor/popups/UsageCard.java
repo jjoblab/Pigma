@@ -17,10 +17,15 @@ import java.util.List;
  * elle tient, dessus sinon), bornée aux murs de la vue ; le fond
  * translucide et la taille viennent du style posé par l'hôte.
  *
+ * <p>La carte vit de {@link ListCard} (R-F du rapport des popups —
+ * la migration une carte à la fois) : la pose, les murs, la croix et le style de
+ * {@link CardBase} ; la fenêtre de rangées, la barre de défilement
+ * et le compte au pied de la base de liste.</p>
+ *
  * <p>La carte ne prend jamais le focus ; la rangée referme la carte
  * AVANT de naviguer (le geste ne se joue pas deux fois).</p>
  */
-public final class UsageCard {
+public final class UsageCard extends ListCard {
 
     /** La hauteur de l'en-tête (dp). */
     private static final int HEADER_DP = 46;
@@ -40,10 +45,6 @@ public final class UsageCard {
     /** La largeur de la colonne d'icône (dp). */
     private static final int ICON_DP = 26;
 
-    /**
-     * Un usage du symbole : sa ligne (et son fichier quand il vit
-     * ailleurs — la carte le dit à droite), le choix y navigue.
-     */
     /**
      * Un usage : sa ligne, sa colonne, son fichier, l'extrait de la
      * ligne (le mot s'y voit dans son contexte — B7 : la rangée
@@ -65,33 +66,11 @@ public final class UsageCard {
     /** Le symbole dont les usages se listent. */
     private String symbol = "";
 
-    /** La carte vit-elle ? */
-    private boolean shown;
-
-    /** La première rangée de la fenêtre (le défilement de la carte). */
-    private int topRow;
-
     /** La rangée armée par le DOWN (-1 : aucune — l'UP la joue). */
     private int armedRow = -1;
 
     /** La vue porteuse (la navigation s'y poste). */
     private EditorView editor;
-
-    /** Le nombre de rangées visibles à la pose courante. */
-    private int visibleRows;
-
-    private float poseX;
-
-    private float poseY;
-
-    private float cardW;
-
-    private float cardH;
-
-    private float density = 1.0f;
-
-    /** Le style posé par l'hôte : fond translucide, encres, tailles, largeur, forme. */
-    private PopupStyle style = PopupStyle.defaults();
 
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -109,39 +88,13 @@ public final class UsageCard {
      * @param density la densité de l'écran (le dp en pixels)
      */
     public UsageCard(float density) {
-        this.density = density;
+        super(density);
         applyStyle();
-    }
-
-    /**
-     * Pose le style de l'hôte : le fond translucide, les encres, la
-     * taille des textes, la largeur des cartes, la forme — les
-     * pinceaux s'y reconfigurent entiers.
-     *
-     * @param fresh le style posé, null pour celui par défaut
-     */
-    public void setStyle(PopupStyle fresh) {
-        style = fresh == null ? PopupStyle.defaults() : fresh;
-        applyStyle();
-    }
-
-    /** Le style courant (le harnais le lit). */
-    public PopupStyle style() {
-        return style;
-    }
-
-    /**
-     * Branche la vue porteuse : la navigation d'une rangée s'y poste
-     * (hors du geste — la carte vit dans la vue).
-     *
-     * @param view la vue, jamais null
-     */
-    public void bind(EditorView view) {
-        editor = view;
     }
 
     /** Reconfigure les pinceaux au style courant. */
-    private void applyStyle() {
+    @Override
+    protected void applyStyle() {
         cardPaint.setColor(style.backgroundArgb());
         borderPaint.setColor(style.borderArgb());
         borderPaint.setStyle(Paint.Style.STROKE);
@@ -163,6 +116,16 @@ public final class UsageCard {
     }
 
     /**
+     * Branche la vue porteuse : la navigation d'une rangée s'y poste
+     * (hors du geste — la carte vit dans la vue).
+     *
+     * @param view la vue, jamais null
+     */
+    public void bind(EditorView view) {
+        editor = view;
+    }
+
+    /**
      * Ouvre la carte sur les usages d'un symbole — la liste vide
      * range la carte.
      *
@@ -176,17 +139,13 @@ public final class UsageCard {
         shown = !usages.isEmpty();
     }
 
-    /** Ferme la carte (la croix, la navigation, la sélection morte). */
-    public void close() {
+    /** Ramasse les restes de la fermeture. */
+    @Override
+    protected void onClosed() {
         usages = List.of();
         symbol = "";
         topRow = 0;
-        shown = false;
-    }
-
-    /** La carte vit-elle ? */
-    public boolean isShown() {
-        return shown;
+        armedRow = -1;
     }
 
     /** Les usages vivants (le harnais les lit). */
@@ -210,8 +169,7 @@ public final class UsageCard {
      * @return vrai quand la carte a pris le geste
      */
     public boolean onTouchArea(float x, float y) {
-        if (!shown || x < poseX || x >= poseX + cardW
-                || y < poseY || y >= poseY + cardH) {
+        if (!isShown() || !contains(x, y)) {
             return false;
         }
         // la croix : la carte se range
@@ -224,15 +182,7 @@ public final class UsageCard {
         // la rangée d'un usage s'ARME au DOWN, se JOUE à l'UP (les
         // cartes sœurs ne jouent qu'au relâchement : le DOWN du
         // harnais et le doigt réel n'y exécutent rien deux fois)
-        float cursor = poseY + dp(HEADER_DP);
-        for (int at = topRow; at < topRow + visibleRows
-                && at < usages.size(); at++) {
-            if (y >= cursor && y < cursor + rowHeight()) {
-                armedRow = at;
-                return true;
-            }
-            cursor += rowHeight();
-        }
+        armedRow = rowAt(y, poseY + dp(HEADER_DP));
         return true;
     }
 
@@ -282,9 +232,10 @@ public final class UsageCard {
                 radius, radius, borderPaint);
         float headerBaseline = poseY + dp(HEADER_DP) * 0.66f;
         String title = "Usages · " + symbol;
-        canvas.drawText(ellipsize(title, titlePaint, cardW - dp(76)),
+        canvas.drawText(ellipsizeTail(title, titlePaint, cardW - dp(76)),
                 poseX + dp(14), headerBaseline, titlePaint);
-        drawCross(canvas, poseX + cardW - dp(24), poseY + dp(HEADER_DP) / 2.0f);
+        drawCross(canvas, poseX + cardW - dp(24), poseY + dp(HEADER_DP) / 2.0f,
+                glyphPaint);
         canvas.drawLine(poseX + dp(12), poseY + dp(HEADER_DP) - dp(2),
                 poseX + cardW - dp(12), poseY + dp(HEADER_DP) - dp(2),
                 rulePaint);
@@ -294,7 +245,8 @@ public final class UsageCard {
             drawRow(canvas, usages.get(at), cursor);
             cursor += rowHeight();
         }
-        drawScrollbar(canvas, cursor);
+        drawScrollbar(canvas, scrollbarPaint, poseY + dp(HEADER_DP), cursor,
+                poseX + cardW - dp(4));
         drawFooter(canvas, cursor);
     }
 
@@ -331,28 +283,6 @@ public final class UsageCard {
         }
     }
 
-    /** La croix de fermeture (le coin haut droit). */
-    private void drawCross(Canvas canvas, float cx, float cy) {
-        float s = dp(5);
-        canvas.drawLine(cx - s, cy - s, cx + s, cy + s, glyphPaint);
-        canvas.drawLine(cx - s, cy + s, cx + s, cy - s, glyphPaint);
-    }
-
-    /** La barre de défilement : la fenêtre montre-t-elle moins que la liste ? */
-    private void drawScrollbar(Canvas canvas, float rowsBottom) {
-        if (visibleRows >= usages.size()) {
-            return;
-        }
-        float trackTop = poseY + dp(HEADER_DP);
-        float trackH = rowsBottom - trackTop;
-        float thumbH = Math.max(dp(24),
-                trackH * visibleRows / Math.max(1, usages.size()));
-        float thumbY = trackTop + (trackH - thumbH) * topRow
-                / Math.max(1, usages.size() - visibleRows);
-        canvas.drawRect(poseX + cardW - dp(4), thumbY,
-                poseX + cardW - dp(2), thumbY + thumbH, scrollbarPaint);
-    }
-
     /** Le pied de carte : le compte des usages. */
     private void drawFooter(Canvas canvas, float rowsBottom) {
         String count = usages.size() + " usage(s)";
@@ -368,29 +298,15 @@ public final class UsageCard {
     private void place(float anchorTop, float anchorBottom,
             PopupMetrics metrics) {
         float margin = dp(MARGIN_DP);
-        float gap = dp(GAP_DP);
-        cardW = Math.min(Math.max(measuredWidth(),
-                dp(style.minCardWidthDp() - 80)),
-                Math.min(dp(style.maxCardWidthDp() - 60),
-                        metrics.viewWidth() - 2 * margin));
-        int rows = Math.min(MAX_VISIBLE_ROWS, usages.size());
-        float available = metrics.viewHeight() - 2 * margin - dp(HEADER_DP)
-                - dp(FOOTER_DP);
-        while (rows > 1 && dp(HEADER_DP) + dp(FOOTER_DP)
-                + rows * rowHeight() > available) {
-            rows--;
-        }
-        visibleRows = Math.max(1, rows);
+        cardW = clampWidth(measuredWidth(), style.minCardWidthDp() - 80,
+                style.maxCardWidthDp() - 60, margin, metrics);
+        visibleRows = fitRows(MAX_VISIBLE_ROWS, usages.size(),
+                dp(HEADER_DP) + dp(FOOTER_DP), rowHeight(),
+                metrics.viewHeight(), margin);
         cardH = dp(HEADER_DP) + visibleRows * rowHeight() + dp(FOOTER_DP);
-        float belowTop = anchorBottom + gap;
-        if (belowTop + cardH <= metrics.viewHeight() - margin) {
-            poseY = belowTop;
-        } else {
-            poseY = Math.max(margin, anchorTop - gap - cardH);
-        }
-        poseX = Math.max(margin,
-                Math.min(metrics.paddingLeft(),
-                        metrics.viewWidth() - cardW - margin));
+        placeY(anchorTop, anchorBottom, margin, dp(GAP_DP), cardH,
+                metrics.viewHeight());
+        placeX(margin, metrics);
     }
 
     /** La largeur qu'il faut pour la plus large rangée, respirée. */
@@ -405,42 +321,16 @@ public final class UsageCard {
         return widest + dp(ICON_DP) + 3 * dp(14);
     }
 
+    /** Le compte des rangées vivantes. */
+    @Override
+    protected int rowCount() {
+        return usages.size();
+    }
+
     /** La hauteur d'une rangée : le style la porte, l'icône y respire. */
-    private float rowHeight() {
+    @Override
+    protected float rowHeight() {
         return dp(style.rowHeightDp() - 6);
-    }
-
-    /** Le texte coupé à la largeur donnée, l'ellipse à la fin. */
-    private String ellipsize(String text, Paint paint, float width) {
-        if (paint.measureText(text) <= width) {
-            return text;
-        }
-        StringBuilder out = new StringBuilder(text);
-        while (out.length() > 1 && paint.measureText(out.toString()) > width) {
-            out.deleteCharAt(out.length() - 1);
-        }
-        out.append('…');
-        return out.toString();
-    }
-
-    /** L'abscisse posée (le harnais la lit). */
-    public float poseX() {
-        return poseX;
-    }
-
-    /** L'ordonnée posée (le harnais la lit). */
-    public float poseY() {
-        return poseY;
-    }
-
-    /** La largeur de la carte (le harnais la lit). */
-    public float width() {
-        return cardW;
-    }
-
-    /** La hauteur de la carte (le harnais la lit). */
-    public float height() {
-        return cardH;
     }
 
     /** L'ordonnée du centre d'une rangée (le harnais y vise le doigt). */
@@ -450,9 +340,5 @@ public final class UsageCard {
         }
         return poseY + dp(HEADER_DP) + (index - topRow) * rowHeight()
                 + rowHeight() / 2.0f;
-    }
-
-    private float dp(int value) {
-        return value * density;
     }
 }

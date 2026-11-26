@@ -36,6 +36,7 @@ import jo.pigma.editor.internal.scroll.ScrollController;
 import jo.pigma.editor.internal.touch.PinchController;
 import jo.pigma.editor.internal.touch.TouchController;
 import jo.pigma.editor.popups.PopupMetrics;
+import jo.pigma.editor.popups.PopupHost;
 import jo.pigma.editor.popups.SearchBar;
 import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.editor.popups.OverflowCard;
@@ -464,6 +465,17 @@ public final class EditorView extends View {
 
     /** La carte d'actions rapides — l'ampoule de la gouttière. */
     private QuickActionCard quickActionCard;
+
+    /**
+     * LE GESTIONNAIRE DES POPUPS (D-P4 du rapport : 23 fermetures
+     * manuelles, l'exclusion mutuelle codée à la main, le popup
+     * fantôme d'une carte oubliée d'une liste de fermeture). Toute
+     * popup de la vue s'y inscrit avec son rôle — l'ouverture
+     * EXCLUSIVE (une carte flottante à la fois), le changement de
+     * contexte qui range TOUT, l'annonce des ouvertures (la source
+     * unique de l'accessibilité).
+     */
+    private final PopupHost popups = new PopupHost();
 
     /** Le style des popups posé par l'hôte (fond translucide, tailles, forme). */
     private PopupStyle popupStyle = PopupStyle.defaults();
@@ -948,6 +960,7 @@ public final class EditorView extends View {
         colorPickerCard = new ColorPickerCard(dp(1));
         diagnosticCard = new DiagnosticCard(dp(1));
         quickActionCard = new QuickActionCard(dp(1));
+        registerPopups();
         gutter = new Gutter(dp(1));
         // le panneau de la gouttière part à la teinte du fond courant
         gutter.setPanelColor(themeBackground);
@@ -1600,8 +1613,12 @@ public final class EditorView extends View {
         if (found.isEmpty()) {
             return false;
         }
-        quickActionCard.close();
         diagnosticCard.open(line, found);
+        // L'EXCLUSION MUTUELLE (D-P4) : la carte qui ouvre devient LA
+        // carte flottante active — toute autre carte flottante ou à
+        // champ vivante se range (l'ampoule d'avant meurt avec la
+        // carte des actions rapides, l'info d'avant avec elle)
+        popups.shown(diagnosticCard);
         invalidate();
         return true;
     }
@@ -1727,8 +1744,10 @@ public final class EditorView extends View {
         if (actions.isEmpty()) {
             return false;
         }
-        diagnosticCard.close();
         quickActionCard.open(line, actions);
+        // L'EXCLUSION MUTUELLE : la carte d'ampoule devient LA carte
+        // flottante active — la carte de diagnostic d'avant se range
+        popups.shown(quickActionCard);
         invalidate();
         return true;
     }
@@ -1748,8 +1767,10 @@ public final class EditorView extends View {
         }
         int caret = Math.min(selection.caret(), buffer.length());
         int line = buffer.lineOfOffset(caret);
-        diagnosticCard.close();
         quickActionCard.open(line, entries);
+        // L'EXCLUSION MUTUELLE : la carte d'ampoule devient LA carte
+        // flottante active — la carte de diagnostic d'avant se range
+        popups.shown(quickActionCard);
         invalidate();
         return true;
     }
@@ -1770,7 +1791,9 @@ public final class EditorView extends View {
         quickActionsCaret = caretOffset;
         quickActions = quickActionsOfLine(line);
         if (quickActionCard.isShown() && quickActionCard.line() != line) {
-            quickActionCard.close();
+            // la carte suit sa ligne — le gestionnaire la range (sa
+            // vie s'y lit)
+            popups.dismiss(quickActionCard);
         }
     }
     /**
@@ -1993,24 +2016,22 @@ public final class EditorView extends View {
         diagnosticsBuilder = null;
         analysisRevision = -1;
         lastAnalysisStartNanos = -Long.MAX_VALUE / 2;
-        completionCard.set(List.of(), "");
         suggestionWordStart = -1;
-        signatureCard.set(List.of(), 0, 0);
-        selectionBar.hide();
-        overflowCard.close();
-        historyCard.close();
-        diagnosticCard.close();
-        quickActionCard.close();
+        // LE CHANGEMENT DE CONTEXTE (D-P4) : le document change — le
+        // gestionnaire range TOUT, la liste inscrite y vit ENTIÈRE
+        // (aucune carte ne reste sur le carreau — le popup fantôme
+        // naissait d'une liste de fermeture qui oubliait une carte :
+        // la complétion d'avant y restait vivante, invisible)
+        popups.contextLost();
         quickActionsRevision = -1;
         quickActions = List.of();
         // autre document : l'histoire locale du précédent n'y désigne
         // plus rien (les lignes d'avant parlent d'un autre texte)
         localHistory.clear();
         // autre document : la sélection n'y désigne plus rien, la
-        // recherche et la popup d'info non plus
+        // recherche non plus
         selection.setAnchor(-1);
         search.forget();
-        infoPopup.dismiss();
         try (TextTransaction transaction = undoStack.newTransaction()) {
             transaction.replace(0, buffer.length(), text);
         }
@@ -2054,7 +2075,10 @@ public final class EditorView extends View {
         selection.setAnchor(-1);
         touch.releaseHandle();
         search.forget();
-        infoPopup.dismiss();
+        // le document se ROUVRE : le contexte se perd — le
+        // gestionnaire range TOUT (la popup d'info d'avant, la carte
+        // d'usages ancrée au caret d'avant — le fantôme y mourait)
+        popups.contextLost();
         undoStack.clear();
         folds.clear();
         rebuildFoldLayout();
@@ -2499,8 +2523,17 @@ public final class EditorView extends View {
             searchBar = new SearchBar(dp(1));
             searchBar.bind(this);
             searchBar.setStyle(popupStyle);
+            // la barre s'instruit au gestionnaire — sa fermeture et sa
+            // vie y demeurent (l'inscription unique de toutes les
+            // popups, D-P4)
+            popups.register(searchBar, PopupHost.Role.KEYBOARD,
+                    searchBar::hide, searchBar::isShown);
         }
         searchBar.show();
+        // L'EXCLUSION MUTUELLE (D-P4) : la barre qui ouvre devient LA
+        // carte active — toute carte flottante ou à champ vivante se
+        // range (l'ouverture exclusive d'une carte à la fois)
+        popups.shown(searchBar);
         // la carte naît clavier levé : le champ de requête attend une
         // frappe — le clavier logiciel se montre dès l'ouverture, sinon
         // le doigt qui vise le champ ne lève jamais rien (la carte ne
@@ -2515,7 +2548,7 @@ public final class EditorView extends View {
      */
     public void dismissSearchPopup() {
         if (searchBar != null && searchBar.isShown()) {
-            searchBar.hide();
+            popups.dismiss(searchBar);
             clearSearch();
             invalidate();
         }
@@ -2536,8 +2569,14 @@ public final class EditorView extends View {
             gotoBar = new GotoBar(dp(1));
             gotoBar.bind(this);
             gotoBar.setStyle(popupStyle);
+            // la barre s'instruit au gestionnaire (l'inscription unique)
+            popups.register(gotoBar, PopupHost.Role.KEYBOARD,
+                    gotoBar::hide, gotoBar::isShown);
         }
         gotoBar.show();
+        // L'EXCLUSION MUTUELLE : la barre qui ouvre devient LA carte
+        // active — toute carte flottante ou à champ vivante se range
+        popups.shown(gotoBar);
         // la carte naît clavier levé : les chiffres attendent une
         // frappe — même règle que la recherche
         openKeyboard();
@@ -2547,7 +2586,7 @@ public final class EditorView extends View {
     /** Range la carte « aller à la ligne ». */
     public void dismissGotoPopup() {
         if (gotoBar != null && gotoBar.isShown()) {
-            gotoBar.hide();
+            popups.dismiss(gotoBar);
             invalidate();
         }
     }
@@ -2567,9 +2606,15 @@ public final class EditorView extends View {
         if (renameBar == null) {
             renameBar = new RenameCard(dp(1));
             renameBar.bind(this);
+            // la carte s'instruit au gestionnaire (l'inscription unique)
+            popups.register(renameBar, PopupHost.Role.KEYBOARD,
+                    renameBar::hide, renameBar::isShown);
         }
         renameBar.setStyle(popupStyle);
         renameBar.show(symbol, target);
+        // L'EXCLUSION MUTUELLE : la carte qui ouvre devient LA carte
+        // active — toute carte flottante ou à champ vivante se range
+        popups.shown(renameBar);
         openKeyboard();
         invalidate();
     }
@@ -2577,7 +2622,7 @@ public final class EditorView extends View {
     /** Range la carte « renommer le symbole ». */
     public void dismissRenamePopup() {
         if (renameBar != null && renameBar.isShown()) {
-            renameBar.hide();
+            popups.dismiss(renameBar);
             invalidate();
         }
     }
@@ -2595,6 +2640,79 @@ public final class EditorView extends View {
     /** La carte « aller à la ligne », null si jamais ouverte (le harnais la lit). */
     public GotoBar gotoBar() {
         return gotoBar;
+    }
+
+    /**
+     * Les popups de la vue s'instruisent auprès du gestionnaire —
+     * UNE SEULE FOIS à la naissance, leur fermeture et leur vie y
+     * demeurent. La famille FLOTTANTE (l'info, les usages, le
+     * sélecteur, le diagnostic, les actions rapides) y vit
+     * l'exclusion mutuelle ; les barres à CHAMP (la recherche,
+     * l'aller-à, le renommage) s'y inscrivent à LEUR naissance —
+     * elles se créent à leur première ouverture ; les cartes de la
+     * FRAPPE (la complétion, l'aide aux paramètres) COHABITENT avec
+     * la frappe ; la famille de la SÉLECTION (la barre, le
+     * débordement, l'historique) vit de son ancre. L'annonce des
+     * ouvertures s'y branche — la SOURCE UNIQUE de l'accessibilité.
+     */
+    private void registerPopups() {
+        popups.register(infoPopup, PopupHost.Role.FLOATING,
+                infoPopup::dismiss, () -> infoPopup.text() != null);
+        popups.register(usageCard, PopupHost.Role.FLOATING,
+                usageCard::close, usageCard::isShown);
+        popups.register(colorPickerCard, PopupHost.Role.FLOATING,
+                colorPickerCard::close, colorPickerCard::isShown);
+        popups.register(diagnosticCard, PopupHost.Role.FLOATING,
+                diagnosticCard::close, diagnosticCard::isShown);
+        popups.register(quickActionCard, PopupHost.Role.FLOATING,
+                quickActionCard::close, quickActionCard::isShown);
+        popups.register(completionCard, PopupHost.Role.TYPING,
+                () -> completionCard.set(List.of(), ""),
+                completionCard::isShown);
+        popups.register(signatureCard, PopupHost.Role.TYPING,
+                () -> signatureCard.set(List.of(), 0, 0),
+                signatureCard::isShown);
+        popups.register(selectionBar, PopupHost.Role.SELECTION,
+                selectionBar::hide, selectionBar::isShown);
+        popups.register(overflowCard, PopupHost.Role.SELECTION,
+                overflowCard::close, overflowCard::isShown);
+        popups.register(historyCard, PopupHost.Role.SELECTION,
+                historyCard::close, historyCard::isShown);
+        popups.setAnnouncer(card -> announceForAccessibility(
+                announcedPopupLabel(card)));
+    }
+
+    /**
+     * Le libellé annoncé à l'ouverture d'une carte (l'annonce de la
+     * source unique — les rangées en nœuds virtuels viendront avec
+     * l'accessibilité des cartes, D-P8).
+     */
+    private String announcedPopupLabel(Object card) {
+        if (card == infoPopup) {
+            return "Documentation ouverte";
+        }
+        if (card == usageCard) {
+            return "Liste des usages ouverte";
+        }
+        if (card == colorPickerCard) {
+            return "Sélecteur de couleur ouvert";
+        }
+        if (card == diagnosticCard) {
+            return "Diagnostics ouverts";
+        }
+        if (card == quickActionCard) {
+            return "Actions rapides ouvertes";
+        }
+        if (card == searchBar) {
+            return "Recherche ouverte";
+        }
+        if (card == gotoBar) {
+            return "Aller à la ligne ouvert";
+        }
+        if (card == renameBar) {
+            return "Renommer le symbole ouvert";
+        }
+        return "Carte ouverte";
     }
 
     /**
@@ -2626,6 +2744,10 @@ public final class EditorView extends View {
      */
     public void showInfoPopup(String text, int line, int column) {
         infoPopup.show(null, text, line, column);
+        // L'EXCLUSION MUTUELLE : la popup qui ouvre devient LA carte
+        // flottante active — toute autre carte flottante ou à champ
+        // vivante se range
+        popups.shown(infoPopup);
         invalidate();
     }
 
@@ -2642,6 +2764,9 @@ public final class EditorView extends View {
      */
     public void showInfoPopup(String title, String body, int line, int column) {
         infoPopup.show(title, body, line, column);
+        // L'EXCLUSION MUTUELLE : la popup qui ouvre devient LA carte
+        // flottante active
+        popups.shown(infoPopup);
         invalidate();
     }
 
@@ -2659,6 +2784,9 @@ public final class EditorView extends View {
     public void showInfoPopup(String title, String body, boolean markdown,
             int line, int column) {
         infoPopup.show(title, body, markdown, line, column);
+        // L'EXCLUSION MUTUELLE : la popup qui ouvre devient LA carte
+        // flottante active
+        popups.shown(infoPopup);
         invalidate();
     }
 
@@ -2919,7 +3047,7 @@ public final class EditorView extends View {
     /** Masque la popup d'info. */
     public void dismissInfoPopup() {
         if (infoPopup.text() != null) {
-            infoPopup.dismiss();
+            popups.dismiss(infoPopup);
             invalidate();
         }
     }
@@ -3175,10 +3303,10 @@ public final class EditorView extends View {
                     && colorPickerCard.onTouchArea(event.getX(),
                             event.getY(), event.getActionMasked());
             if (!caretOnUsage) {
-                usageCard.close();
+                popups.dismiss(usageCard);
             }
             if (!caretOnPicker) {
-                colorPickerCard.close();
+                popups.dismiss(colorPickerCard);
             }
             boolean touchedSearch = searchBar != null && searchBar.isShown()
                     && searchBar.onTouchArea(event.getX(), event.getY());
@@ -3294,9 +3422,17 @@ public final class EditorView extends View {
                     downOnInfo = true;
                     return true;
                 }
-                dismissInfoPopup();
-                diagnosticCard.close();
-                quickActionCard.close();
+                // LA FAMILLE FLOTTANTE SE RANGE (D-P4) : le doigt qui
+                // reprend le texte ne doit jamais tomber sur une carte
+                // flottante d'avant — l'info, le diagnostic, les
+                // actions rapides, les usages, le sélecteur ; le
+                // gestionnaire les range d'un trait (les barres à
+                // champ demeurent : leur rangement leur appartient)
+                boolean floatingWasShown = popups.anyFloatingShown();
+                popups.dismissFloating();
+                if (floatingWasShown) {
+                    invalidate();
+                }
                 // une sélection vivante se saisit d'abord par ses
                 // poignées (le défilement n'y a pas droit)
                 grabSelectionHandle(event.getX(), event.getY());
@@ -5785,7 +5921,7 @@ public final class EditorView extends View {
      */
     public void showOverflowMenu() {
         if (overflowCard.isShown()) {
-            overflowCard.close();
+            popups.dismiss(overflowCard);
             invalidate();
             return;
         }
@@ -5843,9 +5979,9 @@ public final class EditorView extends View {
 
     private void updateSelectionBar() {
         if (!selectionBarAlive()) {
-            selectionBar.hide();
-            overflowCard.close();
-            historyCard.close();
+            // la sélection est morte : SA famille se range au
+            // gestionnaire (la barre, le débordement, l'historique)
+            popups.dismissSelection();
             clipboardProbeFrame = -1;
             return;
         }
@@ -6126,6 +6262,10 @@ public final class EditorView extends View {
         // s'il sait : sa réponse REMPLACE la liste (la présentation ne
         // change JAMAIS : la carte des usages, toujours)
         usageCard.open(symbol, localUsages(symbol, caret));
+        // L'EXCLUSION MUTUELLE : la carte des usages devient LA carte
+        // flottante active — toute autre carte flottante ou à champ
+        // vivante se range
+        popups.shown(usageCard);
         invalidate();
         if (usageProvider != null) {
             usageProvider.usagesFor(symbol, line,
@@ -6256,6 +6396,10 @@ public final class EditorView extends View {
             pendingEditLabel = "couleur";
             applyEdit(freshStart, freshEnd, fresh);
         });
+        // L'EXCLUSION MUTUELLE : le sélecteur devient LA carte
+        // flottante active — toute autre carte flottante ou à champ
+        // vivante se range
+        popups.shown(colorPickerCard);
         invalidate();
     }
 
@@ -6345,13 +6489,10 @@ public final class EditorView extends View {
         selection.setAnchor(-1);
         // les cartes ancrées au CARET se rangent avec la sélection
         // qu'elles regardaient (usages, sélecteur de couleur) — le
-        // doigt qui reprend le texte ne doit pas tomber dessus
-        if (usageCard != null) {
-            usageCard.close();
-        }
-        if (colorPickerCard != null) {
-            colorPickerCard.close();
-        }
+        // doigt qui reprend le texte ne doit pas tomber dessus ; le
+        // gestionnaire les range (l'exclusion des FLOTTANTES y vit)
+        popups.dismiss(usageCard);
+        popups.dismiss(colorPickerCard);
         invalidate();
     }
 

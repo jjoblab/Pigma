@@ -220,6 +220,18 @@ public class View {
     }
 
     /**
+     * Annonce un changement à l'accessibilité (la source unique des
+     * ouvertures de popups s'y branche — le vrai service s'en charge
+     * à l'écran, le harnais n'en fait rien).
+     *
+     * @param text l'annonce
+     */
+    public void announceForAccessibility(CharSequence text) {
+        // le harnais n'a pas de service d'accessibilité : l'annonce se
+        // tait (le décompte vivrait à la demande)
+    }
+
+    /**
      * Déclenche l'auditeur de clic.
      *
      * @return vrai si un auditeur a couru

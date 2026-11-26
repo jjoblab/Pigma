@@ -104,6 +104,8 @@ public final class RobolectricHarness {
         asyncHover();
         richCompletionAndOverloads();
         markdownPopupScrolls();
+        popupMutualExclusion();
+        popupContextLost();
         stateSaveRestore();
         assertTrue(failures + " vérification(s) en échec", failures == 0);
         System.out.println("résumé harnais réel : " + scenarios
@@ -985,6 +987,123 @@ public final class RobolectricHarness {
         frame();
         check("l'appui sans traînée range la popup",
                 editor.infoPopupText() == null);
+    }
+
+    /**
+     * L'EXCLUSION MUTUELLE DES CARTES FLOTTANTES (D-P4 du rapport des
+     * popups — le gestionnaire) : une carte flottante à la fois —
+     * l'ouverture des usages range la popup d'info d'avant, la carte
+     * de diagnostic range les usages, la barre à champ range le
+     * diagnostic ; la complétion COHABITE avec la frappe (aucune
+     * exclusion ne la touche — la carte des usages vit sous elle).
+     */
+    private void popupMutualExclusion() throws InterruptedException {
+        begin("popups : l'exclusion mutuelle des cartes flottantes (D-P4)");
+        String original = editor.getBuffer().toString();
+        // la popup d'info vit (la documentation locale du mot)
+        selectFirstWord();
+        editor.showSelectionDocs();
+        frame();
+        check("la popup d'info vit (la documentation du mot)",
+                editor.infoPopupText() != null);
+        // la carte des usages ouvre : la popup d'info d'avant se
+        // range (UNE carte flottante à la fois)
+        editor.showUsagesPopup();
+        frame();
+        check("la carte des usages vit (le repli local du document)",
+                editor.usageCard().isShown()
+                        && !editor.usageCard().usages().isEmpty());
+        check("l'ouverture des usages range la popup d'info d'avant",
+                editor.infoPopupText() == null);
+        // la complétion COHABITE avec la carte vivante (la frappe
+        // n'évince personne — la carte des usages demeure sous elle)
+        editor.setSuggestionProvider((prefix, line, column) ->
+                java.util.Arrays.asList(new CompletionCard.Entry("paix",
+                        "le candidat d'essai", CompletionCard.KIND_WORD,
+                        false, "", false, "", -1, -1)));
+        int afterPack = original.indexOf("pack") + 4;
+        editor.setSelection(afterPack, afterPack);
+        frame();
+        check("la complétion vit à la frappe",
+                editor.completionCard().isShown());
+        check("la complétion COHABITE : la carte des usages demeure",
+                editor.usageCard().isShown());
+        editor.setSuggestionProvider(null);
+        editor.completionCard().set(java.util.List.of(), "");
+        // la carte de diagnostic ouvre : la carte des usages se range
+        editor.setSelection(original.length(), original.length());
+        connection.commitText(")", 1);
+        // l'analyse est AMORTIE (300 ms) : le temps réel avance, la
+        // passe repart à l'échéance — les diagnostics arrivent
+        try {
+            Thread.sleep(400);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        frame();
+        idle();
+        frame();
+        idle();
+        int caret = editor.getCaretOffset();
+        int line = editor.getBuffer().lineOfOffset(caret);
+        check("la ligne porte un diagnostic (pré-requis)",
+                !editor.diagnosticsOfLine(line).isEmpty());
+        check("la carte des usages vit encore (l'édition ne la range pas)",
+                editor.usageCard().isShown());
+        editor.openDiagnosticsAtLine(line);
+        frame();
+        check("la carte de diagnostic vit",
+                editor.diagnosticCard().isShown());
+        check("l'ouverture du diagnostic range les usages (une carte à la fois)",
+                !editor.usageCard().isShown());
+        // la BARRE À CHAMP vit l'exclusion pareillement : la recherche
+        // qui ouvre range la carte de diagnostic d'avant
+        editor.toggleSearchPopup();
+        frame();
+        check("la barre de recherche vit (l'ouverture)",
+                editor.searchBar() != null && editor.searchBar().isShown());
+        check("la barre à champ range le diagnostic d'avant",
+                !editor.diagnosticCard().isShown());
+        editor.dismissSearchPopup();
+        frame();
+        // le retour au propre : la parenthèse s'en va
+        editor.getUndoStack().undo();
+        check("le texte revient à l'original",
+                editor.getBuffer().toString().equals(original));
+    }
+
+    /**
+     * LE CHANGEMENT DE CONTEXTE (D-P4 — le popup fantôme meurt) : le
+     * document change (l'onglet de l'hôte se déporte et revient) —
+     * le gestionnaire range TOUT, la liste inscrite y vit ENTIÈRE ;
+     * la carte des usages d'avant — qui survivait au document d'avant
+     * (vivante, ancrée au caret d'un autre texte) — se range.
+     */
+    private void popupContextLost() throws InterruptedException {
+        begin("popups : le changement de contexte range tout (le fantôme meurt)");
+        // une carte vivante (les usages du mot au caret)
+        selectFirstWord();
+        editor.showUsagesPopup();
+        frame();
+        check("la carte des usages vit avant le changement (pré-requis)",
+                editor.usageCard().isShown());
+        // le document change : l'onglet Kotlin ouvre, le document
+        // Java se range avec ses popups
+        ((MainActivity) activity).harnessSelectTab(3);
+        frame();
+        idle();
+        check("la carte des usages se range au document perdu",
+                !editor.usageCard().isShown());
+        // le retour au document Java (l'onglet revient) : la carte ne
+        // RENAÎT pas (le fantôme d'avant vivait — vivante, ancrée au
+        // texte d'avant)
+        ((MainActivity) activity).harnessSelectTab(0);
+        frame();
+        idle();
+        editor.awaitBackgroundFill(20_000L);
+        frame();
+        check("la carte des usages ne renaît pas au retour (le fantôme est mort)",
+                !editor.usageCard().isShown());
     }
 
     /**

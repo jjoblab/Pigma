@@ -131,6 +131,7 @@ public final class OpenHarness {
         quickDoc();
         selectionBar();
         popupsSecondGeneration();
+        popupHostExclusion();
         diagnosticsAndAmpoule();
         languageServer();
         lspEditorFacade();
@@ -2180,6 +2181,72 @@ public final class OpenHarness {
         check("la double annulation rend la ligne d'avant",
                 editor.getBuffer().toString().equals(original));
         detail("historique local : " + editor.localHistory().size() + " version(s)");
+    }
+
+    /**
+     * LE GESTIONNAIRE DES POPUPS (D-P4 du rapport des popups) :
+     * l'exclusion mutuelle (une carte flottante à la fois — l'ouverture
+     * des usages range la popup d'info d'avant, la barre à champ range
+     * les usages), le changement de contexte qui range TOUT (LE POPUP
+     * FANTÔME MEURT : la carte des usages survivait au document perdu,
+     * vivante, ancrée au caret d'un autre texte — l'onglet revenu la
+     * laissait là, fantôme), l'annonce des ouvertures à la source
+     * unique de l'accessibilité.
+     */
+    private static void popupHostExclusion() throws InterruptedException {
+        begin("popups : le gestionnaire — exclusion, fantôme, annonce");
+        openLanguage("Java", 10_000L);
+        String original = editor.getBuffer().toString();
+        // LA POPUP D'INFO VIT : la documentation du mot sélectionné
+        // (le caret au départ d'abord — la vue y revient, le mot s'y
+        // dessine : le scénario d'avant laisse le document défilé)
+        editor.caretTo(0);
+        frame();
+        doubleTapOfToken("total");
+        frame();
+        tap(editor.selectionBar().docsCenterX(), editor.selectionBar().centerY());
+        frame();
+        check("la popup d'info vit (la documentation du mot)",
+                editor.isInfoPopupVisible());
+        // L'EXCLUSION MUTUELLE : la carte des usages ouvre — la popup
+        // d'info d'avant se range (UNE carte flottante à la fois)
+        editor.caretTo(original.indexOf("total") + 3);
+        frame();
+        editor.showUsagesPopup();
+        frame();
+        check("la carte des usages vit (le repli local du document)",
+                editor.usageCard().isShown()
+                        && !editor.usageCard().usages().isEmpty());
+        check("l'ouverture des usages range la popup d'info d'avant",
+                !editor.isInfoPopupVisible());
+        // la BARRE À CHAMP vit l'exclusion pareillement : la recherche
+        // qui ouvre range les usages d'avant
+        editor.toggleSearchPopup();
+        frame();
+        check("la barre de recherche vit à l'ouverture",
+                editor.searchBar() != null && editor.searchBar().isShown());
+        check("la barre à champ range les usages d'avant",
+                !editor.usageCard().isShown());
+        editor.searchBar().close();
+        frame();
+        // LE FANTÔME MEURT : la carte des usages vit, le document
+        // change (l'onglet Kotlin ouvre) — le gestionnaire range TOUT,
+        // la carte ne survit PAS au document perdu
+        editor.caretTo(original.indexOf("graine") + 3);
+        frame();
+        editor.showUsagesPopup();
+        frame();
+        check("la carte des usages vit avant le changement (pré-requis)",
+                editor.usageCard().isShown());
+        openLanguage("Kotlin", 10_000L);
+        check("la carte des usages se range au document perdu (le fantôme meurt)",
+                !editor.usageCard().isShown());
+        // le retour au document Java : la carte ne renaît pas
+        openLanguage("Java", 10_000L);
+        check("la carte des usages ne renaît pas au retour",
+                !editor.usageCard().isShown());
+        check("le document de démo revient intact",
+                editor.getBuffer().toString().contentEquals(original));
     }
 
     /**
