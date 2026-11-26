@@ -784,7 +784,12 @@ public final class EditorView extends View {
         // pastilles FLOTTENT au-dessus du texte (à la référence — la
         // carte y recouvre le code, translucide) ; les lignes longues
         // peuvent glisser dessous, le débordement se calcule au texte
-        setPadding(dp(90), dp(16), dp(16), dp(16));
+        // le panneau de la gouttière, à la référence : les marqueurs
+        // (0-22), les numéros (finissent à -28), la COLONNE DES PLIS
+        // (-14, DANS le panneau — jamais sur le filet), l'aperçu
+        // @Preview à -38 — le tout AVANT le filet du bord, l'ombre
+        // d'élévation ne touche que le texte
+        setPadding(dp(78), dp(16), dp(16), dp(16));
         setFocusable(true);
         setFocusableInTouchMode(true);
     }
@@ -1222,7 +1227,8 @@ public final class EditorView extends View {
                     : diagnostics.betweenLines(line, line)) {
                 if (local.start() >= lineStart && local.start() < lineEnd) {
                     found.add(new DiagnosticCard.Entry(
-                            DiagnosticCard.SEVERITY_ERROR, local.message()));
+                            DiagnosticCard.SEVERITY_ERROR, local.message(),
+                            localFixesOf(local, lineStart, lineEnd)));
                 }
             }
         }
@@ -1265,6 +1271,81 @@ public final class EditorView extends View {
      */
     public boolean lineHasDiagnostics(int line) {
         return !diagnosticsOfLine(line).isEmpty();
+    }
+
+    /**
+     * LES CORRECTIFS LOCAUX d'un diagnostic de l'analyse (la leçon de
+     * la référence : son analyseur IntelliJ accompagne CHAQUE erreur
+     * de ses quickfixes — la popup d'erreur y porte l'étage des
+     * correctifs, l'ampoule n'est qu'un autre chemin). Le fermant
+     * orphelin se SUPPRIME ; l'ouvrant non fermé se REFERME (le
+     * fermant apparié s'insère à la fin de la ligne — l'éditeur y
+     * pose une édition actionnable, SANS serveur de langage).
+     *
+     * @param local le diagnostic local (sa plage et son message)
+     * @param lineStart le début de la ligne du diagnostic
+     * @param lineEnd   la fin de la ligne du diagnostic
+     * @return les correctifs, jamais null (vide : aucun ne se propose)
+     */
+    private List<DiagnosticCard.Fix> localFixesOf(
+            DiagnosticsDocument.Diagnostic local, int lineStart, int lineEnd) {
+        List<DiagnosticCard.Fix> fixes = new ArrayList<>();
+        String message = local.message();
+        if (message.startsWith("fermant orphelin")) {
+            // « fermant orphelin : « } » sans ouvrant » — le signe se
+            // lit entre les guillemets du message, sa suppression
+            // guérit la ligne
+            int open = message.lastIndexOf('\u00AB');
+            int close = message.lastIndexOf('\u00BB');
+            if (open >= 0 && close > open) {
+                String sign = message.substring(open + 1, close).trim();
+                if (sign.length() == 1) {
+                    fixes.add(new DiagnosticCard.Fix(
+                            "Supprimer \u00AB " + sign + " \u00BB",
+                            () -> {
+                                applyEdit(local.start(), local.end(), "");
+                                releaseAnalysisThrottle();
+                            }));
+                }
+            }
+        } else if (message.startsWith("ouvrant non fermé")) {
+            // l'ouvrant se referme : le fermant apparié s'insère à la
+            // fin de la ligne (le bloc se clôt là où il vit)
+            char opener = safeCharAt(local.start());
+            char closer = switch (opener) {
+                case '{' -> '}';
+                case '(' -> ')';
+                case '[' -> ']';
+                default -> 0;
+            };
+            if (closer != 0) {
+                int insertAt = Math.min(local.end(), buffer.length());
+                fixes.add(new DiagnosticCard.Fix(
+                        "Insérer \u00AB " + closer + " \u00BB",
+                        () -> {
+                            applyEdit(insertAt, insertAt,
+                                    String.valueOf(closer));
+                            releaseAnalysisThrottle();
+                        }));
+            }
+        }
+        return fixes;
+    }
+
+    /** Le caractère à un décalage (0 : hors bornes — l'édition d'avant a pu le tuer). */
+    private char safeCharAt(int offset) {
+        return offset >= 0 && offset < buffer.length()
+                ? buffer.charAt(offset) : 0;
+    }
+
+    /**
+     * Libère le throttle de l'analyse : la passe qui suit la trame
+     * prochaine repart aussitôt — un CORRECTIF exécuté doit guérir
+     * SOUS LES YEUX (le souligné meurt, le marqueur disparaît), pas
+     * 300 ms plus tard.
+     */
+    private void releaseAnalysisThrottle() {
+        lastAnalysisStartNanos = -Long.MAX_VALUE / 2;
     }
 
     /**
@@ -2967,7 +3048,7 @@ public final class EditorView extends View {
                     // des plis garde son pli au double-tap)
                     if (tappedTwice(event.getX(), event.getY())
                             && event.getX() > dp(24)
-                            && event.getX() < getPaddingLeft() - dp(34)) {
+                            && event.getX() < getPaddingLeft() - dp(16)) {
                         toggleBreakpoint(line);
                         clearComposing();
                         lastTapNanos = 0L;
@@ -3220,6 +3301,11 @@ public final class EditorView extends View {
             int rows = softWrap ? wrapModel.rowsOf(line) : 1;
             if (end > start) {
                 if (rows <= 1) {
+                    // LE CHIP DE COULEUR se peint SOUS le texte (le
+                    // fond translucide y teinte le littéral, le
+                    // liseré le borde — la leçon de la référence :
+                    // le littéral reste LISIBLE, jamais caché)
+                    drawColorChips(canvas, line, baseline);
                     drawTokens(canvas, line, start, baseline);
                 } else {
                     drawWrappedLine(canvas, line, start, end, baseline, rows);
@@ -3247,7 +3333,13 @@ public final class EditorView extends View {
         // les candidats AVANT leur dessin (un déplacement de curseur
         // rend ses candidats dans la même trame), les soulignés de
         // diagnostic par-dessus le texte, le bandeau par-dessus tout,
-        // la popup d'info par-dessus le bandeau
+        // la popup d'info par-dessus le bandeau — P0-4 du rapport :
+        // ces mises à jour devraient partir des événements, pas de la
+        // trame ; l'essai d'un masque de saleté les rendait
+        // conditionnelles mais les états EXTERNES (presse-papiers,
+        // réponses du serveur) vieillissent hors de nos événements —
+        // la migration se refera un dérivé à la fois, éprouve à
+        // l'appui
         refreshAnalysis();
         updateSuggestions();
         updateSignature();
@@ -3689,7 +3781,7 @@ public final class EditorView extends View {
                 continue;
             }
             gutter.drawNumber(canvas, line, lineBaseline(line),
-                    getPaddingLeft() - dp(30));
+                    getPaddingLeft() - dp(28));
             boolean error = false;
             boolean warning = false;
             if (diagnostics != null && analysisRevision == buffer.getRevision()) {
@@ -3893,7 +3985,7 @@ public final class EditorView extends View {
         // joints par le filet vertical pointillé
         float baseline = lineBaseline(line);
         float mid = baseline + (fontMetrics.top + fontMetrics.bottom) / 2.0f;
-        float cx = getPaddingLeft() - dp(12);
+        float cx = getPaddingLeft() - dp(10);
         if (isFolded) {
             gutter.drawFoldAnchor(canvas, Gutter.FOLD_COLLAPSED, cx, mid);
             return;
@@ -4388,7 +4480,6 @@ public final class EditorView extends View {
         // non-égal, les comparaisons et les conjonctions s'unifient
         // par-dessus leurs deux caractères
         drawLigatures(canvas, line, baseline);
-        drawColorChips(canvas, line, baseline);
         textPaint.setFakeBoldText(false);
     }
 
@@ -4429,11 +4520,17 @@ public final class EditorView extends View {
                 if (color != null) {
                     float chipLeft = left + at * charWidth;
                     float chipRight = chipLeft + (1 + digits) * charWidth;
-                    colorChipPaint.setColor(color);
+                    // le fond TEINTÉ : la couleur à alpha réduit (le
+                    // littéral se lit DESSUS — à la référence, le
+                    // fond ne mange jamais le texte), le liseré la
+                    // borde PLEIN
+                    colorChipPaint.setColor(
+                            (color & 0x00FFFFFF) | 0x30000000);
                     canvas.drawRoundRect(chipLeft, top, chipRight, bottom,
                             dp(3), dp(3), colorChipPaint);
-                    colorChipBorderPaint.setColor(
-                            (theme.defaultColor() & 0x00FFFFFF) | 0x33000000);
+                    colorChipBorderPaint.setColor(color | 0xFF000000);
+                    colorChipBorderPaint.setStrokeWidth(Math.max(1.0f, dp(1)));
+                    colorChipBorderPaint.setStyle(Paint.Style.STROKE);
                     canvas.drawRoundRect(chipLeft, top, chipRight, bottom,
                             dp(3), dp(3), colorChipBorderPaint);
                 }

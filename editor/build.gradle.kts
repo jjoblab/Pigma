@@ -8,6 +8,11 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.minSdk.get().toInt()
+        // Les règles consommateur : un hôte qui minifie sa release
+        // garde le client LSP vivant (lsp4j et Gson chargent leurs
+        // protocoles par réflexion — le rapport d'analyse l'a demandé,
+        // le fichier vit au module)
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     compileOptions {

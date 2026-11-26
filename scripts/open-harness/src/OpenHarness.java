@@ -2230,12 +2230,40 @@ public final class OpenHarness {
         check("la carte de diagnostic s'ouvre au marqueur",
                 editor.diagnosticCard().isShown());
         boolean orphan = false;
+        java.util.List<DiagnosticCard.Fix> fixes = java.util.List.of();
         for (DiagnosticCard.Entry entry : editor.diagnosticCard().entries()) {
             if (entry.message().contains("fermant orphelin")) {
                 orphan = entry.severity() == DiagnosticCard.SEVERITY_ERROR;
+                fixes = entry.fixes();
             }
         }
         check("le message porte la sévérité d'erreur", orphan);
+        // L'ÉTAGE DES CORRECTIFS LOCAUX (la leçon de la référence :
+        // l'analyteur accompagne son erreur du geste qui la guérit —
+        // SANS serveur de langage) : le fermant orphelin propose sa
+        // SUPPRESSION, le tap l'exécute, le diagnostic meurt
+        check("l'étage porte le correctif de suppression",
+                !fixes.isEmpty());
+        if (!fixes.isEmpty()) {
+            check("le correctif propose la suppression du signe",
+                    fixes.get(0).title().contains("Supprimer"));
+            int before = editor.diagnosticCount();
+            fixes.get(0).action().run();
+            frame();
+            View.harnessDrain(1_200L);
+            frame();
+            check("le correctif exécuté guérit la ligne",
+                    editor.diagnosticCount() < before);
+            // l'orphelin REVIENT (l'utilisateur retape sa parenthèse
+            // — la suite du scénario éprouve le souligné dessus)
+            editor.caretTo(0);
+            connection.commitText(")", 1);
+            frame();
+            Thread.sleep(600L);
+            frame();
+            View.harnessDrain(2_000L);
+            frame();
+        }
         // le souligné rouge du texte y va aussi : la carte se rouvre
         // au doigt sur le signe mésapparié
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,

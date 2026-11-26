@@ -234,17 +234,22 @@ public final class MainActivity extends Activity {
         undoButton = new Button(this);
         redoButton = new Button(this);
         undoButton.setText("Annuler");
+        undoButton.setContentDescription("Annuler la dernière édition");
         redoButton.setText("Rétablir");
+        redoButton.setContentDescription("Rétablir l'édition annulée");
         undoButton.setOnClickListener(this::onUndoClicked);
         redoButton.setOnClickListener(this::onRedoClicked);
         copyButton = new Button(this);
         copyButton.setText("Copier les mesures");
+        copyButton.setContentDescription("Copier les mesures de performance dans le presse-papiers");
         copyButton.setOnClickListener(this::onCopyClicked);
         lspButton = new Button(this);
         lspButton.setText("LSP");
+        lspButton.setContentDescription("Brancher le serveur de langage JSON");
         lspButton.setOnClickListener(this::onLspToggleClicked);
         lspLuaButton = new Button(this);
         lspLuaButton.setText("LSP Lua");
+        lspLuaButton.setContentDescription("Brancher le serveur de langage Lua");
         lspLuaButton.setOnClickListener(this::onLspLuaClicked);
 
         setContentView(buildLayout());
