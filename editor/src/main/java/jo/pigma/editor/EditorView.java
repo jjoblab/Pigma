@@ -525,6 +525,9 @@ public final class EditorView extends View {
     /** La minimap — la carte du document au bord droit, ses pastilles d'annulation en tête. */
     private Minimap minimap;
 
+    /** La minimap vit-elle à l'écran (l'hôte la retire quand son écran n'en veut pas). */
+    private boolean minimapEnabled = true;
+
     /** La borne de début du mot courant (l'insertion remplace le préfixe). */
     private int suggestionWordStart = -1;
 
@@ -1897,6 +1900,31 @@ public final class EditorView extends View {
     }
 
     /**
+     * La minimap vit-elle à l'écran (la carte du document au bord
+     * droit et sa colonne de pastilles).
+     *
+     * @return vrai si la minimap se dessine
+     */
+    public boolean isMinimapEnabled() {
+        return minimapEnabled;
+    }
+
+    /**
+     * La minimap se pose ou se retire (l'hôte décide — un écran
+     * étroit s'en passe, la zone rend son espace au texte). Le retrait
+     * ne touche ni le tampon ni la coloration.
+     *
+     * @param enabled vrai pour dessiner la minimap
+     */
+    public void setMinimapEnabled(boolean enabled) {
+        if (minimapEnabled == enabled) {
+            return;
+        }
+        minimapEnabled = enabled;
+        invalidate();
+    }
+
+    /**
      * La hauteur d'une ligne de texte (marge comprise) — l'hôte et
      * le harnais d'intégration y calculent les ordonnées de contact
      * depuis la géométrie RÉELLE de la police du cadre.
@@ -2823,10 +2851,18 @@ public final class EditorView extends View {
                 // geste au DOWN : les pastilles jouent au tap, la carte
                 // suit le doigt EN CONTINU (le drag y navigue — la vue
                 // saute à la ligne visée à chaque cran, le relâchement
-                // y reste)
+                // y reste). LA ZONE SE BORNE À CE QUI SE DESSINE : la
+                // carte ne couvre que la hauteur du document rendu (un
+                // document court ne peint rien au-dessous — le doigt y
+                // retombe sur le texte, le défaut du terrain où la
+                // bande avalait les taps du vide)
                 float minimapLeft = getWidth() - minimap.width()
                         - minimap.columnWidth();
-                if (event.getX() > minimapLeft) {
+                float minimapBottom = minimap.mapBottom(getHeight(),
+                        buffer.getLineCount());
+                if (minimapEnabled
+                        && event.getX() > minimapLeft
+                        && event.getY() < minimapBottom) {
                     if (minimap.buttonAt(
                             event.getX(), event.getY(), getWidth()) < 0) {
                         minimapDragging = true;
@@ -3412,12 +3448,14 @@ public final class EditorView extends View {
         int firstVisible = firstVisibleLine();
         int lastVisible = lineOfVisibleIndex(
                 (int) ((getHeight() - getPaddingTop() + scrollY) / lineHeight));
-        minimap.setColors(theme.defaultColor(),
-                (themeBackground & 0x00FFFFFF) | 0x14000000, CARET_COLOR);
-        minimap.draw(canvas, getHeight(), getWidth(), firstVisible,
-                Math.min(lastVisible, buffer.getLineCount() - 1),
-                buffer.getLineCount(),
-                line -> buffer.getLineEnd(line) - buffer.getLineStart(line));
+        if (minimapEnabled) {
+            minimap.setColors(theme.defaultColor(),
+                    (themeBackground & 0x00FFFFFF) | 0x14000000, CARET_COLOR);
+            minimap.draw(canvas, getHeight(), getWidth(), firstVisible,
+                    Math.min(lastVisible, buffer.getLineCount() - 1),
+                    buffer.getLineCount(),
+                    line -> buffer.getLineEnd(line) - buffer.getLineStart(line));
+        }
         // la fenêtre visible est payée : le reste remplit au fil de fond
         ensureFill();
         lastFrameNanos = System.nanoTime() - frameBegin;

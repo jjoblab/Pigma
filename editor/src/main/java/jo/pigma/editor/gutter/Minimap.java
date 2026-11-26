@@ -333,6 +333,23 @@ public final class Minimap {
      * @param lineCount  le compte de lignes du document
      * @return l'indice de ligne visé, borné
      */
+    /**
+     * Le bas de la carte dessinée : le document rendu s'y arrête (un
+     * document court ne peint rien au-dessous — la zone tactile s'y
+     * borne, le doigt y retombe sur le texte).
+     *
+     * @param viewHeight la hauteur de la vue
+     * @param lineCount  le nombre de lignes du document
+     * @return l'ordonnée du bas du document rendu
+     */
+    public float mapBottom(float viewHeight, int lineCount) {
+        float mapH = Math.max(1.0f, viewHeight);
+        float rowH = Math.min(ROW_PX, mapH / Math.max(1, lineCount));
+        float scaleY = lineCount * rowH > mapH
+                ? mapH / (lineCount * rowH) : 1.0f;
+        return Math.min(viewHeight, lineCount * rowH * scaleY);
+    }
+
     public int lineAt(float y, float viewHeight, int lineCount) {
         float mapTop = 0.0f;
         float mapH = Math.max(1.0f, viewHeight - mapTop);

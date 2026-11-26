@@ -33,7 +33,7 @@ qu'il propose.
 | 64 | Harnais sur les vraies classes Android (Robolectric remplace les stubs maison) — 11 scénarios sur l'activité réelle ; D1 corrigé au passage (SavedState du cadre) | R5, D7, D1, R2 | **fait** | `docs/chantiers/64.md` | à pousser |
 | 65 | Guide d'intégration « 5 minutes » à la racine + capture (rendu réel au mode graphique natif) | — | **fait** | `INTEGRATION.md` | à pousser |
 | 66 | Entrée et composition : clearComposing avant l'insertion (sendKeyEvent et performEditorAction) | B6 | **fait** | `docs/chantiers/66.md` | à pousser |
-| 67 | Minimap : zone tactile bornée à ce qui est dessiné, setMinimapEnabled | B2 | prévu | — | — |
+| 67 | Minimap : zone tactile bornée à ce qui se dessine (mapBottom), setMinimapEnabled/isMinimapEnabled publics | B2 | **fait** | `docs/chantiers/67.md` | à pousser |
 | 68 | Plis : chevron au bon calque, un seul chevron, placeholder `{…}` tapable | B5 | prévu | — | — |
 | 69 | ~~Sauvegarde d'état : BaseSavedState + super~~ réglé au chantier 64 | D1, R2 | **fait** | `docs/chantiers/64.md` | chantier 64 |
 | 70 | Version LSP par document (Map URI → compteur, stricte croissance) | D3 | prévu | — | — |
@@ -72,6 +72,10 @@ amputé de ce qui est déjà fait.
 - 2026-11-26 — création ; historique des 113 commits réattribué à
   `jjoblab <olson12jb@gmail.com>` et poussé (force) — les 3 commits
   « Z User » de la période des vagues 44-46 rewriting.
+- 2026-11-26 — chantier 67 fermé : B2 réglé — la zone tactile de
+  la minimap se borne au bas du document rendu (`mapBottom`), le
+  drapeau public `setMinimapEnabled` la retire entière ; le
+  scénario du harnais réel éprouve le tap sous la carte.
 - 2026-11-26 — chantier 66 fermé : B6 réglé — l'Entrée (par
   événements et par touche d'action) clôt la composition AVANT
   d'insérer le saut de ligne ; le scénario du harnais réel

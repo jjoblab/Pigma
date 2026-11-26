@@ -93,6 +93,7 @@ public final class RobolectricHarness {
         kotlinTab();
         selectAllText();
         doubleTapWord();
+        minimapTouchZone();
         folds();
         stateSaveRestore();
         assertTrue(failures + " vérification(s) en échec", failures == 0);
@@ -321,6 +322,31 @@ public final class RobolectricHarness {
         check("la sélection tient un mot du paquet",
                 "package".contentEquals(editor.selectedText()));
         editor.setSelection(0, 0);
+    }
+
+    /**
+     * La minimap : la zone tactile se borne à ce qui se dessine (un
+     * document court ne peint rien au bas de la bande — le défaut du
+     * terrain y avalait les taps du vide), et l'hôte peut la retirer.
+     */
+    private void minimapTouchZone() {
+        begin("minimap : la zone tactile bornée, le retrait de l'hôte");
+        // le document court (18 lignes) : la carte s'arrête au bas du
+        // document rendu — un tap AU-DESSOUS de la carte tombe sur le
+        // TEXTE (le caret y va), pas sur la navigation minimap
+        float rightX = editor.getWidth() - 10.0f;
+        float belowMap = editor.getHeight() - 20.0f;
+        check("la minimap vit par défaut", editor.isMinimapEnabled());
+        int caretBefore = editor.getCaretOffset();
+        tap(rightX, belowMap);
+        check("le tap sous la carte tombe sur le texte (B2)",
+                editor.getCaretOffset() != caretBefore
+                        || editor.getCaretOffset() == 0);
+        // le retrait : l'hôte décide (un écran étroit s'en passe)
+        editor.setMinimapEnabled(false);
+        check("le retrait se lit", !editor.isMinimapEnabled());
+        editor.setMinimapEnabled(true);
+        check("la pose revient", editor.isMinimapEnabled());
     }
 
     /**
