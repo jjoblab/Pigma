@@ -39,7 +39,7 @@ qu'il propose.
 | — | *Numéro 70 appelé « 69 » dans la numérotation d'origine de la feuille, décalé d'un par la fusion du 69 au 64.* | | | | |
 | 70 | Version LSP par document (Map URI → compteur, stricte croissance) | D3 | **fait** | `docs/chantiers/70.md` | à pousser |
 | 71 | Silence du fond : échecs comptés et lus (sliceFailures, lastFailure), montre refermée, journal une fois | D9 | **fait** | `docs/chantiers/71.md` | à pousser |
-| 72 | Écouteurs du tampon : CopyOnWriteArrayList | D10 | prévu | — | — |
+| 72 | Écouteurs du tampon : CopyOnWriteArrayList (le partant pendant sa notification ne lève plus) | D10 | **fait** | `docs/chantiers/72.md` | à pousser |
 | 73 | Binaires natifs : le .so x86_64 sort du dépôt, provenance consignée | D12 | prévu | — | — |
 | 74 | Pont IME complet : lectures contextuelles, setComposingRegion, drapeaux | D2, R3 | prévu | — | — |
 | 75 | Appariement par type de signes : BracketMatcher factorisé | B1 | prévu | — | — |
@@ -73,6 +73,9 @@ amputé de ce qui est déjà fait.
 - 2026-11-26 — création ; historique des 113 commits réattribué à
   `jjoblab <olson12jb@gmail.com>` et poussé (force) — les 3 commits
   « Z User » de la période des vagues 44-46 rewriting.
+- 2026-11-26 — chantier 72 fermé : D10 réglé — les deux listes
+  d'écouteurs du tampon passent aux listes copiées à l'écriture ;
+  le test du partant pendant sa notification l'éprouve.
 - 2026-11-26 — chantier 71 fermé : D9 réglé — le fil de fond
   compte ses échecs (AtomicLong + message gardé), la montre se
   referme à l'échec, le journal en dit la cause.

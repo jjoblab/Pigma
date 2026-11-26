@@ -227,6 +227,37 @@ public class TextBufferTest {
         assertEquals(List.of(), order);
     }
 
+    /**
+     * Un écouteur qui se retire PENDANT sa notification ne lève
+     * plus (les listes copiées à l'écriture — le défaut du rapport :
+     * l'itération d'une ArrayList pendant sa mutation levait).
+     */
+    @Test
+    public void listenerCanLeaveDuringNotification() {
+        TextBuffer buffer = TextBuffer.create("abc");
+        TextListener leaver = new TextListener() {
+            @Override
+            public void textChanged(TextBuffer source, int start,
+                    int removed, int inserted, int revision) {
+                buffer.removeListener(this);
+                // et il relit le tampon : la notification ne s'empile
+                // pas sur la mutation
+                assertTrue(source.length() > 0);
+            }
+        };
+        TextListener after = new TextListener() {
+            @Override
+            public void textChanged(TextBuffer source, int start,
+                    int removed, int inserted, int revision) {
+                // le parti après le partant reçoit sa notification
+            }
+        };
+        buffer.addListener(leaver);
+        buffer.addListener(after);
+        buffer.replace(3, 3, "def");
+        assertEquals("le tampon tient l'édition", "abcdef", buffer.toString());
+    }
+
     /** Oublier l'histoire : plus rien d'annulable ni de rétablissable. */
     @Test
     public void clearForgetsUndoAndRedo() {

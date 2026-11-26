@@ -1,6 +1,7 @@
 package jo.pigma.core;
 
 import java.util.ArrayList;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.List;
 
 /**
@@ -46,9 +47,9 @@ public final class TextBuffer implements CharSequence {
     private int[] lineStarts;
     private int lineCount;
     private volatile int revision;
-    private final List<TextListener> headListeners = new ArrayList<>();
+    private final List<TextListener> headListeners = new CopyOnWriteArrayList<>();
 
-    private final List<TextListener> listeners = new ArrayList<>();
+    private final List<TextListener> listeners = new CopyOnWriteArrayList<>();
 
     /**
      * Crée un tampon contenant le texte donné.
@@ -390,16 +391,18 @@ public final class TextBuffer implements CharSequence {
                 textLength += inserted;
             }
             revision++;
-            // les documents d'abord (en tête), les lecteurs ensuite : l'ordre
-            // document-avant-interface est l'invariant qui protège les
-            // lectures de mi-remplacement
-            snapshot = new ArrayList<>(headListeners);
+            // les documents d'abord (en tête), les lecteurs ensuite :
+            // l'ordre document-avant-interface est l'invariant qui
+            // protège les lectures de mi-remplacement. Les listes
+            // copiées à l'écriture (D10) : l'écouteur qui s'abonne ou
+            // se retire PENDANT la notification ne lève plus
+            snapshot = new ArrayList<>(headListeners.size() + listeners.size());
+            snapshot.addAll(headListeners);
             snapshot.addAll(listeners);
         }
         // la notification sort du verrou : un écouteur qui relit le
         // tampon (le moteur de coloration y reprend un cliché) ne
-        // s'empile pas sur la mutation — et l'ordre
-        // document-avant-interface reste celui de la liste
+        // s'empile pas sur la mutation
         for (TextListener listener : snapshot) {
             listener.textChanged(this, start, removed, inserted, revision);
         }
