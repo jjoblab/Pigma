@@ -46,7 +46,6 @@ import org.eclipse.lsp4j.InitializeResult;
 import org.eclipse.lsp4j.InitializedParams;
 import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.LocationLink;
-import org.eclipse.lsp4j.MarkedString;
 import org.eclipse.lsp4j.MarkupContent;
 import org.eclipse.lsp4j.MessageActionItem;
 import org.eclipse.lsp4j.MessageParams;
@@ -630,34 +629,39 @@ public final class LspSession {
 
     /**
      * Demande l'information flottante à une position : la réponse porte
-     * le texte de l'information (le contenu « plaintext » du protocole
-     * quand le serveur l'envoie), null si le serveur n'en a pas.
+     * le contenu du survol ET SON BALISAGE (le Markdown des serveurs
+     * survit — l'adaptation d'avant le fondait en texte nu) ; le
+     * survol muet (vide) dit que le serveur n'en a pas.
      *
      * @param uri      le document interrogé
      * @param position la position du curseur
-     * @return le futur du texte d'information
+     * @return le futur du survol, jamais null (le muet : aucun contenu)
      */
-    public CompletableFuture<String> hover(String uri, LspPosition position) {
+    public CompletableFuture<LspHover> hover(String uri, LspPosition position) {
         HoverParams params = new HoverParams(
                 new TextDocumentIdentifier(uri), position.toLsp());
         return launcher.getRemoteProxy().getTextDocumentService()
-                .hover(params).thenApply(LspSession::hoverText);
+                .hover(params).thenApply(LspHover::fromLsp);
     }
 
     /**
      * Demande les complétions à une position : la réponse porte les
-     * libellés des candidats du serveur (les deux formes du protocole
-     * — la liste nue ou l'enveloppe — y rentrent).
+     * candidats ENTIERS du serveur (la nature, le détail, la
+     * documentation, le texte d'insertion, le remplacement, l'ordre,
+     * l'obsolescence — le libellé seul ne suffit plus à nourrir la
+     * carte) ; les deux formes du protocole — la liste nue ou
+     * l'enveloppe — y rentrent.
      *
      * @param uri      le document interrogé
      * @param position la position du curseur
-     * @return le futur des libellés, jamais null (vide : aucun)
+     * @return le futur des candidats, jamais null (vide : aucun)
      */
-    public CompletableFuture<List<String>> completion(String uri, LspPosition position) {
+    public CompletableFuture<List<LspCompletionItem>> completion(
+            String uri, LspPosition position) {
         CompletionParams params = new CompletionParams(
                 new TextDocumentIdentifier(uri), position.toLsp());
         return launcher.getRemoteProxy().getTextDocumentService()
-                .completion(params).thenApply(LspSession::completionLabels);
+                .completion(params).thenApply(LspSession::completionItems);
     }
 
     /**
@@ -980,31 +984,29 @@ public final class LspSession {
     }
 
     /**
-     * Les libellés de la réponse de complétion.
+     * RÉSOUT un candidat de complétion : le {@code completionItem/resolve}
+     * du protocole — le serveur y remplit la documentation du candidat
+     * (il la retient souvent à la sélection seule). La question part du
+     * billet porté par le candidat (l'adaptation le garde à cet effet) ;
+     * la réponse REMPLIT les champs vides (la documentation surtout),
+     * les champs déjà portés demeurent. Un serveur sans la capacité
+     * rend une réponse en erreur : le futur l'y dit, l'appelant y
+     * garde son candidat d'avant (la documentation du panneau reste
+     * celle du candidat — souvent vide, la carte n'en meurt pas).
      *
-     * @param answer la réponse du serveur (liste nue ou enveloppe)
-     * @return les libellés, vide si rien
+     * @param candidate le candidat à résoudre (le billet du protocole y vit)
+     * @return le futur du candidat résolu, jamais null (l'original y
+     *         revient si le serveur ne dit rien de neuf)
      */
-    private static List<String> completionLabels(
-            Either<List<CompletionItem>, CompletionList> answer) {
-        List<CompletionItem> items = null;
-        if (answer != null) {
-            if (answer.getLeft() != null) {
-                items = answer.getLeft();
-            } else if (answer.getRight() != null) {
-                items = answer.getRight().getItems();
-            }
+    public CompletableFuture<LspCompletionItem> resolveCompletionItem(
+            LspCompletionItem candidate) {
+        if (candidate == null) {
+            return CompletableFuture.completedFuture(null);
         }
-        if (items == null) {
-            return List.of();
-        }
-        List<String> labels = new ArrayList<>(items.size());
-        for (CompletionItem item : items) {
-            if (item != null && item.getLabel() != null) {
-                labels.add(item.getLabel());
-            }
-        }
-        return labels;
+        return launcher.getRemoteProxy().getTextDocumentService()
+                .resolveCompletionItem(candidate.raw())
+                .thenApply(candidate::merged)
+                .exceptionally(failed -> candidate);
     }
 
     /**
@@ -1086,24 +1088,36 @@ public final class LspSession {
     }
 
     /**
-     * Le texte d'un survol lsp4j : le contenu riche s'il est là
-     * (MarkupContent ou chaîne), sinon la première entrée de la liste
-     * historique, null si le serveur ne dit rien.
+     * Les candidats ENTIERS de la réponse de complétion : les deux
+     * formes du protocole — la liste nue ou l'enveloppe — s'y lisent,
+     * chaque entrée y devient un candidat du domaine (le libellé seul
+     * ne suffit plus : la nature, le détail, la documentation, le
+     * texte d'insertion, l'ordre et l'obsolescence y montent).
+     *
+     * @param answer la réponse du serveur (liste nue ou enveloppe)
+     * @return les candidats, vide si rien
      */
-    private static String hoverText(Hover hover) {
-        if (hover == null || hover.getContents() == null) {
-            return null;
+    private static List<LspCompletionItem> completionItems(
+            Either<List<CompletionItem>, CompletionList> answer) {
+        List<CompletionItem> items = null;
+        if (answer != null) {
+            if (answer.getLeft() != null) {
+                items = answer.getLeft();
+            } else if (answer.getRight() != null) {
+                items = answer.getRight().getItems();
+            }
         }
-        Either<List<Either<String, MarkedString>>, MarkupContent>
-                contents = hover.getContents();
-        if (contents.isRight()) {
-            return contents.getRight() == null ? null : contents.getRight().getValue();
+        if (items == null) {
+            return List.of();
         }
-        List<Either<String, MarkedString>> left = contents.getLeft();
-        if (left != null && !left.isEmpty() && left.get(0) != null && left.get(0).isLeft()) {
-            return left.get(0).getLeft();
+        List<LspCompletionItem> candidates = new ArrayList<>(items.size());
+        for (CompletionItem item : items) {
+            LspCompletionItem candidate = LspCompletionItem.fromLsp(item);
+            if (candidate != null) {
+                candidates.add(candidate);
+            }
         }
-        return null;
+        return candidates;
     }
 
     /**

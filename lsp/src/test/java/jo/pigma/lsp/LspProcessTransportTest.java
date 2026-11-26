@@ -44,8 +44,9 @@ public class LspProcessTransportTest {
         assertEquals(Boolean.TRUE, capabilities.getCapabilities()
                 .getHoverProvider().getLeft());
 
-        String hover = session.hover("file:///demo.java", new LspPosition(0, 0))
-                .get(20, TimeUnit.SECONDS);
+        LspHover hoverAnswer = session.hover("file:///demo.java",
+                new LspPosition(0, 0)).get(20, TimeUnit.SECONDS);
+        String hover = hoverAnswer.value();
         assertEquals("réponse du sous-processus", hover);
 
         session.didOpen("file:///demo.java", "class A {}", "java");
@@ -83,7 +84,7 @@ public class LspProcessTransportTest {
         assertEquals(Boolean.TRUE, capabilities.getCapabilities()
                 .getHoverProvider().getLeft());
         String hover = session.hover("file:///demo.java", new LspPosition(0, 0))
-                .get(20, TimeUnit.SECONDS);
+                .get(20, TimeUnit.SECONDS).value();
         assertEquals("réponse du sous-processus", hover);
         // l'arrêt en deux temps : la grâce puis le tue-loup, le
         // processus meurt sans destroyForcibly dans le cas ordinaire

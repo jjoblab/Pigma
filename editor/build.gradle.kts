@@ -19,6 +19,17 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    // Les tests JVM des cartes du paquet popups : les pinceaux s'y
+    // construisent (le style s'y pose au berceau) — leurs méthodes
+    // hors logique rendent les valeurs par défaut au lieu de lever
+    // (la logique des cartes — la pose, les listes, les sélecteurs —
+    // se prouve SANS la mesure, qui vit au harnais réel du sample).
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {

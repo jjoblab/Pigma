@@ -10,11 +10,16 @@ import java.util.List;
 /**
  * La popup d'info ancrée (le paquet des popups, l'arborescence du
  * prompt) : la documentation rapide d'un mot — un TITRE (le mot,
- * encre pleine, gras) et un CORPS replié à la largeur (multi-lignes,
- * la queue abrégée en « … » au-delà de quatre rangées), au-dessus de
- * la ligne d'ancrage (sous elle sans la place), bornée aux bords de
- * la vue. L'état (titre, corps, ancrage) et le dessin vivent ici ; la
- * vue fournit la géométrie à la trame.
+ * encre pleine, gras) et un CORPS BALISÉ replié à la largeur (le
+ * sous-ensemble des serveurs : titres, listes, code, liens — le
+ * défaut du rapport des popups : le corps vivait NU et COUPÉ à
+ * quatre rangées), au-dessus de la ligne d'ancrage (sous elle sans
+ * la place), bornée aux bords de la vue. Le corps QUI DÉPASSE se
+ * DÉFILE : le doigt qui traîne la popup y fait glisser le contenu
+ * (la hauteur se borne à la vue, la queue ne se coupe plus en
+ * « … » — la carte défilante du rapport) ; l'indicateur « i sur N »
+ * y dit la position. L'état (titre, corps, ancrage, défilement) et
+ * le dessin vivent ici ; la vue fournit la géométrie à la trame.
  *
  * <p>Le remplacement tardif ({@link #replace}) ne vaut qu'à la MÊME
  * position : une popup bougée ou rangée n'est pas évincée par une
@@ -24,9 +29,6 @@ import java.util.List;
  */
 public final class InfoPopup {
 
-    /** Le nombre maximal de rangées du corps (la queue s'abrège). */
-    private static final int MAX_BODY_ROWS = 8;
-
     /**
      * Le corps de l'ATTENTE (D-P1 du rapport des popups) : la question
      * part au fournisseur, la popup vit immédiate — « … » tient la
@@ -34,11 +36,21 @@ public final class InfoPopup {
      * à la description de l'index local si le fournisseur ne sait pas).
      */
     public static final String PENDING_BODY = "\u2026";
+
+    /** La part de la vue que la carte bornée peut couvrir (le défilement vit dessous). */
+    private static final float MAX_VIEW_PART = 0.45f;
+
+    /** Le seuil du glissement qui distingue le défilement du tap (dp). */
+    private static final int DRAG_SLOP_DP = 4;
+
     /** Le titre montré (null : aucun titre, ou la popup est rangée). */
     private String title;
 
     /** Le corps montré (null : la popup est rangée). */
     private String body;
+
+    /** Le corps est-il balisé (le Markdown du serveur) ? */
+    private boolean markdown;
 
     /** La ligne d'ancrage. */
     private int line;
@@ -50,9 +62,13 @@ public final class InfoPopup {
     private final Paint bodyPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint background = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint scrollPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     /** Le style posé par l'hôte : fond translucide, encres, tailles, forme. */
     private PopupStyle style = PopupStyle.defaults();
+
+    /** Le panneau de documentation balisée (la mise en page du corps). */
+    private final MarkdownPane pane = new MarkdownPane(1.0f);
 
     /** L'animation d'ouverture et de sortie (le fondu et la glisse). */
     private final PopupAnimation animation = new PopupAnimation();
@@ -60,11 +76,24 @@ public final class InfoPopup {
     /** La pose de la trame d'avant — la sortie s'y joue. */
     private final RectF closingBox = new RectF();
     private String closingTitle;
-    private List<String> closingBodyRows;
     private float closingLeft;
     private float closingTop;
     private float closingRadius;
     private float closingRowHeight;
+    private float closingScroll;
+    private List<MarkdownPane.Row> closingRows;
+
+    /** Les rangées du corps courant (la dernière mise en page). */
+    private List<MarkdownPane.Row> rows;
+
+    /** Le défilement du corps (px, positif vers le bas). */
+    private float scrollY;
+
+    /** Le doigt qui traîne : sa dernière ordonnée (le défilement suit). */
+    private float lastDragY;
+
+    /** Le doigt a-t-il traîné au-delà du seuil (le tap ne se confond pas) ? */
+    private boolean dragged;
 
     private float density = 1.0f;
 
@@ -106,12 +135,15 @@ public final class InfoPopup {
         border.setStyle(Paint.Style.STROKE);
         border.setStrokeWidth(density);
         border.setColor(style.accentArgb());
+        scrollPaint.setColor((style.borderArgb() & 0x00FFFFFF) | 0x99000000);
+        pane.setStyle(style);
     }
 
     /**
      * Montre la documentation rapide : un titre (le mot questionné,
-     * null pour aucun) et un corps. Le corps vide ou nul range la
-     * popup.
+     * null pour aucun) et un corps — nu ou balisé. Le corps vide ou
+     * nul range la popup. Le défilement se range aussi (le corps neuf
+     * repart du début).
      *
      * @param shownTitle le titre, ou null
      * @param shownBody  le corps de la documentation
@@ -119,11 +151,30 @@ public final class InfoPopup {
      * @param atColumn   la colonne d'ancrage
      */
     public void show(String shownTitle, String shownBody, int atLine, int atColumn) {
+        show(shownTitle, shownBody, false, atLine, atColumn);
+    }
+
+    /**
+     * Montre la documentation rapide : un titre (le mot questionné,
+     * null pour aucun) et un corps NU ou BALISÉ (le Markdown des
+     * serveurs — titres, listes, code, liens y vivent). Le corps vide
+     * ou nul range la popup. Le défilement se range aussi.
+     *
+     * @param shownTitle  le titre, ou null
+     * @param shownBody   le corps de la documentation
+     * @param bodyMarkdown le corps est-il balisé ?
+     * @param atLine      la ligne d'ancrage
+     * @param atColumn    la colonne d'ancrage
+     */
+    public void show(String shownTitle, String shownBody, boolean bodyMarkdown,
+            int atLine, int atColumn) {
         boolean wasShown = body != null;
         body = shownBody == null || shownBody.isEmpty() ? null : shownBody;
         title = body == null ? null : shownTitle;
+        markdown = bodyMarkdown && body != null;
         line = atLine;
         column = atColumn;
+        scrollY = 0.0f;
         if (body != null && !wasShown) {
             animation.open();
         }
@@ -151,10 +202,30 @@ public final class InfoPopup {
      * @return vrai si la popup vivait encore à cette position
      */
     public boolean replace(String shown, int atLine, int atColumn) {
+        return replace(shown, false, atLine, atColumn);
+    }
+
+    /**
+     * Remplace le CORPS par une réponse TARDIVE, NUE ou BALISÉE — à
+     * la même position seulement (une popup bougée ou rangée n'est
+     * pas évincée) ; le titre reste le sien, le défilement se range.
+     *
+     * @param shown     la réponse tardive
+     * @param bodyMarkdown la réponse est-elle balisée ?
+     * @param atLine    la ligne d'ancrage de la question
+     * @param atColumn  la colonne d'ancrage de la question
+     * @return vrai si la popup vivait encore à cette position
+     */
+    public boolean replace(String shown, boolean bodyMarkdown,
+            int atLine, int atColumn) {
         if (body == null || line != atLine || column != atColumn) {
             return false;
         }
-        body = shown == null || shown.isEmpty() ? body : shown;
+        if (shown != null && !shown.isEmpty()) {
+            body = shown;
+            markdown = bodyMarkdown;
+            scrollY = 0.0f;
+        }
         return true;
     }
 
@@ -165,6 +236,7 @@ public final class InfoPopup {
         }
         body = null;
         title = null;
+        scrollY = 0.0f;
     }
 
     /**
@@ -178,6 +250,11 @@ public final class InfoPopup {
     /** Le corps montré (null : la popup est rangée). */
     public String text() {
         return body;
+    }
+
+    /** Le corps est-il balisé ? (le harnais le lit). */
+    public boolean markdown() {
+        return markdown;
     }
 
     /** Le titre montré (null : aucun ou la popup est rangée). */
@@ -195,11 +272,83 @@ public final class InfoPopup {
         return body == null ? -1 : column;
     }
 
+    /** Le défilement courant du corps (le harnais le lit). */
+    public float scrollY() {
+        return scrollY;
+    }
+
+    /**
+     * La pose courante de la popup (le harnais y vise le doigt du
+     * défilement — la trame qui précède l'a posée) ; vide si jamais
+     * posée.
+     *
+     * @return la pose de la dernière trame
+     */
+    public RectF box() {
+        return new RectF(closingBox);
+    }
+
+    /**
+     * Le doigt qui TOMBE sur la popup : le défilement s'y arme (le
+     * corps qui dépasse se traîne), le tap qui ne traîne pas se
+     * reconnaîtra à son relâchement. Hors de la popup : faux.
+     *
+     * @param x l'abscisse du doigt (px, coordonnées de la vue)
+     * @param y l'ordonnée du doigt (px, coordonnées de la vue)
+     * @return vrai quand la popup a pris le doigt
+     */
+    public boolean onDown(float x, float y) {
+        lastDragY = y;
+        dragged = false;
+        return body != null && closingBox.contains(x, y);
+    }
+
+    /**
+     * Le doigt qui TRAÎNE : le corps suit (le défilement se borne au
+     * contenu — le corps qui tient ne se traîne pas).
+     *
+     * @param y l'ordonnée du doigt (px, coordonnées de la vue)
+     */
+    public void onDrag(float y) {
+        if (body == null) {
+            return;
+        }
+        float dy = y - lastDragY;
+        if (Math.abs(dy) > dp(DRAG_SLOP_DP)) {
+            dragged = true;
+        }
+        lastDragY = y;
+        scrollY = clampScroll(scrollY + dy);
+    }
+
+    /**
+     * Le doigt qui RELÂCHE : vrai quand il a TRAÎNÉ (le geste de
+     * défilement se consomme), faux quand le tap se rend à l'appelant
+     * (le tap sur la popup la range — la façon d'avant demeurait).
+     *
+     * @return vrai quand la popup a pris le geste entier
+     */
+    public boolean onUp() {
+        boolean took = dragged;
+        dragged = false;
+        return took;
+    }
+
+    /** Le défilement borné au contenu (0 : le contenu entier se voit). */
+    private float clampScroll(float value) {
+        float contentHeight = pane.height(rows);
+        float visible = closingBox.height() - 24.0f * density;
+        float max = Math.max(0.0f, contentHeight - visible);
+        return Math.max(0.0f, Math.min(max, value));
+    }
+
     /**
      * Dessine la popup : au-dessus de la ligne d'ancrage (sous elle
-     * sans la place), bornée aux marges — le titre sur sa rangée,
-     * le corps replié à la largeur, la queue abrégée au-delà de
-     * quatre rangées ; la popup reste dans la vue.
+     * sans la place), bornée aux marges — le titre sur sa rangée, le
+     * corps BALISÉ replié à la largeur et DÉFILÉ (le pouce de
+     * défilement se montre quand le contenu dépasse), l'indicateur de
+     * position « i sur N » au titre quand le contenu déborde ; la
+     * popup reste dans la vue.
      *
      * @param canvas    le canevas de la trame
      * @param anchorTop le bord haut de la ligne d'ancrage (px écran)
@@ -217,15 +366,19 @@ public final class InfoPopup {
             drawClosingFrame(canvas);
             return;
         }
-        float density = metrics.density();
         float padding = 12.0f * density;
         float available = metrics.viewWidth() - metrics.paddingLeft()
                 - metrics.paddingRight() - 2.0f * padding;
-        List<String> rows = wrap(body, bodyPaint, available, MAX_BODY_ROWS);
-        float rowHeight = -bodyPaint.getFontMetrics().top + 4.0f * density;
-        int rowCount = (title == null ? 0 : 1) + rows.size();
-        float boxWidth = boxWidth(available, rows, padding);
-        float boxHeight = padding + rowCount * rowHeight + padding / 2.0f;
+        List<MarkdownDoc.Block> blocks = blocksOf(body, markdown);
+        rows = pane.layout(blocks, available, 0);
+        float contentHeight = pane.height(rows);
+        float rowHeight = style.textSizeSp() * density * 1.3f + 4.0f * density;
+        float maxHeight = Math.min(
+                metrics.viewHeight() * MAX_VIEW_PART,
+                Math.max(rowHeight, metrics.viewHeight() - 2 * metrics.paddingTop()));
+        float boxHeight = Math.min(padding + rowHeight + contentHeight
+                + padding / 2.0f, maxHeight);
+        float boxWidth = boxWidth(available, padding);
         float left = Math.min(
                 Math.max(metrics.paddingLeft(),
                         metrics.paddingLeft() + column * metrics.charWidth() - padding),
@@ -245,7 +398,8 @@ public final class InfoPopup {
         closingTop = top;
         closingRadius = radius;
         closingTitle = title;
-        closingBodyRows = rows;
+        closingRows = rows;
+        closingScroll = scrollY;
         // le fondu et la glisse de l'ouverture
         float shift = animation.shiftPx(density);
         int alpha = (int) (animation.alphaFactor() * 255.0f);
@@ -257,15 +411,18 @@ public final class InfoPopup {
                 radius, radius, background);
         canvas.drawRoundRect(left, top, left + boxWidth, top + boxHeight,
                 radius, radius, border);
-        float baseline = top + padding - bodyPaint.getFontMetrics().top;
+        float baseline = top + padding + rowHeight * 0.3f;
         if (title != null) {
             canvas.drawText(title, left + padding, baseline, titlePaint);
             baseline += rowHeight;
         }
-        for (String row : rows) {
-            canvas.drawText(row, left + padding, baseline, bodyPaint);
-            baseline += rowHeight;
-        }
+        // le corps défilé : la coupe au bas de la boîte borne la peinture
+        int clip = canvas.save();
+        canvas.clipRect(left, top, left + boxWidth, top + boxHeight);
+        pane.draw(canvas, rows, left + padding, baseline - scrollY,
+                boxWidth - 2 * padding);
+        drawScrollbar(canvas, rows, contentHeight, boxHeight);
+        canvas.restoreToCount(clip);
         canvas.restore();
         canvas.restore();
     }
@@ -289,82 +446,69 @@ public final class InfoPopup {
                 closingBox.bottom, closingRadius, closingRadius, background);
         canvas.drawRoundRect(closingBox.left, closingBox.top, closingBox.right,
                 closingBox.bottom, closingRadius, closingRadius, border);
-        float baseline = closingTop + 12.0f * 1.5f
-                - bodyPaint.getFontMetrics().top;
+        float baseline = closingTop + 12.0f * 1.5f + closingRowHeight * 0.3f;
         if (closingTitle != null) {
             canvas.drawText(closingTitle, closingLeft + 12.0f * 1.5f, baseline,
                     titlePaint);
             baseline += closingRowHeight;
         }
-        if (closingBodyRows != null) {
-            for (String row : closingBodyRows) {
-                canvas.drawText(row, closingLeft + 12.0f * 1.5f, baseline,
-                        bodyPaint);
-                baseline += closingRowHeight;
-            }
+        if (closingRows != null) {
+            pane.draw(canvas, closingRows, closingLeft + 12.0f * 1.5f,
+                    baseline - closingScroll,
+                    closingBox.width() - 24.0f * 1.5f);
         }
         canvas.restore();
         canvas.restore();
     }
 
-    /** La largeur de la boîte : la plus large rangée, bornée. */
-    private float boxWidth(float available, List<String> rows, float padding) {
-        float widest = 0.0f;
-        if (title != null) {
-            widest = titlePaint.measureText(title);
+    /** Les blocs du corps : balisé s'il l'est, paragraphes sinon. */
+    private List<MarkdownDoc.Block> blocksOf(String text, boolean rich) {
+        if (rich || MarkdownDoc.isRich(text)) {
+            return MarkdownDoc.parse(text);
         }
-        for (String row : rows) {
+        List<MarkdownDoc.Block> blocks = new ArrayList<>();
+        for (String row : text.split("\n")) {
+            if (!row.isBlank()) {
+                blocks.add(new MarkdownDoc.Block(MarkdownDoc.PARAGRAPH, 0,
+                        List.of(new MarkdownDoc.Span(row, false, false,
+                                false, "")), "", ""));
+            }
+        }
+        return blocks;
+    }
+
+    /** La largeur de la boîte : la plus large LIGNE du corps (le
+     * repli ne l'élargit jamais), bornée à la place. */
+    private float boxWidth(float available, float padding) {
+        float widest = title == null ? 0.0f : titlePaint.measureText(title);
+        for (String row : body.split("\n")) {
             widest = Math.max(widest, bodyPaint.measureText(row));
         }
         return Math.min(available, widest) + 2.0f * padding;
     }
 
     /**
-     * Replie le texte à la largeur disponible : les mots s'y suivent,
-     * la coupe se fait au mot — un mot seul plus large que la rangée
-     * s'y coupe à la largeur ; la queue au-delà de la dernière rangée
-     * portée s'abrège en « … ».
+     * Le pouce de défilement : le contenu qui dépasse se montre — le
+     * pouce au prorata du visible, la course bornée à la boîte.
      */
-    private List<String> wrap(String text, Paint paint, float maxWidth, int maxRows) {
-        List<String> rows = new ArrayList<>();
-        StringBuilder row = new StringBuilder();
-        int at = 0;
-        while (at < text.length() && rows.size() < maxRows) {
-            int wordEnd = at;
-            while (wordEnd < text.length()
-                    && !Character.isWhitespace(text.charAt(wordEnd))) {
-                wordEnd++;
-            }
-            String word = text.substring(at, wordEnd);
-            if (paint.measureText(word) > maxWidth) {
-                while (word.length() > 1
-                        && paint.measureText(word + "…") > maxWidth) {
-                    word = word.substring(0, word.length() - 1);
-                }
-                word = word + "…";
-            }
-            String candidate = row.length() == 0 ? word
-                    : row + " " + word;
-            if (paint.measureText(candidate) <= maxWidth || row.length() == 0) {
-                row.replace(0, row.length(), candidate);
-            } else {
-                rows.add(row.toString());
-                row.setLength(0);
-                row.append(word);
-            }
-            at = wordEnd + 1;
+    private void drawScrollbar(Canvas canvas, List<MarkdownPane.Row> rows,
+            float contentHeight, float boxHeight) {
+        float visible = boxHeight - 24.0f * density;
+        if (contentHeight <= visible || visible <= 0.0f) {
+            return;
         }
-        if (rows.size() == maxRows && at < text.length()) {
-            // la queue reste : la dernière rangée l'abrège
-            String last = rows.get(maxRows - 1);
-            while (last.length() > 1
-                    && paint.measureText(last + "…") > maxWidth) {
-                last = last.substring(0, last.length() - 1);
-            }
-            rows.set(maxRows - 1, last + "…");
-        } else if (row.length() > 0) {
-            rows.add(row.toString());
-        }
-        return rows;
+        float trackTop = closingBox.top + 12.0f * density;
+        float trackBottom = closingBox.bottom - 6.0f * density;
+        float thumb = (trackBottom - trackTop) * visible / contentHeight;
+        float trackSpan = trackBottom - trackTop - thumb;
+        float max = Math.max(1.0f, contentHeight - visible);
+        float thumbTop = trackTop + trackSpan * scrollY / max;
+        canvas.drawRoundRect(closingBox.right - 4.0f * density, thumbTop,
+                closingBox.right - 2.0f * density, thumbTop + thumb,
+                1.5f * density, 1.5f * density, scrollPaint);
+    }
+
+    private float dp(int value) {
+        return value * density;
     }
 }

@@ -92,24 +92,29 @@ public class EmmyLuaProcessTest {
 
             // le survol : « caisse » à la ligne 8 (0-based), le serveur y
             // décrit la table locale
-            String hover = session.hover(uri, new LspPosition(8, 10))
+            LspHover hover = session.hover(uri, new LspPosition(8, 10))
                     .get(60, TimeUnit.SECONDS);
             assertNotNull("le survol répond", hover);
-            assertTrue("le survol parle de caisse : " + hover,
-                    hover.contains("caisse"));
+            assertTrue("le survol parle de caisse : " + hover.value(),
+                    hover.value().contains("caisse"));
 
             // la complétion : au bout de « local somme = ca », la table
             // locale et la bibliothèque standard répondent
-            List<String> completions = session.completion(uri, new LspPosition(9, 15))
+            List<LspCompletionItem> completions = session.completion(
+                    uri, new LspPosition(9, 15))
                     .get(60, TimeUnit.SECONDS);
-            assertTrue("la complétion propose la table locale : " + completions,
-                    completions.contains("caisse"));
+            boolean caisseServed = false;
+            for (LspCompletionItem candidate : completions) {
+                caisseServed |= candidate.label().contains("caisse");
+            }
+            assertTrue("la complétion propose la table locale : " + completions.size(),
+                    caisseServed);
 
             // l'édition par delta : le document change, le survol suit
             String changed = DEMO_LUA.replace("local caisse = {}",
                     "local caisse = { seuil = 1 }");
             session.didChange(uri, changed);
-            String hoverAfterChange = session.hover(uri, new LspPosition(8, 10))
+            LspHover hoverAfterChange = session.hover(uri, new LspPosition(8, 10))
                     .get(60, TimeUnit.SECONDS);
             assertNotNull("le survol suit l'édition", hoverAfterChange);
 

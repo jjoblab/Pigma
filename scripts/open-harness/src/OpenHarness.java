@@ -1613,8 +1613,9 @@ public final class OpenHarness {
         // personne) : un fournisseur qui rend UN candidat, la carte
         // porte le mot-clé DU LANGAGE avec lui (« pri » rend private
         // du lexique Java même si le serveur ne dit que son mot)
-        editor.setSuggestionProvider(
-                (prefix, line, column) -> java.util.List.of("prime"));
+        editor.setSuggestionProvider((prefix, line, column) ->
+                java.util.List.of(new CompletionCard.Entry("prime", "",
+                        CompletionCard.KIND_UNKNOWN)));
         try {
             // un mot PROPRE d'abord : le caret va à la FIN du tampon
             // (les undos l'ont laissé au milieu), un ESPACE coupe le

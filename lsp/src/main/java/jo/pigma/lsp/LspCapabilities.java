@@ -17,6 +17,8 @@ import org.eclipse.lsp4j.SemanticTokensWithRegistrationOptions;
  *
  * @param hover             le survol
  * @param completion        la complétion
+ * @param completionResolve la résolution des candidats de complétion
+ *                          (la documentation à la sélection)
  * @param signatureHelp     l'aide aux paramètres
  * @param definition        l'aller-à la définition
  * @param references        les références du symbole
@@ -33,7 +35,8 @@ import org.eclipse.lsp4j.SemanticTokensWithRegistrationOptions;
  * @param semanticTokens    les jetons sémantiques (la coloration du
  *                          serveur)
  */
-public record LspCapabilities(boolean hover, boolean completion, boolean signatureHelp,
+public record LspCapabilities(boolean hover, boolean completion,
+        boolean completionResolve, boolean signatureHelp,
         boolean definition, boolean references, boolean prepareRename, boolean rename,
         boolean codeAction, boolean documentHighlight, boolean formatting,
         boolean documentSymbol, boolean foldingRange, boolean inlayHint,
@@ -42,7 +45,7 @@ public record LspCapabilities(boolean hover, boolean completion, boolean signatu
     /** Le serveur qui n'a rien déclaré (la liaison sans initialisation). */
     public static final LspCapabilities NONE = new LspCapabilities(
             false, false, false, false, false, false, false, false, false, false,
-            false, false, false, false);
+            false, false, false, false, false);
 
     /**
      * Les capacités de la réponse d'initialisation : chaque
@@ -75,6 +78,9 @@ public record LspCapabilities(boolean hover, boolean completion, boolean signatu
         return new LspCapabilities(
                 declared(capabilities.getHoverProvider()),
                 capabilities.getCompletionProvider() != null,
+                capabilities.getCompletionProvider() != null
+                        && Boolean.TRUE.equals(
+                                capabilities.getCompletionProvider().getResolveProvider()),
                 capabilities.getSignatureHelpProvider() != null,
                 declared(capabilities.getDefinitionProvider()),
                 declared(capabilities.getReferencesProvider()),

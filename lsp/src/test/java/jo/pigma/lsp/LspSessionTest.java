@@ -36,6 +36,12 @@ import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
+import org.eclipse.lsp4j.CompletionItem;
+import org.eclipse.lsp4j.CompletionItemKind;
+import org.eclipse.lsp4j.CompletionList;
+import org.eclipse.lsp4j.CompletionOptions;
+import org.eclipse.lsp4j.CompletionParams;
+import org.eclipse.lsp4j.InsertTextFormat;
 import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.LocationLink;
 import org.eclipse.lsp4j.MarkupContent;
@@ -141,8 +147,9 @@ public class LspSessionTest {
             ServerCapabilities capabilities = new ServerCapabilities();
             capabilities.setHoverProvider(true);
             if (declareAll) {
-                capabilities.setCompletionProvider(
-                        new org.eclipse.lsp4j.CompletionOptions());
+                CompletionOptions completion = new CompletionOptions();
+                completion.setResolveProvider(Boolean.TRUE);
+                capabilities.setCompletionProvider(completion);
                 capabilities.setSignatureHelpProvider(
                         new org.eclipse.lsp4j.SignatureHelpOptions());
                 capabilities.setDefinitionProvider(true);
@@ -261,8 +268,43 @@ public class LspSessionTest {
 
         @Override
         public CompletableFuture<Hover> hover(HoverParams params) {
+            return CompletableFuture.completedFuture(new Hover(
+                    new MarkupContent("markdown", "mot sous le curseur")));
+        }
+
+        @Override
+        public CompletableFuture<Either<List<CompletionItem>, CompletionList>>
+                completion(CompletionParams params) {
+            CompletionItem first = new CompletionItem("premiere");
+            first.setKind(CompletionItemKind.Function);
+            first.setDetail("la fonction première");
+            first.setSortText("1");
+            first.setInsertText("premiere");
+            first.setDocumentation(new MarkupContent("markdown",
+                    "La **première** fonction."));
+            CompletionItem second = new CompletionItem("poids");
+            second.setKind(CompletionItemKind.Class);
+            second.setDeprecated(Boolean.TRUE);
+            second.setSortText("2");
+            CompletionItem third = new CompletionItem("prime");
+            third.setKind(CompletionItemKind.Snippet);
+            third.setInsertText("prime");
+            third.setInsertTextFormat(InsertTextFormat.PlainText);
+            TextEdit edit = new TextEdit(
+                    new Range(new Position(0, 0), new Position(0, 0)), "prime");
+            third.setTextEdit(Either.forLeft(edit));
             return CompletableFuture.completedFuture(
-                    new Hover(new MarkupContent("plaintext", "mot sous le curseur")));
+                    Either.forLeft(List.of(first, second, third)));
+        }
+
+        @Override
+        public CompletableFuture<CompletionItem> resolveCompletionItem(
+                CompletionItem unresolved) {
+            CompletionItem answered = new CompletionItem(
+                    unresolved == null ? null : unresolved.getLabel());
+            answered.setDocumentation(new MarkupContent("markdown",
+                    "La documentation résolue de " + answered.getLabel()));
+            return CompletableFuture.completedFuture(answered);
         }
 
         @Override
@@ -491,15 +533,22 @@ public class LspSessionTest {
         assertTrue(diagnostics.get(0).message().contains("1"));
 
         String hover = session.hover("file:///demo.java",
-                new LspPosition(1, 9)).get(5, TimeUnit.SECONDS);
+                new LspPosition(1, 9)).get(5, TimeUnit.SECONDS).value();
         assertEquals("mot sous le curseur", hover);
+        assertTrue("le balisage du survol survit",
+                session.hover("file:///demo.java",
+                        new LspPosition(1, 9)).get(5, TimeUnit.SECONDS).markdown());
 
         LspSignatureHelp signature = session.signatureHelp("file:///demo.java",
                 new LspPosition(1, 9)).get(5, TimeUnit.SECONDS);
         assertEquals("la signature active revient", "essai(int a, int b)",
-                signature.label());
+                signature.signatures().get(signature.activeSignature()).label());
         assertEquals("le paramètre actif absent vaut le premier", 0,
                 signature.activeParameter());
+        assertEquals("les surcharges du serveur vivent", 2,
+                signature.signatures().size());
+        assertEquals("les paramètres documentés vivent", "int a",
+                signature.signatures().get(1).parameters().get(0).label());
 
         session.shutdown();
         assertTrue("la liaison s'arrête", !session.isRunning());
@@ -525,8 +574,77 @@ public class LspSessionTest {
         session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
         var first = session.hover("file:///a.java", new LspPosition(0, 0));
         var second = session.hover("file:///b.java", new LspPosition(0, 0));
-        assertEquals("mot sous le curseur", first.get(5, TimeUnit.SECONDS));
-        assertEquals("mot sous le curseur", second.get(5, TimeUnit.SECONDS));
+        assertEquals("mot sous le curseur", first.get(5, TimeUnit.SECONDS).value());
+        assertEquals("mot sous le curseur", second.get(5, TimeUnit.SECONDS).value());
+        session.shutdown();
+    }
+
+    /**
+     * LA COMPLÉTION ENTIÈRE (le défaut du rapport des popups) : les
+     * candidats du serveur arrivaient réduits à leurs libellés — la
+     * nature, le détail, l'obsolescence, la documentation balisée,
+     * le texte d'insertion, le remplacement propre et l'ordre du
+     * serveur survivent désormais à l'adaptation.
+     */
+    @Test
+    public void completionAnswersEntireCandidates() throws Exception {
+        LspSession session = LspSession.beside(new TrialServer(), null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        List<LspCompletionItem> candidates = session.completion(
+                "file:///demo.java", new LspPosition(0, 2))
+                .get(5, TimeUnit.SECONDS);
+        assertEquals("les trois candidats du serveur vivent", 3,
+                candidates.size());
+        LspCompletionItem first = candidates.get(0);
+        assertEquals("le libellé survit", "premiere", first.label());
+        assertEquals("la nature du protocole survit", 3, first.kind());
+        assertEquals("le détail survit", "la fonction première", first.detail());
+        assertEquals("l'ordre du serveur survit", "1", first.sortText());
+        assertEquals("le texte d'insertion survit", "premiere",
+                first.insertText());
+        assertEquals("la documentation balisée survit", "La **première** fonction.",
+                first.documentation());
+        assertTrue("le genre du balisage survit", first.markdownDoc());
+        LspCompletionItem second = candidates.get(1);
+        assertTrue("l'obsolescence survit", second.deprecated());
+        LspCompletionItem third = candidates.get(2);
+        assertTrue("le remplacement propre survit",
+                third.textEdit() != null);
+        assertEquals("le remplacement porte son texte", "prime",
+                third.textEdit().newText());
+        session.shutdown();
+    }
+
+    /**
+     * LA RÉSOLUTION DU CANDIDAT (le completionItem/resolve du
+     * protocole) : le serveur y remplit la documentation du candidat
+     * — les champs portés demeurent, les vides se remplissent, la
+     * capacité se déclare à l'initialisation.
+     */
+    @Test
+    public void resolveFillsTheDocumentationOfTheCandidate() throws Exception {
+        LspSession session = LspSession.beside(new TrialServer(), null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        List<LspCompletionItem> candidates = session.completion(
+                "file:///demo.java", new LspPosition(0, 2))
+                .get(5, TimeUnit.SECONDS);
+        // le candidat SANS documentation se résout (celui qui en porte
+        // ne demande rien — la vue ne questionne que les vides)
+        LspCompletionItem bare = candidates.get(1);
+        assertTrue("le candidat de l'essai ne porte rien",
+                bare.documentation().isEmpty());
+        LspCompletionItem resolved = session.resolveCompletionItem(bare)
+                .get(5, TimeUnit.SECONDS);
+        assertEquals("la documentation résolue remplit le candidat",
+                "La documentation résolue de poids",
+                resolved.documentation());
+        assertTrue("la documentation résolue est balisée",
+                resolved.markdownDoc());
+        assertEquals("le libellé porté demeure", "poids",
+                resolved.label());
+        assertTrue("l'obsolescence portée demeure", resolved.deprecated());
+        assertNull("le candidat nul se résout en nul",
+                session.resolveCompletionItem(null).get(5, TimeUnit.SECONDS));
         session.shutdown();
     }
 

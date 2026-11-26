@@ -260,6 +260,12 @@ public final class EditorView extends View {
     /** Le doigt est-il tombé sur une carte ouverte ? — le geste entier lui revient. */
     private boolean downOnCard;
 
+    /** Le doigt est-il tombé sur la popup d'info ? — le défilement du corps lui revient. */
+    private boolean downOnInfo;
+
+    /** Le nom du candidat dont la documentation VOLE (la garde anti-tempête). */
+    private String pendingDocName;
+
     /** Le soft wrap vit-il (les lignes coupent à la largeur — la leçon de la référence). */
     private boolean softWrap;
 
@@ -1989,7 +1995,7 @@ public final class EditorView extends View {
         lastAnalysisStartNanos = -Long.MAX_VALUE / 2;
         completionCard.set(List.of(), "");
         suggestionWordStart = -1;
-        signatureCard.set(null, 0);
+        signatureCard.set(List.of(), 0, 0);
         selectionBar.hide();
         overflowCard.close();
         historyCard.close();
@@ -2640,6 +2646,23 @@ public final class EditorView extends View {
     }
 
     /**
+     * La popup d'info ancrée en documentation BALISÉE : le corps y
+     * vit au sous-ensemble des serveurs (titres, listes, code,
+     * liens) — le corps qui dépasse se DÉFILE au doigt.
+     *
+     * @param title     le mot questionné, ou null pour aucun titre
+     * @param body      le texte du corps, vide ou null pour masquer
+     * @param markdown  le corps est-il balisé ?
+     * @param line      la ligne d'ancrage
+     * @param column    la colonne d'ancrage
+     */
+    public void showInfoPopup(String title, String body, boolean markdown,
+            int line, int column) {
+        infoPopup.show(title, body, markdown, line, column);
+        invalidate();
+    }
+
+    /**
      * Remplace la popup d'info par une réponse TARDIVE — le survol
      * asynchrone d'un serveur lent : la question a montré la popup
      * locale (ou rien), la réponse du serveur y revient à son arrivée.
@@ -2652,7 +2675,26 @@ public final class EditorView extends View {
      * @return vrai si la popup vivait encore à cette position
      */
     public boolean replaceInfoPopup(String text, int line, int column) {
-        if (!infoPopup.replace(text, line, column)) {
+        return replaceInfoPopup(text, false, line, column);
+    }
+
+    /**
+     * Remplace la popup d'info par une réponse TARDIVE, NUE ou
+     * BALISÉE — le survol asynchrone d'un serveur lent : la question
+     * a montré la popup locale (ou rien), la réponse du serveur y
+     * revient à son arrivée. Le remplacement ne vaut qu'à la MÊME
+     * position : une popup bougée ou rangée n'est pas évincée par
+     * une réponse périmée.
+     *
+     * @param text     la réponse tardive
+     * @param markdown la réponse est-elle balisée ?
+     * @param line     la ligne d'ancrage de la question
+     * @param column   la colonne d'ancrage de la question
+     * @return vrai si la popup vivait encore à cette position
+     */
+    public boolean replaceInfoPopup(String text, boolean markdown,
+            int line, int column) {
+        if (!infoPopup.replace(text, markdown, line, column)) {
             return false;
         }
         invalidate();
@@ -2702,7 +2744,9 @@ public final class EditorView extends View {
     /**
      * L'écouteur d'une réponse d'info (tardive ou non) — la vue la
      * ramène à son fil avant d'agir, le fournisseur l'appelle du
-     * sien.
+     * sien. La réponse porte SON BALISAGE : le corps balisé (le
+     * Markdown des serveurs) se rend au sous-ensemble du domaine,
+     * le corps nu court tel quel.
      */
     @FunctionalInterface
     public interface InfoAnswer {
@@ -2710,10 +2754,11 @@ public final class EditorView extends View {
         /**
          * La réponse arrive.
          *
-         * @param text le texte à montrer, null si le fournisseur ne
-         *             sait pas
+         * @param text     le texte à montrer, null si le fournisseur
+         *                 ne sait pas
+         * @param markdown le texte est-il balisé ?
          */
-        void answer(String text);
+        void answer(String text, boolean markdown);
     }
 
     /**
@@ -2734,7 +2779,11 @@ public final class EditorView extends View {
      * l'index local. La vue tire à chaque trame — le fournisseur
      * d'aplomb y cache sa réponse (la sienne revient asynchrone :
      * qu'il serve la dernière reçue et invalide la vue quand la
-     * neuve arrive, la trame suivante la porte).
+     * neuve arrive, la trame suivante la porte). Les candidats y
+     * sont DÉTAILLÉS (le défaut du rapport des popups : le libellé
+     * seul y vivait — la nature, le détail, l'obsolescence, la
+     * documentation et le remplacement propre du serveur mouraient
+     * en chemin).
      */
     public interface SuggestionProvider {
 
@@ -2744,9 +2793,46 @@ public final class EditorView extends View {
          * @param prefix le préfixe tapé (du début du mot au curseur)
          * @param line   la ligne du curseur
          * @param column la colonne du curseur
-         * @return les candidats, jamais null (vide : bandeau vide)
+         * @return les candidats détaillés, jamais null (vide : bandeau vide)
          */
-        List<String> completionsFor(String prefix, int line, int column);
+        List<CompletionCard.Entry> completionsFor(String prefix, int line, int column);
+    }
+
+    /**
+     * Le résolveur de documentation de complétion : la documentation
+     * qui manque au candidat CHOISI s'y demande — le
+     * {@code completionItem/resolve} du protocole y répond (le
+     * serveur retient la documentation à la sélection seule). La
+     * réponse se rend à l'écouteur, jamais en retour (la question
+     * part, le fil d'interface n'attend pas — la réponse peut venir
+     * de N'IMPORTE QUEL fil, la vue y repasse le sien).
+     */
+    public interface CompletionDocResolver {
+
+        /**
+         * La documentation du candidat demandé.
+         *
+         * @param entry  le candidat CHOISI (son nom y dit l'identité)
+         * @param answer l'écouteur de la réponse
+         */
+        void documentationFor(CompletionCard.Entry entry, CompletionDocAnswer answer);
+    }
+
+    /**
+     * L'écouteur d'une réponse de documentation — la vue la ramène à
+     * son fil avant d'agir, le résolveur l'appelle du sien.
+     */
+    @FunctionalInterface
+    public interface CompletionDocAnswer {
+
+        /**
+         * La réponse arrive.
+         *
+         * @param documentation la documentation du candidat, null ou
+         *                      vide : le panneau se range
+         * @param markdown      la documentation est-elle balisée ?
+         */
+        void answer(String documentation, boolean markdown);
     }
 
     /**
@@ -2762,6 +2848,18 @@ public final class EditorView extends View {
     private SuggestionProvider suggestionProvider;
 
     /**
+     * Branche le résolveur de documentation (null débranche : le
+     * panneau vit de la documentation PORTÉE seule).
+     *
+     * @param resolver le résolveur, ou null
+     */
+    public void setCompletionDocResolver(CompletionDocResolver resolver) {
+        completionDocResolver = resolver;
+    }
+
+    private CompletionDocResolver completionDocResolver;
+
+    /**
      * Le fournisseur d'aide aux paramètres : l'hôte y branche une
      * source extérieure (un serveur de langage par exemple) — sans
      * fournisseur, l'index local des symboles porte la carte (le nom
@@ -2771,17 +2869,34 @@ public final class EditorView extends View {
     public interface SignatureProvider {
 
         /**
-         * L'aide aux paramètres de l'appel au curseur.
+         * L'aide aux paramètres de l'appel au curseur — les SURCHARGES
+         * y vivent (le défaut du rapport des popups : l'active seule
+         * revenait, les autres mouraient en chemin).
          *
          * @param caretOffset le décalage du curseur dans le tampon
-         * @return la signature et son paramètre actif, null pour
-         *         ranger la carte
+         * @return l'aide complète, null pour ranger la carte
          */
         SignatureHelp signatureAt(int caretOffset);
     }
 
-    /** La signature montrée : la ligne entière et le paramètre actif. */
-    public record SignatureHelp(String label, int activeParameter) {
+    /**
+     * L'aide aux paramètres montrée : les surcharges du serveur (une
+     * LIGNE de signature chacune, la documentation de CHAQUE
+     * paramètre — celle du paramètre actif se montre), l'index de la
+     * signature active et du paramètre actif.
+     */
+    public record SignatureHelp(List<Overload> signatures,
+            int activeSignature, int activeParameter) {
+
+        /**
+         * Une surcharge : sa ligne de signature et les documentations
+         * de ses paramètres.
+         *
+         * @param label          la ligne de la signature
+         * @param parameterDocs  la documentation de chaque paramètre
+         */
+        public record Overload(String label, List<String> parameterDocs) {
+        }
     }
 
     /**
@@ -2822,6 +2937,27 @@ public final class EditorView extends View {
      */
     public String infoPopupText() {
         return infoPopup.text();
+    }
+
+    /**
+     * Le défilement du corps de la popup d'info (le harnais y éprouve
+     * le doigt qui traîne — le corps balisé qui dépasse se défile au
+     * lieu de se couper).
+     *
+     * @return le défilement courant (px), 0 si rien ne se défile
+     */
+    public float infoPopupScrollY() {
+        return infoPopup.scrollY();
+    }
+
+    /**
+     * La pose de la popup d'info (le harnais y vise le doigt du
+     * défilement du corps) ; une pose vide dit « jamais posée ».
+     *
+     * @return la pose de la dernière trame, jamais null
+     */
+    public android.graphics.RectF infoPopupBox() {
+        return infoPopup.box();
     }
 
     /**
@@ -3004,6 +3140,9 @@ public final class EditorView extends View {
                 }
                 if (completionCard != null && completionCard.isShown()
                         && completionCard.onArrow(delta)) {
+                    // le candidat choisi a bougé : sa documentation
+                    // se demande (le panneau adjacent s'y nourrit)
+                    askChosenDocumentation();
                     return;
                 }
                 EditorView.this.moveCaretVertically(delta);
@@ -3144,7 +3283,17 @@ public final class EditorView extends View {
                 // cartes de diagnostic et d'ampoule — les cartes ancrées
                 // au caret (usages, sélecteur de couleur) se rangent
                 // pareillement : le doigt qui reprend le texte ne doit
-                // jamais tomber sur une carte flottante d'avant
+                // jamais tomber sur une carte flottante d'avant.
+                // LE CORPS DÉFILÉ prend son doigt D'ABORD : la popup
+                // de documentation vit sous le doigt (le défaut du
+                // rapport : le corps qui dépassait se coupait, le
+                // défilement y remplace la coupe) — l'appui SUR la
+                // popup arme son défilement, le relâchement sans
+                // traînée la range (la façon d'avant demeure)
+                if (infoPopup.onDown(event.getX(), event.getY())) {
+                    downOnInfo = true;
+                    return true;
+                }
                 dismissInfoPopup();
                 diagnosticCard.close();
                 quickActionCard.close();
@@ -3177,6 +3326,13 @@ public final class EditorView extends View {
                 }
                 break;
             case MotionEvent.ACTION_MOVE:
+                if (downOnInfo) {
+                    // le corps défilé suit le doigt — la trame suivante
+                    // le porte
+                    infoPopup.onDrag(event.getY());
+                    invalidate();
+                    break;
+                }
                 if (pinch.isPinching()) {
                     if (event.getPointerCount() >= 2) {
                         pinchMove(event);
@@ -3268,6 +3424,26 @@ public final class EditorView extends View {
                 }
                 break;
             case MotionEvent.ACTION_UP:
+                if (downOnInfo) {
+                    // le doigt rend : le geste de DÉFILEMENT se
+                    // consomme (le corps défilé garde sa popup) ; le
+                    // TAP sans traînée vit SA vie d'avant — la popup
+                    // se range ET le curseur se pose au doigt (le tap
+                    // de fermeture n'a jamais été un geste mort : le
+                    // comportement d'origine demeure au pixel près)
+                    if (infoPopup.onUp()) {
+                        invalidate();
+                        break;
+                    }
+                    dismissInfoPopup();
+                    requestFocus();
+                    caretTo(offsetNearest(event.getX(), event.getY()));
+                    clearComposing();
+                    touch.rememberTap(event.getX(), event.getY());
+                    downOnInfo = false;
+                    invalidate();
+                    break;
+                }
                 if (pinch.isPinching() || pinch.hasPinchedThisGesture()) {
                     // le pincement se referme : l'appui final ne vaut
                     // pas un tap (le curseur ne saute pas au doigt qui
@@ -3434,6 +3610,7 @@ public final class EditorView extends View {
                 // de poignée tenue tuerait les deux) ; le pincement
                 // s'y range pareillement
                 pinch.reset();
+                downOnInfo = false;
                 if (touch.isHandleDragging() || touch.isTextDragging()
                         || touch.isDragging()) {
                     edgeScroller.cancel();
@@ -5197,22 +5374,21 @@ public final class EditorView extends View {
                 localCompletionEntries(prefix));
         if (suggestionProvider != null) {
             int line = buffer.lineOfOffset(caret);
-            List<String> served = suggestionProvider.completionsFor(prefix,
-                    line, caret - buffer.getLineStart(line));
-            for (String word : served) {
-                if (word == null || word.isEmpty()) {
+            List<CompletionCard.Entry> served = suggestionProvider.completionsFor(
+                    prefix, line, caret - buffer.getLineStart(line));
+            for (CompletionCard.Entry servedEntry : served) {
+                if (servedEntry == null || servedEntry.name().isEmpty()) {
                     continue;
                 }
                 boolean duplicate = false;
                 for (CompletionCard.Entry entry : merged) {
-                    if (entry.name().equals(word)) {
+                    if (entry.name().equals(servedEntry.name())) {
                         duplicate = true;
                         break;
                     }
                 }
                 if (!duplicate) {
-                    merged.add(new CompletionCard.Entry(word, "",
-                            CompletionCard.KIND_UNKNOWN));
+                    merged.add(servedEntry);
                 }
             }
         }
@@ -5230,7 +5406,75 @@ public final class EditorView extends View {
             }
             merged = kept;
         }
+        // LA DOCUMENTATION VIT DANS LA CARTE : la documentation du
+        // candidat résolue (l'asynchrone du serveur) survit à la
+        // re-fusion de la trame — l'entrée neuve du fournisseur peut
+        // porter son documentation vide (le cache d'en-dessous peut
+        // n'avoir pas encore la réponse) : l'entrée D'AVANT la lui
+        // rend (le nom dit l'identité, le contenu demeure)
+        if (completionCard.isShown()) {
+            for (int at = 0; at < merged.size(); at++) {
+                CompletionCard.Entry fresh = merged.get(at);
+                if (fresh.documentation().isEmpty()) {
+                    CompletionCard.Entry old = completionCard
+                            .documentationOf(fresh.name());
+                    if (old != null) {
+                        merged.set(at, new CompletionCard.Entry(fresh.name(),
+                                fresh.detail(), fresh.kind(), fresh.deprecated(),
+                                old.documentation(), old.markdownDoc(),
+                                fresh.insertText(), fresh.insertStart(),
+                                fresh.insertEnd()));
+                    }
+                }
+            }
+        }
         completionCard.set(merged, prefix);
+        askChosenDocumentation();
+    }
+
+    /**
+     * La documentation du candidat CHOISI se demande : la
+     * documentation PORTÉE par l'entrée s'y montre d'elle-même (le
+     * panneau la porte) ; celle qui manque part au RÉSOLVEUR (le
+     * {@code completionItem/resolve} du protocole — le serveur y
+     * répond, le fil d'interface n'attend JAMAIS : la réponse rend
+     * sur le fil de la vue et remplit l'entrée, la trame suivante la
+     * porte). Sans résolveur, la documentation manquante reste vide
+     * (le panneau se range — la carte ne meurt pas d'un panneau
+     * absent).
+     */
+    private void askChosenDocumentation() {
+        if (completionDocResolver == null) {
+            return;
+        }
+        int at = completionCard.highlighted();
+        if (at < 0 || at >= completionCard.entries().size()) {
+            return;
+        }
+        CompletionCard.Entry chosen = completionCard.entries().get(at);
+        if (!chosen.documentation().isEmpty()) {
+            return;
+        }
+        // LA RÉSOLUTION EN VOL ne se RE-PART PAS (le défaut du rapport
+        // des popups — la documentation arrive tard : sans garde, la
+        // trame suivante redemandait CE qu'un serveur lent n'avait pas
+        // encore rendu — la tempête de questions)
+        if (chosen.name().equals(pendingDocName)) {
+            return;
+        }
+        pendingDocName = chosen.name();
+        final String name = chosen.name();
+        completionDocResolver.documentationFor(chosen, (documentation, markdown) ->
+                post(() -> {
+                    if (name.equals(pendingDocName)) {
+                        pendingDocName = null;
+                    }
+                    if (documentation != null && !documentation.isEmpty()
+                            && completionCard.setDocumentation(name, documentation,
+                                    markdown)) {
+                        invalidate();
+                    }
+                }));
     }
 
     /**
@@ -5342,14 +5586,25 @@ public final class EditorView extends View {
         // tant qu'une sélection vit, la carte de signature y cède (la
         // frappe la ramène — elle remplace la sélection)
         if (selectionBarAlive()) {
-            signatureCard.set(null, 0);
+            signatureCard.set(List.of(), 0, 0);
             return;
         }
         int caret = Math.min(selection.caret(), buffer.length());
         SignatureHelp help = signatureProvider != null
                 ? signatureProvider.signatureAt(caret) : localSignatureAt(caret);
-        signatureCard.set(help == null ? null : help.label(),
+        signatureCard.set(help == null ? List.of() : overloadsOf(help),
+                help == null ? 0 : help.activeSignature(),
                 help == null ? 0 : help.activeParameter());
+    }
+
+    /** Les surcharges de l'aide montrée — la carte y pose sa liste. */
+    private List<SignatureCard.Overload> overloadsOf(SignatureHelp help) {
+        List<SignatureCard.Overload> overloads = new ArrayList<>();
+        for (SignatureHelp.Overload signature : help.signatures()) {
+            overloads.add(new SignatureCard.Overload(signature.label(),
+                    signature.parameterDocs()));
+        }
+        return overloads;
     }
 
     /**
@@ -5431,7 +5686,9 @@ public final class EditorView extends View {
                 if (text.isEmpty() || text.indexOf('(') < 0) {
                     return null;
                 }
-                return new SignatureHelp(text, active);
+                return new SignatureHelp(
+                        List.of(new SignatureHelp.Overload(text, List.of())),
+                        0, active);
             }
         }
         return null;
@@ -6389,13 +6646,35 @@ public final class EditorView extends View {
      * @param candidate le candidat à insérer, jamais vide
      */
     public void insertCompletion(String candidate) {
-        if (candidate == null || candidate.isEmpty() || suggestionWordStart < 0) {
+        insertCompletion(candidate, -1, -1);
+    }
+
+    /**
+     * Insère un candidat de complétion sur SA PLAGE : le
+     * REMPLACEMENT du serveur PRIME (sa plage s'y pose — la plage du
+     * protocole dit ce que le candidat remplace, le préfixe tapé
+     * d'avant ne restait qu'une approximation) ; sans remplacement,
+     * le préfixe tapé se remplace comme toujours — une seule unité
+     * d'annulation.
+     *
+     * @param candidate le texte à insérer, jamais vide
+     * @param start     le début de la plage remplacée, négatif : le mot tapé
+     * @param end       la fin de la plage remplacée, négatif : le curseur
+     */
+    public void insertCompletion(String candidate, int start, int end) {
+        if (candidate == null || candidate.isEmpty()) {
             return;
         }
-        int end = Math.min(selection.caret(), buffer.length());
-        if (end > suggestionWordStart) {
+        int from = start >= 0 && start <= buffer.length() ? start
+                : suggestionWordStart;
+        if (from < 0) {
+            return;
+        }
+        int to = end >= from && end <= buffer.length() ? end
+                : Math.min(selection.caret(), buffer.length());
+        if (to > from) {
             pendingEditLabel = "complétion";
-            applyEdit(suggestionWordStart, end, candidate);
+            applyEdit(from, to, candidate);
         }
     }
 
@@ -6767,13 +7046,13 @@ public final class EditorView extends View {
             // la popup vit immédiate : « … » tient la place le temps
             // du vol — le fil d'interface n'attend JAMAIS le serveur
             showInfoPopup(word, InfoPopup.PENDING_BODY, line, column);
-            infoProvider.infoFor(line, column, word, text -> post(() -> {
+            infoProvider.infoFor(line, column, word, (text, markdown) -> post(() -> {
                 if (text == null || text.isEmpty()) {
                     // le fournisseur ne sait pas : l'index local tient
                     // la place (à la même position seulement)
                     replaceInfoPopup(localSymbolDescription(word), line, column);
                 } else {
-                    replaceInfoPopup(text, line, column);
+                    replaceInfoPopup(text, markdown, line, column);
                 }
             }));
             return;

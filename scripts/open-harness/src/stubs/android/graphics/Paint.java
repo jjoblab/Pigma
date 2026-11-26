@@ -57,6 +57,7 @@ public class Paint {
     private Style style = Style.FILL;
     private float strokeWidth = 1.0f;
     private boolean fakeBold;
+    private float textSkewX;
 
     /** L'alignement courant du texte (gauche par défaut). */
     private Align align = Align.LEFT;
@@ -203,6 +204,21 @@ public class Paint {
     /** Le gras synthétique courant. */
     public boolean isFakeBoldText() {
         return fakeBold;
+    }
+
+    /**
+     * L'inclinaison synthétique du texte (l'italique du balisé —
+     * un drapeau de peinture, pas une seconde police).
+     *
+     * @param skewX l'inclinaison (négative pour l'italique)
+     */
+    public void setTextSkewX(float skewX) {
+        this.textSkewX = skewX;
+    }
+
+    /** L'inclinaison synthétique courante du texte. */
+    public float getTextSkewX() {
+        return textSkewX;
     }
 
     /**

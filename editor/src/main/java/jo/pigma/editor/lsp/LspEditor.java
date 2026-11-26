@@ -14,11 +14,13 @@ import org.eclipse.lsp4j.services.LanguageServer;
 import jo.pigma.core.TextBuffer;
 import jo.pigma.core.TextListener;
 import jo.pigma.editor.EditorView;
+import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.editor.popups.DiagnosticCard;
 import jo.pigma.editor.popups.QuickActionCard;
 import jo.pigma.editor.popups.UsageCard;
 import jo.pigma.editor.selection.SelectionState;
 import jo.pigma.lsp.LspCapabilities;
+import jo.pigma.lsp.LspCompletionItem;
 import jo.pigma.lsp.LspWorkspace;
 import jo.pigma.lsp.LspCodeAction;
 import jo.pigma.lsp.LspDiagnostic;
@@ -189,11 +191,132 @@ public final class LspEditor {
     /** Le préfixe du dernier envoi de complétion (la clef du cache). */
     private volatile String completionPrefix;
 
-    /** Les libellés reçus du serveur pour ce préfixe (le fil du lecteur y écrit). */
-    private final List<String> completionCache =
+    /**
+     * Les candidats ENTIERS reçus du serveur pour ce préfixe (le fil
+     * du lecteur y écrit — la nature, le détail, l'obsolescence, la
+     * documentation, le remplacement propre et l'ordre du serveur y
+     * vivent : le libellé seul ne nourrit plus la carte).
+     */
+    private final List<jo.pigma.lsp.LspCompletionItem> completionCache =
             Collections.synchronizedList(new ArrayList<>());
 
-    /** La génération de la demande de signature vivante (le texte change : la réponse en vol se périme). */
+    /**
+     * L'ordre des candidats du serveur : le sortText PRIME (le serveur
+     * y dit sa pertinence — l'ordre d'arrivée rompt les égalités),
+     * l'ordre d'arrivée sinon (le serveur a déjà trié).
+     */
+    private static int completionOrder(jo.pigma.lsp.LspCompletionItem first,
+            jo.pigma.lsp.LspCompletionItem second) {
+        String left = first.sortText();
+        String right = second.sortText();
+        if (left.isEmpty() && right.isEmpty()) {
+            return 0;
+        }
+        if (left.isEmpty()) {
+            return 1;
+        }
+        if (right.isEmpty()) {
+            return -1;
+        }
+        return left.compareTo(right);
+    }
+
+    /**
+     * Le candidat du serveur devient la rangée de la carte : la
+     * nature du protocole y devient l'icône (Text le mot, Method et
+     * Function la méthode, Constructor et Class et Interface et Struct
+     * et Enum le type, Field et Variable et Property et EnumMember le
+     * champ, Module le module, Keyword le mot-clé, Snippet le gabarit,
+     * Color la couleur, File et Folder le fichier), le détail s'y
+     * pose tel quel, l'obsolescence porte le barré, la documentation
+     * porte le panneau adjacent, le REMPLACEMENT propre porte la
+     * plage (la plage du protocole devient décalages du tampon).
+     *
+     * @param candidate le candidat du serveur
+     * @return la rangée de la carte
+     */
+    private CompletionCard.Entry entryOf(jo.pigma.lsp.LspCompletionItem candidate) {
+        int insertStart = -1;
+        int insertEnd = -1;
+        if (candidate.textEdit() != null) {
+            TextBuffer buffer = view.getBuffer();
+            LspRange range = candidate.textEdit().range();
+            int start = range.start().toOffset(buffer);
+            int end = range.end().toOffset(buffer);
+            if (start >= 0 && end >= start && end <= buffer.length()) {
+                insertStart = start;
+                insertEnd = end;
+            }
+        }
+        return new CompletionCard.Entry(candidate.label(), candidate.detail(),
+                kindOf(candidate.kind()), candidate.deprecated(),
+                candidate.documentation(), candidate.markdownDoc(),
+                candidate.insertText(), insertStart, insertEnd);
+    }
+
+    /**
+     * La nature du protocole devient l'icône de la carte (les natures
+     * voisines s'y regroupent — la carte en porte sept, le protocole
+     * en dit vingt-cinq).
+     */
+    private static int kindOf(int protocolKind) {
+        switch (protocolKind) {
+            case 1: // Text
+                return CompletionCard.KIND_WORD;
+            case 2: // Method
+            case 3: // Function
+                return CompletionCard.KIND_FUNCTION;
+            case 4: // Constructor
+            case 7: // Class
+            case 8: // Interface
+            case 13: // Enum
+            case 22: // Struct
+            case 23: // Event
+            case 25: // TypeParameter
+                return CompletionCard.KIND_CLASS;
+            case 5: // Field
+            case 6: // Variable
+            case 10: // Property
+            case 20: // EnumMember
+            case 21: // Constant
+                return CompletionCard.KIND_FIELD;
+            case 9: // Module
+            case 17: // File
+            case 19: // Folder
+                return CompletionCard.KIND_MODULE;
+            case 14: // Keyword
+                return CompletionCard.KIND_KEYWORD;
+            default:
+                return CompletionCard.KIND_UNKNOWN;
+        }
+    }
+
+    /**
+     * L'aide du serveur devient l'aide de la carte : les surcharges
+     * y passent toutes (la ligne de chacune, la documentation de
+     * chacun de ses paramètres), l'active et le paramètre actif
+     * suivent.
+     */
+    private static EditorView.SignatureHelp helpOf(
+            jo.pigma.lsp.LspSignatureHelp help) {
+        List<EditorView.SignatureHelp.Overload> overloads = new ArrayList<>();
+        for (jo.pigma.lsp.LspSignatureHelp.LspSignature signature
+                : help.signatures()) {
+            List<String> parameterDocs = new ArrayList<>();
+            for (jo.pigma.lsp.LspSignatureHelp.LspParameter parameter
+                    : signature.parameters()) {
+                parameterDocs.add(parameter.documentation());
+            }
+            overloads.add(new EditorView.SignatureHelp.Overload(
+                    signature.label(), parameterDocs));
+        }
+        return new EditorView.SignatureHelp(overloads,
+                help.activeSignature(), help.activeParameter());
+    }
+
+    /**
+     * La génération de la demande de signature vivante (le texte change : la réponse en vol se périme).
+     */
     private final AtomicLong signatureGeneration = new AtomicLong();
 
     /** Le curseur de la dernière demande de signature (la clef du cache). */
@@ -1294,18 +1417,24 @@ public final class LspEditor {
         // N'ATTEND JAMAIS (l'attente vivait SUR le fil, jusqu'à
         // requestTimeoutMs par question) ; la popup vit immédiate
         // (« … »), la réponse la remplace à son arrivée — le retour
-        // null (le serveur ne sait pas, le survol est coupé, la
+        // muet (le serveur ne sait pas, le survol est coupé, la
         // liaison est morte) rend la place à la description de
-        // l'index local
+        // l'index local. LA RÉPONSE PORTE SON BALISAGE (D-P5) : le
+        // Markdown des serveurs survit — la popup y rend ses titres,
+        // listes, code et liens (le corps qui dépasse s'y défile)
         view.setInfoProvider((line, column, word, answer) -> {
             if (!hoverEnabled || session == null) {
-                answer.answer(null);
+                answer.answer(null, false);
                 return;
             }
             session.hover(documentUri, new LspPosition(line, column))
-                    .whenComplete((hoverText, failure) -> answer.answer(
-                            failure != null || hoverText == null || hoverText.isEmpty()
-                                    ? null : hoverText));
+                    .whenComplete((hover, failure) -> {
+                        if (failure != null || hover == null || !hover.hasValue()) {
+                            answer.answer(null, false);
+                        } else {
+                            answer.answer(hover.value(), hover.markdown());
+                        }
+                    });
         });
         // la complétion du serveur À LA LEÇON DE LA RÉFÉRENCE (l'IDE de
         // référence accumule ses candidats et FILTRE CÔTÉ CLIENT à la
@@ -1317,6 +1446,11 @@ public final class LspEditor {
         // le préfixe n'a pas bougé. La carte vit pendant l'attente :
         // le filtrage local y donne les candidats vivants, la réponse
         // affine (le serveur voit plus que le préfixe : le contexte).
+        // LES CANDIDATS ARRIVENT ENTIERS (D-P2 du rapport) : la nature,
+        // le détail, l'obsolescence, la documentation, le remplacement
+        // propre et l'ORDRE DU SERVEUR y vivent — la nature du
+        // protocole y devient l'icône de la carte, l'ordre y trie (le
+        // sortText prime, l'ordre d'arrivée sinon).
         view.setSuggestionProvider((prefix, line, column) -> {
             if (!completionEnabled || session == null || prefix.isEmpty()) {
                 return List.of();
@@ -1336,10 +1470,10 @@ public final class LspEditor {
                 completionPrefix = prefix;
                 final boolean keepCache = extendsCache;
                 session.completion(documentUri, new LspPosition(line, column))
-                        .whenComplete((words, failure) -> {
-                            if (asked.equals(completionPrefix) && words != null) {
+                        .whenComplete((candidates, failure) -> {
+                            if (asked.equals(completionPrefix) && candidates != null) {
                                 completionCache.clear();
-                                completionCache.addAll(words);
+                                completionCache.addAll(candidates);
                                 view.post(view::invalidate);
                             }
                         });
@@ -1350,18 +1484,63 @@ public final class LspEditor {
             // le filtrage CÔTÉ CLIENT (prefixMatches à la référence) :
             // le candidat dont le nom commence par le préfixe vit,
             // l'autre attend la réponse — la liste ne se vide jamais
-            // au fil de la frappe
-            List<String> filtered = new ArrayList<>(completionCache.size());
-            for (String word : completionCache) {
-                if (word.regionMatches(true, 0, prefix, 0, prefix.length())) {
-                    filtered.add(word);
+            // au fil de la frappe ; l'ORDRE du serveur y demeure (le
+            // sortText prime, l'ordre d'arrivée sinon)
+            List<CompletionCard.Entry> filtered = new ArrayList<>();
+            List<jo.pigma.lsp.LspCompletionItem> sorted =
+                    new ArrayList<>(completionCache);
+            sorted.sort(LspEditor::completionOrder);
+            for (jo.pigma.lsp.LspCompletionItem candidate : sorted) {
+                if (candidate.label().regionMatches(true, 0, prefix, 0,
+                        prefix.length())) {
+                    filtered.add(entryOf(candidate));
                 }
             }
             return filtered;
         });
+        // LE RÉSOLVEUR DE DOCUMENTATION (la suite de D-P2) : le
+        // candidat CHOISI se documente à la demande — le
+        // completionItem/resolve du protocole y répond (la capacité se
+        // vérifie : un serveur muet ne reçoit pas la question), le fil
+        // d'interface n'attend jamais, la réponse rend sur le fil de la
+        // vue. La réponse RENTRE AU CACHE (le candidat résolu y remplace
+        // le sien : les trames suivantes portent la documentation — la
+        // résolution ne se paie qu'UNE fois par candidat, jamais à
+        // chaque re-filtre de la frappe)
+        view.setCompletionDocResolver((entry, answer) -> {
+            if (!completionEnabled || session == null
+                    || !capabilities.completionResolve()) {
+                answer.answer(null, false);
+                return;
+            }
+            synchronized (completionCache) {
+                for (int at = 0; at < completionCache.size(); at++) {
+                    if (completionCache.get(at).label().equals(entry.name())) {
+                        final int slot = at;
+                        session.resolveCompletionItem(completionCache.get(at))
+                                .whenComplete((resolved, failure) -> {
+                                    if (resolved != null && slot < completionCache.size()
+                                            && completionCache.get(slot).label()
+                                                    .equals(entry.name())) {
+                                        completionCache.set(slot, resolved);
+                                    }
+                                    answer.answer(resolved == null
+                                            ? null : resolved.documentation(),
+                                            resolved != null
+                                                    && resolved.markdownDoc());
+                                });
+                        return;
+                    }
+                }
+            }
+            answer.answer(null, false);
+        });
         // l'aide aux paramètres du serveur prime : le cache par
         // curseur, la génération déclasse une réponse du texte
-        // d'avant (un changement de document ou de curseur)
+        // d'avant (un changement de document ou de curseur). LES
+        // SURCHARGES ENTIÈRES y vivent (D-P6 du rapport) : chaque
+        // signature avec ses paramètres documentés, l'active y naît
+        // — les autres se parcourent au sélecteur de la carte
         view.setSignatureProvider(caret -> {
             if (!signatureEnabled || session == null) {
                 return null;
@@ -1376,8 +1555,7 @@ public final class LspEditor {
                                 new LspPosition(line, caret - buffer.getLineStart(line)))
                         .whenComplete((help, failure) -> {
                             if (help != null && generation == signatureGeneration.get()) {
-                                signatureAnswer = new EditorView.SignatureHelp(
-                                        help.label(), help.activeParameter());
+                                signatureAnswer = helpOf(help);
                                 view.post(view::invalidate);
                             }
                         });

@@ -298,6 +298,21 @@ public final class Canvas {
     }
 
     /**
+     * Rétablit l'état jusqu'au repère donné (la coupe du canevas y
+     * demeure — le dessin borné d'un panneau défilé) : le repère est
+     * celui qu'un {@code save()} a rendu — le rétablir DÉFAIT ce
+     * save (la pile redescend SOUS le repère, comme au cadre). Un
+     * retour au repère 1 vide la pile entière.
+     *
+     * @param saveCount le repère rendu par le save à défaire
+     */
+    public void restoreToCount(int saveCount) {
+        while (matrixStack.size() >= Math.max(1, saveCount)) {
+            restore();
+        }
+    }
+
+    /**
      * Translate l'espace courant (la translation se compose avec
      * l'échelle en place).
      *

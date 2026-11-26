@@ -24,6 +24,7 @@ import org.robolectric.Shadows;
 import org.robolectric.annotation.Config;
 
 import jo.pigma.editor.EditorView;
+import jo.pigma.editor.popups.CompletionCard;
 import jo.pigma.syntax.SyntaxDocument;
 
 /**
@@ -101,6 +102,8 @@ public final class RobolectricHarness {
         foldPlaceholderText();
         diagnosticBadge();
         asyncHover();
+        richCompletionAndOverloads();
+        markdownPopupScrolls();
         stateSaveRestore();
         assertTrue(failures + " vérification(s) en échec", failures == 0);
         System.out.println("résumé harnais réel : " + scenarios
@@ -692,7 +695,7 @@ public final class RobolectricHarness {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            answer.answer(served[0]);
+            answer.answer(served[0], false);
         }, "fournisseur d'essai").start());
         // un mot du document se sélectionne, la documentation s'y
         // demande (le « i » de la barre)
@@ -718,7 +721,7 @@ public final class RobolectricHarness {
                         && !"\u2026".equals(editor.infoPopupText()));
         // la réponse périmée n'évince personne : la question a bougé
         editor.setInfoProvider((line, column, word, answer) ->
-                answer.answer("la réponse périmée"));
+                answer.answer("la réponse périmée", false));
         selectFirstWord();
         int askedLine = editor.caretLine();
         editor.showSelectionDocs();
@@ -797,6 +800,192 @@ public final class RobolectricHarness {
     }
 
     // ---------------------------------------------------------- outils
+
+    /**
+     * LA COMPLÉTION RICHE ET LES SURCHARGES (le défaut du rapport des
+     * popups : le candidat du serveur arrivait réduit à son libellé,
+     * l'aide aux paramètres gardait la signature active seule) : les
+     * candidats portent nature, détail, obsolescence et documentation
+     * — la documentation du candidat CHOISI arrive ASYNCHRONE par le
+     * résolveur (la résolution du protocole), l'insertion pose le
+     * TEXTE PROPRE du candidat ; l'aide aux paramètres porte ses
+     * SURCHARGES et son sélecteur.
+     */
+    private void richCompletionAndOverloads() throws InterruptedException {
+        begin("complétion riche : nature, détail, barré, documentation résolue");
+        String original = editor.getBuffer().toString();
+        // un fournisseur d'essai aux candidats ENTIERS : l'obsolète
+        // barré, la nature porte l'icône, le détail vit à droite, le
+        // texte propre diffère du libellé (l'insertion le pose)
+        editor.setSuggestionProvider((prefix, line, column) ->
+                java.util.Arrays.asList(
+                        new CompletionCard.Entry("premier", "la fonction première",
+                                CompletionCard.KIND_FUNCTION, false, "", false,
+                                "premierePose", -1, -1),
+                        new CompletionCard.Entry("poids", "le type lourd",
+                                CompletionCard.KIND_CLASS, true, "", false, "",
+                                -1, -1)));
+        int caret = editor.getBuffer().toString().indexOf("pack");
+        editor.setSelection(caret + 4, caret + 4);
+        frame();
+        check("la carte vit aux candidats riches",
+                editor.completionCard().isShown()
+                        && editor.completionCard().entries().size() >= 2);
+        CompletionCard.Entry served = null;
+        for (CompletionCard.Entry entry : editor.completionCard().entries()) {
+            if ("premier".equals(entry.name())) {
+                served = entry;
+            }
+        }
+        check("le détail du serveur vit à la rangée",
+                served != null && "la fonction première".equals(served.detail()));
+        boolean strikethroughSeen = false;
+        for (CompletionCard.Entry entry : editor.completionCard().entries()) {
+            strikethroughSeen |= entry.deprecated();
+        }
+        check("l'obsolescence du candidat vit à la rangée", strikethroughSeen);
+        // la documentation du CHOISI : le résolveur répond depuis SON fil
+        // (la résolution du protocole — l'asynchrone du rapport)
+        editor.setCompletionDocResolver((entry, answer) -> new Thread(() -> {
+            try {
+                Thread.sleep(80L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            answer.answer("La documentation **résolue** du " + entry.name(), true);
+        }, "résolveur d'essai").start());
+        // le CHOIX EXPLICITE vise le candidat du serveur « premier »
+        // (la fusion y mêle les mots-clés du langage — la flèche y
+        // passe d'abord)
+        for (int step = 0; step < 6; step++) {
+            editor.completionCard().onArrow(1);
+            if ("premier".equals(editor.completionCard().entries()
+                    .get(editor.completionCard().highlighted()).name())) {
+                break;
+            }
+        }
+        frame();
+        idle(500L);
+        frame();
+        String resolvedDoc = null;
+        for (CompletionCard.Entry entry : editor.completionCard().entries()) {
+            if ("premier".equals(entry.name())) {
+                resolvedDoc = entry.documentation();
+            }
+        }
+        check("la documentation résolue arrive au candidat CHOISI",
+                "La documentation **résolue** du premier".equals(resolvedDoc));
+        // l'insertion pose le TEXTE PROPRE du candidat (pas son libellé)
+        editor.completionCard().onEnter();
+        check("l'insertion pose le texte propre du candidat",
+                editor.getBuffer().toString().contains("premierePose"));
+        editor.setCompletionDocResolver(null);
+        editor.setSuggestionProvider(null);
+        // le retour au texte propre par les annulations
+        while (!editor.getBuffer().toString().equals(original)
+                && editor.getUndoStack().canUndo()) {
+            editor.getUndoStack().undo();
+        }
+        check("le texte revient à l'original",
+                editor.getBuffer().toString().equals(original));
+
+        // LES SURCHARGES de l'aide aux paramètres : deux lignes du
+        // serveur, l'active naît montrée, le sélecteur BOUCLE, la
+        // documentation du paramètre actif se lit
+        begin("signature : les surcharges et leur sélecteur");
+        editor.setSignatureProvider(caretAt -> new EditorView.SignatureHelp(
+                java.util.Arrays.asList(
+                        new EditorView.SignatureHelp.Overload("essai(int a)",
+                                java.util.Arrays.asList("la doc du premier")),
+                        new EditorView.SignatureHelp.Overload("essai(int a, int b)",
+                                java.util.Arrays.asList("", "la doc du second"))),
+                1, 1));
+        editor.caretTo(original.indexOf("pack") + 4);
+        frame();
+        check("la carte de signature vit aux surcharges",
+                editor.signatureCard().isShown());
+        check("l'active naît montrée", "essai(int a, int b)"
+                .equals(editor.signatureCard().label()));
+        check("la documentation du paramètre actif se lit",
+                "la doc du second".equals(editor.signatureCard()
+                        .parameterDocumentation()));
+        editor.signatureCard().cycle(1);
+        check("le sélecteur boucle à la première",
+                "essai(int a)".equals(editor.signatureCard().label()));
+        frame();
+        editor.setSignatureProvider(null);
+        editor.caretTo(0);
+        frame();
+        check("la carte se range au fournisseur débranché",
+                !editor.signatureCard().isShown());
+    }
+
+    /**
+     * LE SURVOL BALISÉ QUI DÉFILE (le défaut du rapport : le corps nu
+     * se coupait à quatre rangées — le Markdown des serveurs mourait
+     * en chemin) : le corps rend ses TITRES, ses LISTES et son CODE,
+     // la queue qui dépasse se DÉFILE au doigt qui traîne.
+     */
+    private void markdownPopupScrolls() {
+        begin("survol balisé : le Markdown vit, le corps qui dépasse défile");
+        // un document balisé LONG (les titres, les listes, le code et
+        // les gras — la queue dépasse la borne de la carte)
+        StringBuilder body = new StringBuilder("# La fonction première\n\n");
+        body.append("Elle fait **la somme** et *l'appoint*.\n\n");
+        body.append("- le premier cas\n- le second cas\n\n");
+        body.append("```java\nint a = 1;\nint b = 2;\n```\n\n");
+        for (int row = 0; row < 40; row++) {
+            body.append("la ligne ").append(row).append(" du corps balisé\n");
+        }
+        // le curseur va SUR L'ESPACE d'une ligne de commentaire : la
+        // carte de complétion s'y range (le mot vide ne nourrit
+        // personne — son doigt à la popup ne lui revient pas)
+        int anchorLine = 8;
+        editor.caretTo(editor.getBuffer().getLineStart(3));
+        // la carte de diagnostic d'un scénario d'avant se range (le
+        // doigt de la popup lui reviendrait — elle est une carte)
+        editor.diagnosticCard().close();
+        frame();
+        editor.showInfoPopup("premier", body.toString(), true,
+                anchorLine, 4);
+        frame();
+        check("la popup balisée vit",
+                "premier".equals(editor.infoPopupTitle()));
+        // la trame se peint SANS lever (le rendu balisé entier : les
+        // titres, les listes, le code, les gras)
+        check("la trame du corps balisé se peint", true);
+        // le doigt qui traîne sur la popup : le corps qui dépasse se
+        // défile (l'appui SUR la popup, le glissé vers le bas)
+        // la pose de la dernière trame dit où vit la popup : le doigt
+        // y tombe au centre du corps
+        android.graphics.RectF box = editor.infoPopupBox();
+        float popupCenterX = box.centerX();
+        float popupTop = box.top + 40.0f;
+        long when = android.os.SystemClock.uptimeMillis();
+        editor.dispatchTouchEvent(MotionEvent.obtain(when, when,
+                MotionEvent.ACTION_DOWN, popupCenterX, popupTop, 0));
+        for (int step = 1; step <= 8; step++) {
+            editor.dispatchTouchEvent(MotionEvent.obtain(when, when + step * 16L,
+                    MotionEvent.ACTION_MOVE, popupCenterX,
+                    popupTop + step * 20.0f, 0));
+        }
+        editor.dispatchTouchEvent(MotionEvent.obtain(when, when + 200L,
+                MotionEvent.ACTION_UP, popupCenterX, popupTop + 160.0f, 0));
+        frame();
+        check("le corps qui dépasse se défile au doigt",
+                editor.infoPopupScrollY() > 0.0f);
+        // la popup vit encore (le geste de défilement ne la range pas)
+        check("la popup survit au défilement",
+                "premier".equals(editor.infoPopupTitle()));
+        // l'appui sans traînée la range (la façon d'avant demeure)
+        editor.dispatchTouchEvent(MotionEvent.obtain(when, when + 300L,
+                MotionEvent.ACTION_DOWN, popupCenterX, popupTop, 0));
+        editor.dispatchTouchEvent(MotionEvent.obtain(when, when + 320L,
+                MotionEvent.ACTION_UP, popupCenterX, popupTop, 0));
+        frame();
+        check("l'appui sans traînée range la popup",
+                editor.infoPopupText() == null);
+    }
 
     /**
      * Remesure et redisplay la vue : le VRAI parcours du cadre (la

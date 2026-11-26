@@ -37,6 +37,16 @@ public final class RectF {
     }
 
     /**
+     * La copie d'un rectangle (la pose courante se rend sans son
+     * original — le harnais y vise le doigt sans toucher à la pose).
+     *
+     * @param other le rectangle copié
+     */
+    public RectF(RectF other) {
+        this(other.left, other.top, other.right, other.bottom);
+    }
+
+    /**
      * Repose les bornes du rectangle.
      *
      * @param left   le bord gauche
@@ -49,5 +59,37 @@ public final class RectF {
         this.top = top;
         this.right = right;
         this.bottom = bottom;
+    }
+
+    /** La largeur du rectangle (bord droit moins bord gauche). */
+    public float width() {
+        return right - left;
+    }
+
+    /** La hauteur du rectangle (bord bas moins bord haut). */
+    public float height() {
+        return bottom - top;
+    }
+
+    /** L'abscisse du centre du rectangle. */
+    public float centerX() {
+        return (left + right) / 2.0f;
+    }
+
+    /** L'ordonnée du centre du rectangle. */
+    public float centerY() {
+        return (top + bottom) / 2.0f;
+    }
+
+    /**
+     * Le point vit-il dans le rectangle (les bords droit et bas
+     * exclus — la convention du cadre) ?
+     *
+     * @param x l'abscisse du point
+     * @param y l'ordonnée du point
+     * @return vrai quand le point s'y trouve
+     */
+    public boolean contains(float x, float y) {
+        return x >= left && x < right && y >= top && y < bottom;
     }
 }

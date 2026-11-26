@@ -77,14 +77,66 @@ public final class CompletionCard {
 
     /**
      * Un candidat : son nom, son détail (la colonne de droite — la
-     * nature, la ligne de déclaration) et sa nature (l'icône).
+     * nature, la ligne de déclaration), sa nature (l'icône), son
+     * obsolescence (le BARRÉ du nom), sa documentation (le panneau
+     * adjacent du candidat CHOISI — le balisage du serveur y vit)
+     * et son insertion propre (le texte à poser, la plage à remplacer
+     * — le remplacement du serveur PRIME sur le préfixe tapé).
      *
-     * @param name   le nom insérable, jamais vide
-     * @param detail le détail de droite, vide pour aucun
-     * @param kind   la nature, une des constantes KIND_ de la carte
+     * @param name       le nom insérable, jamais vide
+     * @param detail     le détail de droite, vide pour aucun
+     * @param kind       la nature, une des constantes KIND_ de la carte
+     * @param deprecated le candidat est-il obsolète (le barré) ?
+     * @param documentation la documentation du candidat, vide pour aucune
+     * @param markdownDoc  la documentation est-elle balisée ?
+     * @param insertText le texte à poser, vide : le nom se pose
+     * @param insertStart le début de la plage remplacée, -1 : le mot tapé
+     * @param insertEnd   la fin de la plage remplacée, -1 : le curseur
      */
-    public record Entry(String name, String detail, int kind) {
+    public record Entry(String name, String detail, int kind, boolean deprecated,
+            String documentation, boolean markdownDoc, String insertText,
+            int insertStart, int insertEnd) {
+
+        /** Le candidat normalisé : les textes jamais nuls, la plage saine. */
+        public Entry {
+            documentation = documentation == null ? "" : documentation;
+            insertText = insertText == null ? "" : insertText;
+            if (insertStart < 0 || insertEnd < insertStart) {
+                insertStart = -1;
+                insertEnd = -1;
+            }
+        }
+
+        /**
+         * Le candidat nu : ni obsolescence, ni documentation, ni
+         * remplacement propre (le nom se pose, le mot tapé se remplace).
+         *
+         * @param name   le nom insérable, jamais vide
+         * @param detail le détail de droite, vide pour aucun
+         * @param kind   la nature, une des constantes KIND_ de la carte
+         */
+        public Entry(String name, String detail, int kind) {
+            this(name, detail, kind, false, "", false, "", -1, -1);
+        }
     }
+
+    /** La largeur minimale du panneau de documentation (dp). */
+    private static final int DOC_MIN_DP = 150;
+
+    /** La largeur maximale du panneau de documentation (dp). */
+    private static final int DOC_MAX_DP = 260;
+
+    /** La marge entre la carte et le panneau de documentation (dp). */
+    private static final int DOC_GAP_DP = 6;
+
+    /** Le plafond de rangées du panneau de documentation. */
+    private static final int DOC_MAX_ROWS = 16;
+
+    /** Le pinceau du barré des candidats obsolètes. */
+    private final Paint strikePaint = new Paint();
+
+    /** Le panneau de documentation du candidat choisi. */
+    private final MarkdownPane docPane = new MarkdownPane(1.0f);
 
     private List<Entry> entries = List.of();
 
@@ -200,6 +252,8 @@ public final class CompletionCard {
         selectionPaint.setColor((style.accentArgb() & 0x00FFFFFF) | 0x1F000000);
         accentBarPaint.setColor(style.accentArgb());
         scrollbarPaint.setColor((style.borderArgb() & 0x00FFFFFF) | 0x66000000);
+        strikePaint.setColor(style.hintArgb());
+        docPane.setStyle(style);
         iconPaint.setStyle(Paint.Style.FILL);
         iconLetterPaint.setColor(0xFFFFFFFF);
         iconLetterPaint.setTextSize((style.secondarySizeSp() - 3.0f) * density);
@@ -269,6 +323,51 @@ public final class CompletionCard {
             }
             keepCurrentVisible();
         }
+    }
+
+    /**
+     * L'entrée D'AVANT qui porte la documentation du nom demandé (la
+     * re-fusion de la trame y rend la documentation résolue — le nom
+     * dit l'identité, le contenu demeure) ; null quand le nom vit
+     * sans documentation.
+     *
+     * @param name le nom du candidat documenté
+     * @return l'entrée qui porte la documentation, null sinon
+     */
+    public Entry documentationOf(String name) {
+        for (Entry entry : entries) {
+            if (entry.name().equals(name) && !entry.documentation().isEmpty()) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Pose la documentation d'un candidat — le panneau adjacent s'y
+     * nourrit (le candidat CHOISI s'y documente : la documentation
+     * PORTÉE d'abord, la résolution du serveur ensuite). La
+     * documentation vit DANS l'entrée : elle y survit au re-filtre.
+     *
+     * @param name     le nom du candidat documenté
+     * @param doc      la documentation, vide pour ranger le panneau
+     * @param markdown la documentation est-elle balisée ?
+     * @return vrai quand le candidat vit à la carte
+     */
+    public boolean setDocumentation(String name, String doc, boolean markdown) {
+        for (int at = 0; at < entries.size(); at++) {
+            if (entries.get(at).name().equals(name)) {
+                Entry old = entries.get(at);
+                Entry fresh = new Entry(old.name(), old.detail(), old.kind(),
+                        old.deprecated(), doc == null ? "" : doc, markdown,
+                        old.insertText(), old.insertStart(), old.insertEnd());
+                List<Entry> rebuilt = new ArrayList<>(entries);
+                rebuilt.set(at, fresh);
+                entries = List.copyOf(rebuilt);
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -345,8 +444,10 @@ public final class CompletionCard {
     }
 
     /**
-     * La validation déléguée insère le candidat courant — le préfixe
-     * se remplace par le candidat entier (une unité d'annulation).
+     * La validation déléguée insère le candidat courant — son texte
+     * PROPRE se pose (le texte d'insertion ou le remplacement du
+     * serveur PRIME sur le nom — l'insertion vit chez l'éditeur, une
+     * unité d'annulation).
      *
      * @return vrai quand la carte a pris la validation
      */
@@ -354,7 +455,7 @@ public final class CompletionCard {
         if (highlighted < 0 || highlighted >= entries.size()) {
             return false;
         }
-        insert(entries.get(highlighted).name());
+        insert(entries.get(highlighted));
         return true;
     }
 
@@ -378,7 +479,7 @@ public final class CompletionCard {
         if (y < rowsBottom) {
             int row = (int) ((y - poseY - dp(PAD_DP)) / rowH) + topRow;
             if (row >= topRow && row < topRow + shownRows && row < entries.size()) {
-                insert(entries.get(row).name());
+                insert(entries.get(row));
             }
         }
         return true;
@@ -388,9 +489,12 @@ public final class CompletionCard {
      * Dessine la carte : la pose se recalcule d'abord — le caret la
      * suit (défilement, navigation) — puis la fenêtre de rangées (le
      * candidat courant surligné, son filet d'accent, l'icône de
-     * nature, le nom à l'accent sur le préfixe, le détail à droite),
-     * la barre de défilement si la fenêtre cache des rangées, et le
-     * pied de carte (le compte, l'indice des touches).
+     * nature, le nom à l'accent sur le préfixe, le BARRÉ de
+     * l'obsolescence, le détail à droite), la barre de défilement si
+     * la fenêtre cache des rangées, le pied de carte (le compte,
+     * l'indice des touches), et le PANNEAU DE DOCUMENTATION du
+     * candidat choisi quand il en porte (à DROITE de la carte quand
+     * la place y vit, DESSOUS sinon).
      *
      * @param canvas  le canevas de la vue
      * @param metrics la géométrie courante de la vue
@@ -462,8 +566,20 @@ public final class CompletionCard {
             }
             drawIcon(canvas, entries.get(at).kind(),
                     poseX + dp(10), top + rowH / 2.0f);
-            drawLabel(canvas, ellipsize(entries.get(at).name(), nameColumnWidth()),
+            String name = ellipsize(entries.get(at).name(), nameColumnWidth());
+            drawLabel(canvas, name,
                     poseX + dp(ICON_DP) + dp(8), top + rowH * 0.68f, at == highlighted);
+            if (entries.get(at).deprecated()) {
+                // l'OBSOLÈTE : le nom se barre (la référence barre ses
+                // candidats déconseillés — le serveur le dit, la carte
+                // l'affiche)
+                strikePaint.setStrokeWidth(1.0f);
+                float nameW = textPaint.measureText(name);
+                canvas.drawLine(poseX + dp(ICON_DP) + dp(8),
+                        top + rowH * 0.55f,
+                        poseX + dp(ICON_DP) + dp(8) + nameW,
+                        top + rowH * 0.55f, strikePaint);
+            }
             String detail = entries.get(at).detail();
             if (!detail.isEmpty()) {
                 String shownDetail = shrink(detail, detailPaint, detailColumnWidth());
@@ -474,8 +590,81 @@ public final class CompletionCard {
         }
         drawScrollbar(canvas, rowsBottom);
         drawFooter(canvas, rowsBottom);
+        drawDocumentation(canvas, metrics);
         canvas.restore();
         canvas.restore();
+    }
+
+    /**
+     * Le panneau de documentation du candidat CHOISI (la référence
+     * documente son candidat retenu — la documentation du serveur
+     * y vit, la résolution y répond) : À DROITE de la carte quand
+     * la place y vit (la hauteur s'y accorde), DESSOUS sinon (la
+     * largeur de la carte y sert, la hauteur s'y borne) ; le candidat
+     * sans documentation n'y peint RIEN.
+     */
+    private void drawDocumentation(Canvas canvas, PopupMetrics metrics) {
+        if (highlighted < 0 || highlighted >= entries.size()) {
+            return;
+        }
+        Entry entry = entries.get(highlighted);
+        if (entry.documentation().isEmpty()) {
+            return;
+        }
+        boolean rich = entry.markdownDoc()
+                || MarkdownDoc.isRich(entry.documentation());
+        List<MarkdownDoc.Block> blocks = rich
+                ? MarkdownDoc.parse(entry.documentation())
+                : plainBlocks(entry.documentation());
+        float margin = dp(MARGIN_DP);
+        float gap = dp(DOC_GAP_DP);
+        float roomRight = metrics.viewWidth() - margin - (poseX + cardW + gap);
+        float paneW;
+        float paneX;
+        float paneY;
+        float paneH;
+        if (roomRight >= dp(DOC_MIN_DP)) {
+            paneW = Math.min(roomRight, dp(DOC_MAX_DP));
+            paneX = poseX + cardW + gap;
+            paneY = poseY;
+            paneH = cardH;
+        } else {
+            paneW = cardW;
+            paneX = poseX;
+            paneY = poseY + cardH + gap;
+            paneH = Math.min(dp(220),
+                    metrics.viewHeight() - margin - paneY);
+        }
+        if (paneH < dp(40)) {
+            return;
+        }
+        List<MarkdownPane.Row> rows = docPane.layout(blocks,
+                paneW - 2 * dp(8), DOC_MAX_ROWS);
+        float contentH = docPane.height(rows);
+        paneH = Math.min(paneH, contentH + 2 * dp(8));
+        canvas.drawRoundRect(paneX, paneY, paneX + paneW, paneY + paneH,
+                dp(style.cornerRadiusDp()), dp(style.cornerRadiusDp()), cardPaint);
+        canvas.drawRoundRect(paneX, paneY, paneX + paneW, paneY + paneH,
+                dp(style.cornerRadiusDp()), dp(style.cornerRadiusDp()), borderPaint);
+        int save = canvas.save();
+        canvas.clipRect(paneX + dp(2), paneY + dp(2),
+                paneX + paneW - dp(2), paneY + paneH - dp(2));
+        docPane.draw(canvas, rows, paneX + dp(8), paneY + dp(8),
+                paneW - 2 * dp(8));
+        canvas.restoreToCount(save);
+    }
+
+    /** Les paragraphes d'un texte NU (le panneau y fait la même facture). */
+    private List<MarkdownDoc.Block> plainBlocks(String text) {
+        List<MarkdownDoc.Block> blocks = new ArrayList<>();
+        for (String line : text.split("\n")) {
+            if (!line.isBlank()) {
+                blocks.add(new MarkdownDoc.Block(MarkdownDoc.PARAGRAPH, 0,
+                        List.of(new MarkdownDoc.Span(line, false, false, false,
+                                "")), "", ""));
+            }
+        }
+        return blocks;
     }
 
     /**
@@ -916,13 +1105,18 @@ public final class CompletionCard {
     }
 
     /**
-     * Insère un candidat : le préfixe se remplace par le candidat
-     * entier — l'insertion vit chez l'éditeur (une unité d'annulation).
+     * Insère un candidat : son texte PROPRE se pose sur SA plage (le
+     * remplacement du serveur PRIME — le texte d'insertion sinon, le
+     * nom en dernier) ; l'insertion vit chez l'éditeur (une unité
+     * d'annulation).
      */
-    private void insert(String candidate) {
-        if (editor != null) {
-            editor.insertCompletion(candidate);
+    private void insert(Entry entry) {
+        if (editor == null) {
+            return;
         }
+        String text = !entry.insertText().isEmpty() ? entry.insertText()
+                : entry.name();
+        editor.insertCompletion(text, entry.insertStart(), entry.insertEnd());
     }
 
     private float dp(int value) {
