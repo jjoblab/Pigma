@@ -2,6 +2,7 @@ package jo.pigma.editor;
 
 import jo.pigma.editor.folding.FoldBounds;
 import jo.pigma.editor.folding.FoldModel;
+import jo.pigma.editor.internal.layout.LayoutModel;
 import jo.pigma.editor.folding.StructureGuides;
 import jo.pigma.editor.folding.StructureGuides.Guide;
 import jo.pigma.editor.folding.WrapModel;
@@ -341,6 +342,8 @@ public final class EditorView extends View {
             indents[line] = indent;
         }
         wrapModel.rebuild(lengths, indents, columns);
+        layout.rebuildWrap(softWrap, getWidth() - getPaddingLeft()
+                - getPaddingRight());
     }
 
     /** L'horodatage de l'appui courant (l'appui long sélectionne le mot). */
@@ -574,6 +577,14 @@ public final class EditorView extends View {
 
     /** Les plis — l'état et ses caches au paquet folding/. */
     private final FoldModel folds = new FoldModel();
+    /**
+     * La géométrie texte EXTRAITE de la vue (le découpage) : la
+     * correspondance offset ↔ pixel, les plis, la coupe et les bornes
+     * de défilement y vivent, testés en JVM — la vue ne garde que le
+     * câblage et les pinceaux. Né au CONSTRUCTEUR (le tampon et les
+     * plis y sont prêts).
+     */
+    private final LayoutModel layout;
 
     /** Le rendu de la sélection — pinceau et dessin au paquet selection/. */
     private final SelectionRenderer selectionRenderer = new SelectionRenderer();
@@ -725,6 +736,7 @@ public final class EditorView extends View {
         super(context);
         buffer = TextBuffer.create(INITIAL_TEXT);
         undoStack = new UndoStack(buffer);
+        layout = new LayoutModel(buffer, folds);
         syntax = SyntaxDocument.open(buffer, Languages.JAVA);
         structure = StructureDocument.open(buffer, syntax);
         semantic = SemanticDocument.open(buffer, syntax, structure,
@@ -944,6 +956,9 @@ public final class EditorView extends View {
         charWidth = textPaint.measureText("M");
         lineHeight = (float) Math.ceil(fontMetrics.bottom - fontMetrics.top) + dp(2);
         caretWidth = dp(2);
+        // les mesures NEUVES nourrissent la géométrie extraite (après
+        // la mesure, pas avant : le modèle lirait les anciennes)
+        syncLayoutMetrics();
         renderCache.invalidate();
         scrollY = clampToRange(scrollY, 0.0f, maxScroll());
         scrollX = clampToRange(scrollX, 0.0f, maxScrollX());
@@ -4549,34 +4564,23 @@ public final class EditorView extends View {
 
     /** L'indice visible d'une ligne (les plis compactent la hauteur). */
     private int visibleIndexOf(int line) {
-        // LE SOFT WRAP compte ses rangées : une ligne coupée occupe
-        // AUTANT de rangées visuelles — l'indice visuel additionne
-        // celles des lignes visibles d'avant (le wrap vit au-dessus
-        // du modèle des plis : les lignes cachées n'y comptent pas)
-        if (!softWrap || !wrapModel.isWrapped()) {
-            return folds.visibleIndexOf(line);
-        }
-        int rows = 0;
-        for (int at = 0; at < line; at++) {
-            if (!isHidden(at)) {
-                rows += wrapModel.rowsOf(at);
-            }
-        }
-        return rows;
+        return layout.visibleIndexOf(line);
+    }
+
+    /**
+     * Les mesures courantes de la vue nourrissent le modèle de
+     * géométrie (le bord haut, l'interligne, la colonne, la hauteur
+     * visible) — au zoom comme à la taille.
+     */
+    private void syncLayoutMetrics() {
+        layout.metrics(new LayoutModel.Metrics(getPaddingTop(),
+                lineHeight, charWidth,
+                getHeight() - getPaddingTop() - getPaddingBottom()));
     }
 
     /** Nombre de lignes visibles (le document moins les cachées, plus les rangées du wrap). */
     private int visibleLineCount() {
-        if (!softWrap || !wrapModel.isWrapped()) {
-            return buffer.getLineCount() - folds.hiddenLineCount();
-        }
-        int rows = 0;
-        for (int line = 0; line < buffer.getLineCount(); line++) {
-            if (!isHidden(line)) {
-                rows += wrapModel.rowsOf(line);
-            }
-        }
-        return rows;
+        return layout.visibleRowCount();
     }
 
     /**
@@ -4585,7 +4589,7 @@ public final class EditorView extends View {
      * l'indice de la visible qui les suit).
      */
     private int lineOfVisibleIndex(int index) {
-        return folds.lineOfVisibleIndex(index, buffer.getLineCount());
+        return layout.lineOfVisibleIndex(index);
     }
 
     /** Ligne de base d'une ligne VISIBLE (le mapping des plis s'applique). */
@@ -6822,15 +6826,9 @@ public final class EditorView extends View {
     /** Amène le curseur dans la fenêtre visible (frappe en bord bas) ; un pli qui le cache s'ouvre. */
     private void ensureCaretVisible() {
         revealCaret();
+        syncLayoutMetrics();
         int line = buffer.lineOfOffset(Math.min(selection.caret(), buffer.length()));
-        float top = getPaddingTop() + visibleIndexOf(line) * lineHeight - scrollY;
-        float bottom = top + lineHeight;
-        if (top < 0.0f) {
-            scrollY += top;
-        } else if (bottom > getHeight()) {
-            scrollY += bottom - getHeight();
-        }
-        scrollY = clampToRange(scrollY, 0.0f, maxScroll());
+        scrollY = layout.revealLine(line, scrollY);
     }
 
     /**
@@ -6940,16 +6938,8 @@ public final class EditorView extends View {
         if (softWrap) {
             return 0.0f;
         }
-        float widest = 0.0f;
-        int count = buffer.getLineCount();
-        for (int line = 0; line < count; line++) {
-            int width = buffer.getLineEnd(line) - buffer.getLineStart(line);
-            if (width * charWidth > widest) {
-                widest = width * charWidth;
-            }
-        }
-        return Math.max(0.0f, getPaddingLeft() + widest
-                + getPaddingRight() - getWidth());
+        return Math.max(0.0f, layout.maxScrollX(getWidth()
+                - getPaddingLeft() - getPaddingRight()));
     }
 
     /** Seuil de déplacement avant qu'un contact devienne un défilement. */
