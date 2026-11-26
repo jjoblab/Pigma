@@ -148,8 +148,15 @@ public final class LspSession {
      * serveurs réels s'y orientent — EmmyLua y lit ses ressources).
      */
     private String rootUri = "file:///";
-    /** La version du document (le protocole y retrouve son ordre). */
-    private final AtomicInteger documentVersion = new AtomicInteger();
+    /**
+     * Les versions des documents ouverts : une par URI, la stricte
+     * croissance s'y tient par document (le protocole l'exige par
+     * identifiant — un compteur unique partagé faisait redescendre la
+     * version d'un document quand un autre en montait, les serveurs
+     * y rejettent la notification).
+     */
+    private final java.util.Map<String, java.util.concurrent.atomic.AtomicInteger>
+            documentVersions = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * Le genre de synchronisation négocié à l'initialisation : vrai —
@@ -453,6 +460,7 @@ public final class LspSession {
      */
     public void didOpen(String uri, String text, String languageId) {
         documentShadows.put(uri, text);
+        documentVersions.put(uri, new AtomicInteger());
         launcher.getRemoteProxy().getTextDocumentService().didOpen(
                 new DidOpenTextDocumentParams(
                         new TextDocumentItem(uri, languageId, 1, text)));
@@ -469,6 +477,7 @@ public final class LspSession {
      */
     public void didClose(String uri) {
         documentShadows.remove(uri);
+        documentVersions.remove(uri);
         try {
             launcher.getRemoteProxy().getTextDocumentService().didClose(
                     new DidCloseTextDocumentParams(
@@ -516,8 +525,11 @@ public final class LspSession {
             change.setText(text);
         }
         DidChangeTextDocumentParams params = new DidChangeTextDocumentParams();
+        int version = documentVersions
+                .computeIfAbsent(uri, fresh -> new AtomicInteger())
+                .incrementAndGet();
         params.setTextDocument(new VersionedTextDocumentIdentifier(uri,
-                documentVersion.incrementAndGet()));
+                version));
         params.setContentChanges(List.of(change));
         launcher.getRemoteProxy().getTextDocumentService().didChange(params);
     }

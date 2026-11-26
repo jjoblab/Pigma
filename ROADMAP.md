@@ -36,7 +36,8 @@ qu'il propose.
 | 67 | Minimap : zone tactile bornée à ce qui se dessine (mapBottom), setMinimapEnabled/isMinimapEnabled publics | B2 | **fait** | `docs/chantiers/67.md` | à pousser |
 | 68 | Plis : le placeholder `{…}` de l'en-tête replié se tape et rouvre le bloc (foldPlaceholderLeft) | B5 | **fait** | `docs/chantiers/68.md` | à pousser |
 | 69 | ~~Sauvegarde d'état : BaseSavedState + super~~ réglé au chantier 64 | D1, R2 | **fait** | `docs/chantiers/64.md` | chantier 64 |
-| 70 | Version LSP par document (Map URI → compteur, stricte croissance) | D3 | prévu | — | — |
+| — | *Numéro 70 appelé « 69 » dans la numérotation d'origine de la feuille, décalé d'un par la fusion du 69 au 64.* | | | | |
+| 70 | Version LSP par document (Map URI → compteur, stricte croissance) | D3 | **fait** | `docs/chantiers/70.md` | à pousser |
 | 71 | Silence du fond : échecs comptés et remontés, passBeginNanos remis | D9 | prévu | — | — |
 | 72 | Écouteurs du tampon : CopyOnWriteArrayList | D10 | prévu | — | — |
 | 73 | Binaires natifs : le .so x86_64 sort du dépôt, provenance consignée | D12 | prévu | — | — |
@@ -72,6 +73,10 @@ amputé de ce qui est déjà fait.
 - 2026-11-26 — création ; historique des 113 commits réattribué à
   `jjoblab <olson12jb@gmail.com>` et poussé (force) — les 3 commits
   « Z User » de la période des vagues 44-46 rewriting.
+- 2026-11-26 — chantier 70 fermé (le 69 a fusionné au 64) : D3
+  réglé — la version de document croît strictement PAR URI
+  (ConcurrentHashMap), didOpen repart à 1, didClose range sa
+  version ; le test des deux documents alternés l'éprouve.
 - 2026-11-26 — chantier 68 fermé : B5 réglé — le tap au-delà de
   la fin visible d'un en-tête replié rouvre le bloc (le placeholder
   se clique à la leçon de la référence) ; les chevrons vivaient déjà

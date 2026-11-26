@@ -193,6 +193,11 @@ public class LspSessionTest {
             };
         }
 
+        /** L'URI du dernier changement reçu. */
+        volatile String lastChangeUri;
+        /** La version du dernier changement reçu. */
+        volatile Integer lastChangeVersion;
+
         @Override
         public void didOpen(DidOpenTextDocumentParams params) {
             text = params.getTextDocument().getText();
@@ -202,6 +207,8 @@ public class LspSessionTest {
         @Override
         public void didChange(DidChangeTextDocumentParams params) {
             changeCount++;
+            lastChangeUri = params.getTextDocument().getUri();
+            lastChangeVersion = params.getTextDocument().getVersion();
             TextDocumentContentChangeEvent single = params.getContentChanges().get(0);
             lastChangeRange = single.getRange();
             // un vrai serveur applique les changements dans l'ordre :
@@ -548,6 +555,46 @@ public class LspSessionTest {
         awaitServerText(server, "ligne1\nligneXYZ");
         assertEquals("la suppression au travers des lignes tient", 4, server.changeCount);
         session.shutdown();
+    }
+
+    /**
+     * La version croît strictement PAR DOCUMENT : deux documents
+     * alternés ne se partagent pas leur compteur (le défaut du
+     * rapport — la version d'un document redescendait quand un
+     * autre en montait, les serveurs y rejettent la notification).
+     */
+    @Test
+    public void didChangeVersionsGrowPerDocument() throws Exception {
+        TrialServer server = new TrialServer();
+        LspSession session = LspSession.beside(server, null);
+        session.initialize("pigma-test").get(5, TimeUnit.SECONDS);
+        session.didOpen("file:///a.java", "a1", "java");
+        session.didOpen("file:///b.java", "b1", "java");
+        session.didChange("file:///a.java", "a2");
+        awaitChangeCount(server, 1);
+        assertEquals("le document a porte la version 1", 1,
+                server.lastChangeVersion.intValue());
+        session.didChange("file:///b.java", "b2");
+        awaitChangeCount(server, 2);
+        assertEquals("le document b REPART À 1 (son compteur à lui)", 1,
+                server.lastChangeVersion.intValue());
+        session.didChange("file:///a.java", "a3");
+        awaitChangeCount(server, 3);
+        assertEquals("le document a monte à 2 sans redescendre", 2,
+                server.lastChangeVersion.intValue());
+        session.shutdown();
+    }
+
+    /** Attend que le serveur ait reçu le nombre de changements donné. */
+    private static void awaitChangeCount(TrialServer server, int expected)
+            throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 5_000L;
+        while (server.changeCount < expected
+                && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20L);
+        }
+        assertEquals("le serveur a reçu ses changements", expected,
+                server.changeCount);
     }
 
     /** Aucun écart net (les événements amortis s'annulent) : rien ne part. */
