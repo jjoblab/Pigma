@@ -2671,6 +2671,11 @@ public final class EditorView extends View {
             }
 
             @Override
+            public CharSequence textBetween(int start, int end) {
+                return buffer.getText(start, end);
+            }
+
+            @Override
             public void applyEdit(int start, int end, CharSequence text) {
                 // la règle des popups : la carte ouverte
                 // reçoit le clavier — l'éditeur garde la connexion et

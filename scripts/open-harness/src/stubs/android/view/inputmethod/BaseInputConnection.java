@@ -29,6 +29,26 @@ public class BaseInputConnection implements InputConnection {
     }
 
     @Override
+    public CharSequence getTextBeforeCursor(int length, int flags) {
+        return "";
+    }
+
+    @Override
+    public CharSequence getTextAfterCursor(int length, int flags) {
+        return "";
+    }
+
+    @Override
+    public boolean setComposingRegion(int start, int end) {
+        return false;
+    }
+
+    @Override
+    public int getCursorCapsMode(int reqModes) {
+        return 0;
+    }
+
+    @Override
     public boolean setComposingText(CharSequence text, int newCursorPosition) {
         return false;
     }

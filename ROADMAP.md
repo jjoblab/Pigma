@@ -41,7 +41,7 @@ qu'il propose.
 | 71 | Silence du fond : échecs comptés et lus (sliceFailures, lastFailure), montre refermée, journal une fois | D9 | **fait** | `docs/chantiers/71.md` | à pousser |
 | 72 | Écouteurs du tampon : CopyOnWriteArrayList (le partant pendant sa notification ne lève plus) | D10 | **fait** | `docs/chantiers/72.md` | à pousser |
 | 73 | Binaires natifs : le .so x86_64 sort du dépôt (7,9 Mo), provenance consignée au arm64 | D12 | **fait** | `docs/chantiers/73.md` | à pousser |
-| 74 | Pont IME complet : lectures contextuelles, setComposingRegion, drapeaux | D2, R3 | prévu | — | — |
+| 74 | Pont IME complet : getTextBefore/AfterCursor, setComposingRegion, getCursorCapsMode | D2, R3 | **fait** | `docs/chantiers/74.md` | à pousser |
 | 75 | Appariement par type de signes : BracketMatcher factorisé | B1 | prévu | — | — |
 | 76 | Processus LSP : stderr drainé, arrêt en deux temps | D8 | prévu | — | — |
 | 77 | Accessibilité bibliothèque : AccessibilityNodeInfo, actions, événements | D5 | prévu | — | — |
@@ -73,6 +73,10 @@ amputé de ce qui est déjà fait.
 - 2026-11-26 — création ; historique des 113 commits réattribué à
   `jjoblab <olson12jb@gmail.com>` et poussé (force) — les 3 commits
   « Z User » de la période des vagues 44-46 rewriting.
+- 2026-11-26 — chantier 74 fermé : D2/R3 réglés — le pont IME
+  se complète (lectures contextuelles, région de composition par
+  le clavier, majuscules contextuelles) ; les stubs du vieux
+  harnais suivent.
 - 2026-11-26 — chantier 73 fermé : D12 réglé — le binaire x86_64
   (7,9 Mo, émulateur seul) sort du dépôt, sa provenance se consigne
   au arm64 restant.

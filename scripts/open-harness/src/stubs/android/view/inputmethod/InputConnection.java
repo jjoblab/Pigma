@@ -70,4 +70,41 @@ public interface InputConnection {
      * @return le texte sélectionné
      */
     CharSequence getSelectedText(int flags);
+
+    /**
+     * Le texte avant le curseur (la prédiction du clavier s'y
+     * nourrit).
+     *
+     * @param length le nombre de caractères demandés
+     * @param flags  drapeaux (sans effet ici)
+     * @return le texte avant le curseur
+     */
+    CharSequence getTextBeforeCursor(int length, int flags);
+
+    /**
+     * Le texte après le curseur.
+     *
+     * @param length le nombre de caractères demandés
+     * @param flags  drapeaux (sans effet ici)
+     * @return le texte après le curseur
+     */
+    CharSequence getTextAfterCursor(int length, int flags);
+
+    /**
+     * La zone de composition se repose (le clavier y surligne ce
+     * qu'il corrige).
+     *
+     * @param start le début de la zone
+     * @param end   la fin de la zone
+     * @return vrai si consommé
+     */
+    boolean setComposingRegion(int start, int end);
+
+    /**
+     * Les majuscules contextuelles (le clavier y devine la phrase).
+     *
+     * @param reqModes les modes demandés
+     * @return les modes satisfaits
+     */
+    int getCursorCapsMode(int reqModes);
 }

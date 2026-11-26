@@ -88,6 +88,7 @@ public final class RobolectricHarness {
         panel();
         themeToggle();
         imeTyping();
+        imeBridge();
         keyEvents();
         enterDeleteStress();
         kotlinTab();
@@ -306,6 +307,44 @@ public final class RobolectricHarness {
         editor.setSelection(0, 0);
         check("la sélection se range",
                 !editor.hasSelection());
+    }
+
+    /**
+     * Le pont IME complet (D2/R3) : les lectures contextuelles
+     * nourrissent la prédiction du clavier, la zone de composition se
+     * repose, les majuscules contextuelles se devinent à la phrase.
+     */
+    private void imeBridge() {
+        begin("IME : le pont complet (contexte, région, majuscules)");
+        // le curseur au début : le contexte avant est vide, après tient
+        editor.setSelection(0, 0);
+        check("rien avant le début",
+                connection.getTextBeforeCursor(10, 0).length() == 0);
+        CharSequence after = connection.getTextAfterCursor(12, 0);
+        check("le contexte après tient le début du document",
+                after.length() == 12
+                        && "package exem".contentEquals(after));
+        // le curseur après la première ligne : le contexte avant tient
+        // la fin de la ligne
+        int firstBreak = editor.getBuffer().toString().indexOf('\n');
+        editor.setSelection(firstBreak, firstBreak);
+        CharSequence before = connection.getTextBeforeCursor(7, 0);
+        check("le contexte avant tient la fin de ligne",
+                before.length() == 7);
+        // les majuscules : le début du document demande la phrase
+        editor.setSelection(0, 0);
+        int caps = connection.getCursorCapsMode(
+                android.text.TextUtils.CAP_MODE_SENTENCES
+                        | android.text.TextUtils.CAP_MODE_WORDS);
+        check("la majuscule de phrase se propose au début",
+                (caps & android.text.TextUtils.CAP_MODE_SENTENCES) != 0);
+        // la région de composition se pose par le clavier
+        check("la région de composition se pose",
+                connection.setComposingRegion(0, 7));
+        // puis se range
+        check("la région vide se range",
+                connection.setComposingRegion(0, 0));
+        editor.setSelection(0, 0);
     }
 
     /**

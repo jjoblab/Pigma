@@ -45,6 +45,17 @@ public interface EditorContract {
     int length();
 
     /**
+     * Le texte du document entre deux bornes (la lecture
+     * contextuelle du clavier — ses prédictions et sa capitalisation
+     * s'y calculent).
+     *
+     * @param start le début (inclus)
+     * @param end   la fin (exclue)
+     * @return le texte demandé
+     */
+    CharSequence textBetween(int start, int end);
+
+    /**
      * Applique une édition atomique (une unité d'annulation).
      *
      * @param start le début remplacé

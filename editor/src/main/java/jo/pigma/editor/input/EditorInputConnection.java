@@ -141,4 +141,102 @@ public final class EditorInputConnection extends BaseInputConnection {
     public CharSequence getSelectedText(int flags) {
         return editor.hasSelection() ? editor.selectedText() : null;
     }
+
+    /**
+     * Le texte AVANT le curseur (le pont complet du protocole) : la
+     * prédiction du clavier s'y nourrit (la début de phrase, le mot
+     * en cours). Sans ces lectures, un clavier qui demande le contexte
+     * recevait une chaîne vide du mode factice de la classe de base —
+     * ses prédictions tombaient.
+     *
+     * @param length le nombre de caractères demandés
+     * @param flags  les drapeaux (ignorés : la zone de composition se
+     *               retourne telle quelle, l'éditeur n'a pas de
+     *               marqueurs de style)
+     * @return le texte avant le curseur (tronqué au début du document)
+     */
+    @Override
+    public CharSequence getTextBeforeCursor(int length, int flags) {
+        int caret = editor.composingStart() >= 0
+                ? editor.composingStart() : editor.caret();
+        int start = Math.max(0, caret - Math.max(0, length));
+        return editor.textBetween(start, caret);
+    }
+
+    /**
+     * Le texte APRÈS le curseur (le pont complet du protocole).
+     *
+     * @param length le nombre de caractères demandés
+     * @param flags  les drapeaux (ignorés)
+     * @return le texte après le curseur (tronqué à la fin du document)
+     */
+    @Override
+    public CharSequence getTextAfterCursor(int length, int flags) {
+        int caret = editor.composingEnd() >= 0
+                ? editor.composingEnd() : editor.caret();
+        int end = Math.min(editor.length(), caret + Math.max(0, length));
+        return editor.textBetween(caret, end);
+    }
+
+    /**
+     * La zone de composition se REPOSE (le clavier y surligne le mot
+     * qu'il prédict) : l'éditeur en tenait une par ses mises à jour,
+     * le clavier peut en poser une lui-même (Gboard au corrigeur
+     * gestuel y passe).
+     *
+     * @param start le début de la zone
+     * @param end   la fin de la zone
+     * @return vrai (la zone se pose)
+     */
+    @Override
+    public boolean setComposingRegion(int start, int end) {
+        int from = Math.max(0, Math.min(start, end));
+        int to = Math.min(editor.length(), Math.max(start, end));
+        if (from >= to) {
+            editor.clearComposing();
+            return true;
+        }
+        editor.setComposing(from, to);
+        return true;
+    }
+
+    /**
+     * Les majuscules contextuelles (le pont complet du protocole) : la
+     * classe de base ne regarde que le vrai champ d'EditText — ici le
+     * tampon se lit, la phrase se devine au point précédent.
+     *
+     * @param reqModes les modes demandés (le clavier n'en veut qu'un à
+     *                 la fois, le protocole y passe un masque)
+     * @return les modes satisfaits (le masque entrant y est masqué)
+     */
+    @Override
+    public int getCursorCapsMode(int reqModes) {
+        int caret = editor.composingStart() >= 0
+                ? editor.composingStart() : editor.caret();
+        int scan = Math.max(0, caret - 64);
+        CharSequence head = editor.textBetween(scan, caret);
+        boolean sentenceStart = true;
+        for (int at = head.length() - 1; at >= 0; at--) {
+            char sign = head.charAt(at);
+            if (sign == ' ' || sign == '\n' || sign == '\t') {
+                continue;
+            }
+            sentenceStart = sign == '.' || sign == '!' || sign == '?'
+                    || sign == ':';
+            break;
+        }
+        if (sentenceStart) {
+            return reqModes & android.text.TextUtils.CAP_MODE_SENTENCES;
+        }
+        boolean wordStart = true;
+        for (int at = head.length() - 1; at >= 0; at--) {
+            char sign = head.charAt(at);
+            if (sign == ' ' || sign == '\n' || sign == '\t') {
+                break;
+            }
+            wordStart = false;
+            break;
+        }
+        return wordStart ? reqModes & android.text.TextUtils.CAP_MODE_WORDS : 0;
+    }
 }
