@@ -119,6 +119,15 @@ public final class CompletionCard {
     /** La visibilité posée de la trame d'avant (les transitions s'y lisent). */
     private boolean wasShown;
 
+    /** La carte s'est-elle rangée à la trame d'avant (la re-naissance s'y reconnaît). */
+    private boolean wasClosing;
+
+    /** L'horodatage du dernier rangement (ms) — la grâce de la re-naissance s'y mesure. */
+    private long lastClosedAtMs;
+
+    /** La grâce de la re-naissance (ms) : au-delà, la carte re-naît VRAIMENT (fondu). */
+    private static final long REBIRTH_GRACE_MS = 400L;
+
     /**
      * Le côté posé : 0 indécis (le mot neuf re-choisit), 1 dessous,
      * -1 dessus — STABLE tant que le mot vit (la carte ne saute pas
@@ -389,12 +398,29 @@ public final class CompletionCard {
             // la transition de visibilité joue l'animation : la carte
             // naît au-caret, la carte qui se range s'efface — la
             // RE-FILTRATION de la liste n'y passe pas (elle reste
-            // stable, la carte ne clignote pas à la frappe)
+            // stable, la carte ne clignote pas à la frappe). LA
+            // RE-NAISSANCE EN RAFALE NON PLUS (la leçon de Sora : sa
+            // carte ouverte reste ouverte pendant toute la frappe du
+            // mot — jamais de re-fondu par cran) : une carte qui
+            // s'efface (sa liste a transité par vide) et re-vit à la
+            // TRAME QUI SUIT ne rejoue PAS son ouverture — sans cela
+            // chaque frappe (la liste filtrée se vide puis re-naît des
+            // mots du tampon) relançait le fondu de 110 ms : la carte
+            // restait quasi invisible pendant qu'on tape, vivante au
+            // doigt mais jamais peinte (le popup fantôme)
+            long sinceCloseMs = System.currentTimeMillis() - lastClosedAtMs;
             if (shown) {
-                animation.open();
+                if (!wasClosing || sinceCloseMs > REBIRTH_GRACE_MS) {
+                    animation.open();
+                } else {
+                    animation.reset();
+                    wasShown = true;
+                }
             } else {
                 animation.close();
+                lastClosedAtMs = System.currentTimeMillis();
             }
+            wasClosing = !shown;
             wasShown = shown;
         }
         if (!shown && !animation.isClosing()) {
@@ -454,6 +480,15 @@ public final class CompletionCard {
      */
     public boolean isAnimating() {
         return animation.isRunning();
+    }
+
+    /**
+     * Le facteur d'opacité PEINT de la carte (0 : invisible, 1 :
+     * pleine) — le harnais y éprouve le fantôme (une carte vivante
+     * au doigt mais peinte éteinte : le bug de l'alpha au repos).
+     */
+    public float paintedAlpha() {
+        return animation.alphaFactor();
     }
 
     /** L'abscisse posée (le harnais la lit). */

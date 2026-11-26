@@ -4,6 +4,7 @@ import jo.pigma.editor.folding.FoldBounds;
 import jo.pigma.editor.folding.FoldModel;
 import jo.pigma.editor.folding.StructureGuides;
 import jo.pigma.editor.folding.StructureGuides.Guide;
+import jo.pigma.editor.folding.WrapModel;
 import jo.pigma.editor.gutter.Gutter;
 import jo.pigma.editor.gutter.Minimap;
 import jo.pigma.editor.input.EditorContract;
@@ -151,6 +152,10 @@ public final class EditorView extends View {
     private final Paint ligaturePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     /** La couleur des ligatures (le thème la pose, 0 : celle du texte). */
     private int ligatureColor;
+    /** Le remplissage du chip de couleur (le littéral hex encadré de sa teinte). */
+    private final Paint colorChipPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    /** Le liseré du chip de couleur (discret, à la bordure du thème). */
+    private final Paint colorChipBorderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private Paint.FontMetrics fontMetrics;
     private float charWidth;
     private float lineHeight;
@@ -263,6 +268,72 @@ public final class EditorView extends View {
 
     /** Le doigt est-il tombé sur une carte ouverte ? — le geste entier lui revient. */
     private boolean downOnCard;
+
+    /** Le doigt tient-il la carte de la minimap (la navigation y suit en continu). */
+    private boolean minimapDragging;
+
+    /** Le soft wrap vit-il (les lignes coupent à la largeur — la leçon de la référence). */
+    private boolean softWrap;
+
+    /** Le modèle du retour à la ligne doux (les rangées visuelles par ligne). */
+    private final WrapModel wrapModel = new WrapModel();
+
+    /**
+     * Pose le RETOUR À LA LIGNE DOUX (la leçon de la référence : ses
+     * lignes coupent à la largeur de la vue, la suite s'indente) :
+     * le recalcul y suit (le plafond de colonnes naît de la largeur
+     * et du pas de caractère), le scroll horizontal se range (les
+     * lignes ne dépassent plus), l'hôte y trouve sa bascule.
+     *
+     * @param on vrai pour couper les lignes à la largeur
+     */
+    public void setSoftWrap(boolean on) {
+        if (softWrap == on) {
+            return;
+        }
+        softWrap = on;
+        if (on) {
+            rebuildWrapModel();
+        }
+        scrollX = 0.0f;
+        clampCaret();
+        ensureCaretVisible();
+        invalidate();
+    }
+
+    /** Le soft wrap vit-il ? (le harnais le lit) */
+    public boolean isSoftWrap() {
+        return softWrap;
+    }
+
+    /**
+     * Le modèle du wrap se recalcule : le plafond de colonnes naît de
+     * la largeur du texte (la vue moins ses paddings), les longueurs
+     * et indents se lisent au tampon PAR TRANCHES (jamais le document
+     * entier d'un coup — les fenêtres du gros fichier restent bornées).
+     */
+    private void rebuildWrapModel() {
+        if (!softWrap || charWidth <= 0.0f) {
+            return;
+        }
+        int columns = (int) ((getWidth() - getPaddingLeft() - getPaddingRight())
+                / charWidth);
+        int count = buffer.getLineCount();
+        int[] lengths = new int[count];
+        int[] indents = new int[count];
+        for (int line = 0; line < count; line++) {
+            int start = buffer.getLineStart(line);
+            int end = buffer.getLineEnd(line);
+            lengths[line] = end - start;
+            int indent = 0;
+            while (start + indent < end
+                    && buffer.charAt(start + indent) == ' ') {
+                indent++;
+            }
+            indents[line] = indent;
+        }
+        wrapModel.rebuild(lengths, indents, columns);
+    }
 
     /** L'horodatage de l'appui courant (l'appui long sélectionne le mot). */
     private long touchDownNanos;
@@ -602,6 +673,12 @@ public final class EditorView extends View {
                 searchMatches = new int[0];
                 searchCurrent = -1;
             }
+            // LE WRAP suit l'édition : la ligne coupée d'avant peut
+            // s'allonger ou raccourcir — le recalcul suivra (borné aux
+            // fenêtres, jamais le document pour une frappe)
+            if (softWrap) {
+                rebuildWrapModel();
+            }
             dismissInfoPopup();
             // le remplissage n'est PAS relancé ici : la salve du fond ne
             // doit pas chevaucher le dessin qui suit l'édition —
@@ -663,6 +740,7 @@ public final class EditorView extends View {
         historyCard = new HistoryCard(dp(1));
         historyCard.bind(this);
         usageCard = new UsageCard(dp(1));
+        usageCard.bind(this);
         colorPickerCard = new ColorPickerCard(dp(1));
         diagnosticCard = new DiagnosticCard(dp(1));
         quickActionCard = new QuickActionCard(dp(1));
@@ -702,7 +780,11 @@ public final class EditorView extends View {
         // COLONNE DES PLIS à la référence (EditorGutterComponentImpl y
         // pose ses chevrons APRÈS les numéros, dans le panneau —
         // jamais dans le corps du texte)
-        setPadding(dp(76), dp(16), padding, dp(16));
+        // le padding droit reste léger : la minimap et sa colonne de
+        // pastilles FLOTTENT au-dessus du texte (à la référence — la
+        // carte y recouvre le code, translucide) ; les lignes longues
+        // peuvent glisser dessous, le débordement se calcule au texte
+        setPadding(dp(90), dp(16), dp(16), dp(16));
         setFocusable(true);
         setFocusableInTouchMode(true);
     }
@@ -752,6 +834,9 @@ public final class EditorView extends View {
         applyTextSize(sizeSp * scaledDensity);
         scrollY = clampToRange(centerLine * lineHeight - (getHeight() / 2.0f - getPaddingTop()),
                 0.0f, maxScroll());
+        // la largeur se reborne aussi (le corps qui revient resserre
+        // le débordement : le scrollX d'avant ne vaut plus)
+        scrollX = clampToRange(scrollX, 0.0f, maxScrollX());
         invalidate();
     }
 
@@ -1138,6 +1223,33 @@ public final class EditorView extends View {
                 if (local.start() >= lineStart && local.start() < lineEnd) {
                     found.add(new DiagnosticCard.Entry(
                             DiagnosticCard.SEVERITY_ERROR, local.message()));
+                }
+            }
+        }
+        // L'ÉTAGE DES CORRECTIFS (la leçon de la référence : sa popup
+        // d'erreur porte le message ET ses correctifs DANS la même
+        // carte) : les correctifs du serveur de langage descendent à
+        // CHAQUE diagnostic de la ligne — le premier diagnostic les
+        // porte (l'étage se dessine sous ses messages, le tap
+        // l'exécute) ; la réponse asynchrone du serveur rouvre la
+        // carte ouverte (le cache du fournisseur vit dans la façade)
+        if (!found.isEmpty() && serverQuickActionProvider != null) {
+            List<QuickActionCard.Entry> served =
+                    serverQuickActionProvider.quickActionsAt(line, 0);
+            if (served != null && !served.isEmpty()) {
+                List<DiagnosticCard.Fix> fixes = new ArrayList<>();
+                for (QuickActionCard.Entry action : served) {
+                    if (action.label() != null
+                            && action.label().startsWith("Correctif : ")) {
+                        fixes.add(new DiagnosticCard.Fix(
+                                action.label().substring("Correctif : ".length()),
+                                action.action()));
+                    }
+                }
+                if (!fixes.isEmpty()) {
+                    found.set(0, new DiagnosticCard.Entry(
+                            found.get(0).severity(),
+                            found.get(0).message(), fixes));
                 }
             }
         }
@@ -2590,8 +2702,20 @@ public final class EditorView extends View {
                 return true;
             }
         } else if (downOnCard) {
+            // LE GESTE APPARTIENT À SA CARTE : les MOVE y suivent le
+            // doigt (le champ et la bande du sélecteur de couleur y
+            // vivent — la teinte change à CHAQUE cran), l'UP y clôt
+            // (la rangée armée des usages s'y joue, la cellule de
+            // palette s'applique)
+            if (colorPickerCard != null && colorPickerCard.isShown()) {
+                colorPickerCard.onTouchArea(event.getX(), event.getY(),
+                        event.getActionMasked());
+            }
             if (event.getActionMasked() == MotionEvent.ACTION_UP
                     || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                if (usageCard != null) {
+                    usageCard.onRelease();
+                }
                 downOnCard = false;
             }
             return true;
@@ -2603,10 +2727,21 @@ public final class EditorView extends View {
                 touchDownNanos = System.nanoTime();
                 pinching = false;
                 pinchedThisGesture = false;
-                // LA MINIMAP prend son geste au DOWN (ses pastilles et
-                // sa carte ne défilent pas le texte — dragging ne
-                // s'arme pas, l'UP y jouera son tap)
-                if (event.getX() > getWidth() - minimap.width()) {
+                // LA MINIMAP ET SA COLONNE DE PASTILLES prennent leur
+                // geste au DOWN : les pastilles jouent au tap, la carte
+                // suit le doigt EN CONTINU (le drag y navigue — la vue
+                // saute à la ligne visée à chaque cran, le relâchement
+                // y reste)
+                float minimapLeft = getWidth() - minimap.width()
+                        - minimap.columnWidth();
+                if (event.getX() > minimapLeft) {
+                    if (minimap.buttonAt(
+                            event.getX(), event.getY(), getWidth()) < 0) {
+                        minimapDragging = true;
+                        int line = minimap.lineAt(event.getY(), getHeight(),
+                                buffer.getLineCount());
+                        caretTo(buffer.getLineStart(line));
+                    }
                     return true;
                 }
                 // un nouvel appui masque la popup d'info (l'appui long
@@ -2656,6 +2791,14 @@ public final class EditorView extends View {
                     if (event.getPointerCount() >= 2) {
                         pinchMove(event);
                     }
+                    break;
+                }
+                if (minimapDragging) {
+                    // le doigt tient la carte : la navigation suit à
+                    // CHAQUE cran (la réactivité demandée)
+                    int line = minimap.lineAt(event.getY(), getHeight(),
+                            buffer.getLineCount());
+                    caretTo(buffer.getLineStart(line));
                     break;
                 }
                 if (selectionDragBound != 0) {
@@ -2774,9 +2917,15 @@ public final class EditorView extends View {
                     lastTapNanos = 0L;
                     break;
                 }
+                if (minimapDragging) {
+                    minimapDragging = false;
+                    lastTapNanos = 0L;
+                    break;
+                }
                 if (dragging) {
                     dragging = false;
-                } else if (event.getX() > getWidth() - minimap.width()) {
+                } else if (event.getX() > getWidth() - minimap.width()
+                        - minimap.columnWidth()) {
                     // LA MINIMAP : ses pastilles d'annulation en tête
                     // (le tap y joue la pile), la carte du document
                     // sinon (le curseur y saute à la ligne visée — la
@@ -2811,15 +2960,33 @@ public final class EditorView extends View {
                         lastTapNanos = 0L;
                         break;
                     }
+                    // LE DOUBLE-TAP SUR LE NUMÉRO pose le point d'arrêt
+                    // (la leçon de la référence : son gutter y toggle au
+                    // double-clic) — la COLONNE DES NUMÉROS SEULE (entre
+                    // les marqueurs et le bord du panneau : la colonne
+                    // des plis garde son pli au double-tap)
+                    if (tappedTwice(event.getX(), event.getY())
+                            && event.getX() > dp(24)
+                            && event.getX() < getPaddingLeft() - dp(34)) {
+                        toggleBreakpoint(line);
+                        clearComposing();
+                        lastTapNanos = 0L;
+                        break;
+                    }
                     toggleFoldAt(line);
                     clearComposing();
                 } else if (heldLongEnough()
                         || tappedTwice(event.getX(), event.getY())) {
                     // l'appui long ou le double-tap : le mot sous le
                     // doigt se sélectionne (la frappe suivante le
-                    // remplacera)
+                    // remplacera) — SAUF le littéral de couleur (la
+                    // leçon de la référence : son sélecteur s'ouvre au
+                    // DOUBLE-TAP sur le littéral, le chip y vit)
                     requestFocus();
-                    selectWordAt(event.getX(), event.getY());
+                    if (!openColorPickerAtTap(offsetNearest(
+                            event.getX(), event.getY()))) {
+                        selectWordAt(event.getX(), event.getY());
+                    }
                     clearComposing();
                 } else {
                     requestFocus();
@@ -2827,8 +2994,7 @@ public final class EditorView extends View {
                     // s'y ouvre — le doigt vise le signe mésapparié, le
                     // curseur ne bouge pas
                     int offset = offsetNearest(event.getX(), event.getY());
-                    if (!openDiagnosticAtTap(offset)
-                            && !openColorPickerAtTap(offset)) {
+                    if (!openDiagnosticAtTap(offset)) {
                         placeCaretAt(event.getX(), event.getY());
                         clearComposing();
                         showSoftInput();
@@ -3047,8 +3213,17 @@ public final class EditorView extends View {
             int start = buffer.getLineStart(line);
             int end = buffer.getLineEnd(line);
             float baseline = lineBaseline(line);
+            // LE SOFT WRAP (la leçon de la référence : la ligne qui
+            // dépasse coupe à la largeur, chaque RANGÉE rend sa
+            // tranche à sa ligne visuelle — la suite s'indente au
+            // premier caractère non blanc)
+            int rows = softWrap ? wrapModel.rowsOf(line) : 1;
             if (end > start) {
-                drawTokens(canvas, line, start, baseline);
+                if (rows <= 1) {
+                    drawTokens(canvas, line, start, baseline);
+                } else {
+                    drawWrappedLine(canvas, line, start, end, baseline, rows);
+                }
             }
             // LE PLACEHOLDER DU PLI REPLIÉ (la leçon de la référence :
             // la ligne d'en-tête d'un pli replié y montre « {... } » —
@@ -3059,7 +3234,7 @@ public final class EditorView extends View {
                 drawFoldPlaceholder(canvas, line, baseline);
             }
             drawInlayHint(canvas, line, baseline);
-            if (composingStart >= 0) {
+            if (composingStart >= 0 && rows <= 1) {
                 drawComposeUnderline(canvas, line, start, end, baseline);
             }
         }
@@ -3514,7 +3689,7 @@ public final class EditorView extends View {
                 continue;
             }
             gutter.drawNumber(canvas, line, lineBaseline(line),
-                    getPaddingLeft() - dp(26));
+                    getPaddingLeft() - dp(30));
             boolean error = false;
             boolean warning = false;
             if (diagnostics != null && analysisRevision == buffer.getRevision()) {
@@ -3551,12 +3726,13 @@ public final class EditorView extends View {
             }
             // L'APERÇU COMPOSE (la leçon de la référence : son gestionnaire
             // y pose une icône au gutter de chaque fonction @Preview —
-            // l'hôte y ouvre son panneau d'aperçu) : l'annotation se lit
-            // à la ligne, l'icône vit au-dessus du numéro, la colonne
-            // d'après l'ampoule
+            // l'hôte y ouvre son panneau d'aperçu) : sa COLONNE PROPRE
+            // vit ENTRE les numéros et le texte — écartée des numéros
+            // (le pinch zoom resserre tout : deux dp d'écart au moins y
+            // respirent), le pli demeure au bord du panneau
             if (lineCarriesPreview(line)) {
                 gutter.drawMarker(canvas, Gutter.MARKER_PREVIEW,
-                        markerCx + dp(22), cy);
+                        getPaddingLeft() - dp(40), cy);
             }
         }
     }
@@ -4031,12 +4207,34 @@ public final class EditorView extends View {
 
     /** L'indice visible d'une ligne (les plis compactent la hauteur). */
     private int visibleIndexOf(int line) {
-        return folds.visibleIndexOf(line);
+        // LE SOFT WRAP compte ses rangées : une ligne coupée occupe
+        // AUTANT de rangées visuelles — l'indice visuel additionne
+        // celles des lignes visibles d'avant (le wrap vit au-dessus
+        // du modèle des plis : les lignes cachées n'y comptent pas)
+        if (!softWrap || !wrapModel.isWrapped()) {
+            return folds.visibleIndexOf(line);
+        }
+        int rows = 0;
+        for (int at = 0; at < line; at++) {
+            if (!isHidden(at)) {
+                rows += wrapModel.rowsOf(at);
+            }
+        }
+        return rows;
     }
 
-    /** Nombre de lignes visibles (le document moins les cachées). */
+    /** Nombre de lignes visibles (le document moins les cachées, plus les rangées du wrap). */
     private int visibleLineCount() {
-        return buffer.getLineCount() - folds.hiddenLineCount();
+        if (!softWrap || !wrapModel.isWrapped()) {
+            return buffer.getLineCount() - folds.hiddenLineCount();
+        }
+        int rows = 0;
+        for (int line = 0; line < buffer.getLineCount(); line++) {
+            if (!isHidden(line)) {
+                rows += wrapModel.rowsOf(line);
+            }
+        }
+        return rows;
     }
 
     /**
@@ -4052,6 +4250,83 @@ public final class EditorView extends View {
     private float lineBaseline(int line) {
         int visible = folds.visibleIndexOf(line);
         return getPaddingTop() - fontMetrics.top + visible * lineHeight - scrollY;
+    }
+
+    /**
+     * La TRANCHE du plan d'une ligne entre deux colonnes (le rendu du
+     * soft wrap : la rangée y dessine SES colonnes du plan cuit, le
+     * décalage d'indent y pose la suite au premier caractère non
+     * blanc de la ligne).
+     */
+    private void drawTokenRange(Canvas canvas, int line, int start,
+            int fromCol, int toCol, float baseline, int indentCols) {
+        long engineBegin = System.nanoTime();
+        SyntaxDocument.LineTokens entry = syntax.lineTokens(line);
+        lastFrameEngineNanos += System.nanoTime() - engineBegin;
+        int lineEnd = buffer.getLineEnd(line);
+        LinePlan plan = renderCache.frame(line, entry, fusionLabel(line),
+                () -> buffer.getText(start, lineEnd), this::bakeLine);
+        String[] texts = plan.texts();
+        int[] colors = plan.colors();
+        float[] xs = plan.xs();
+        boolean[] bolds = plan.bolds();
+        float left = getPaddingLeft() + indentCols * charWidth;
+        // chaque segment du plan se coupe aux bornes de la rangée :
+        // la partie visible se dessine à son abscisse relative
+        for (int at = 0; at < texts.length; at++) {
+            int segFrom = (int) xs[at];
+            int segLen = texts[at].length();
+            if (segFrom + segLen <= fromCol || segFrom >= toCol) {
+                continue;
+            }
+            int cutStart = Math.max(0, fromCol - segFrom);
+            int cutEnd = Math.min(segLen, toCol - segFrom);
+            if (cutEnd <= cutStart) {
+                continue;
+            }
+            String piece = texts[at].substring(cutStart, cutEnd);
+            textPaint.setColor(colors[at]);
+            textPaint.setFakeBoldText(bolds != null && bolds[at]);
+            canvas.drawText(piece,
+                    left + (segFrom + cutStart - fromCol) * charWidth,
+                    baseline, textPaint);
+        }
+        textPaint.setFakeBoldText(false);
+    }
+
+    /**
+     * La ligne coupée du soft wrap : chaque RANGÉE rend sa tranche à
+     * SA ligne visuelle (la baseline avance d'un interligne par
+     * rangée), la suite s'indente au premier caractère non blanc de la
+     * ligne (la leçon de la référence — la continuité visuelle du
+     * bloc s'y lit). Le plan cuit de la ligne entière sert de source :
+     * chaque rangée y dessine SES colonnes.
+     */
+    private void drawWrappedLine(Canvas canvas, int line, int start, int end,
+            float baseline, int rows) {
+        int wrapCols = wrapModel.rowStartColumn(line, 1) > 0
+                ? wrapModel.rowStartColumn(line, 1) : 40;
+        // l'indent de suite : le premier non-blanc de la ligne
+        int indent = 0;
+        while (start + indent < end && buffer.charAt(start + indent) == ' ') {
+            indent++;
+        }
+        int columns = (int) ((getWidth() - getPaddingLeft() - getPaddingRight())
+                / charWidth);
+        int step = Math.max(8, columns - indent);
+        for (int row = 0; row < rows; row++) {
+            int fromCol = row == 0 ? 0 : wrapCols + (row - 1) * step;
+            int toCol = row == 0 ? wrapCols
+                    : Math.min(end - start, wrapCols + row * step);
+            if (fromCol >= end - start) {
+                break;
+            }
+            float rowBaseline = baseline + row * lineHeight;
+            // la suite s'indente : ses colonnes se décalent de
+            // l'indent (la première rangée demeure au bord)
+            drawTokenRange(canvas, line, start, fromCol, toCol, rowBaseline,
+                    row == 0 ? 0 : indent);
+        }
     }
 
     /**
@@ -4113,7 +4388,83 @@ public final class EditorView extends View {
         // non-égal, les comparaisons et les conjonctions s'unifient
         // par-dessus leurs deux caractères
         drawLigatures(canvas, line, baseline);
+        drawColorChips(canvas, line, baseline);
         textPaint.setFakeBoldText(false);
+    }
+
+    /**
+     * Les CHIPS DE COULEUR (la leçon de la référence : son éditeur y
+     * encadre chaque littéral hexadécimal DE SA PROPRE COULEUR —
+     * #efe vit dans un encadré #efe) : la passe relit la ligne au
+     * tampon, chaque littéral #RGB/#RGBA/#RRGGBB/#RRGGBBAA porte un
+     * rectangle arrondi rempli de sa couleur, liseré discret — le
+     * double-tap sur le littéral ouvre le sélecteur.
+     */
+    private void drawColorChips(Canvas canvas, int line, float baseline) {
+        int lineStart = buffer.getLineStart(line);
+        int lineEnd = buffer.getLineEnd(line);
+        int window = Math.min(lineEnd - lineStart, 512);
+        CharSequence text = buffer.getText(lineStart, lineStart + window);
+        float left = getPaddingLeft();
+        // le rectangle du chip : la hauteur de la ligne respirée, le
+        // liseré à la bordure du thème
+        float top = baseline + fontMetrics.ascent * 0.82f;
+        float bottom = baseline + fontMetrics.descent * 0.55f;
+        int at = 0;
+        while (at < window) {
+            if (text.charAt(at) != '#') {
+                at++;
+                continue;
+            }
+            // les chiffres hexadécimaux qui suivent le dièse
+            int digits = 0;
+            while (at + 1 + digits < window
+                    && isHexDigit(text.charAt(at + 1 + digits))) {
+                digits++;
+            }
+            if (digits == 3 || digits == 4 || digits == 6 || digits == 8) {
+                String literal = text.subSequence(at, at + 1 + digits)
+                        .toString();
+                Integer color = parseColorLiteral(literal);
+                if (color != null) {
+                    float chipLeft = left + at * charWidth;
+                    float chipRight = chipLeft + (1 + digits) * charWidth;
+                    colorChipPaint.setColor(color);
+                    canvas.drawRoundRect(chipLeft, top, chipRight, bottom,
+                            dp(3), dp(3), colorChipPaint);
+                    colorChipBorderPaint.setColor(
+                            (theme.defaultColor() & 0x00FFFFFF) | 0x33000000);
+                    canvas.drawRoundRect(chipLeft, top, chipRight, bottom,
+                            dp(3), dp(3), colorChipBorderPaint);
+                }
+                at += 1 + digits;
+            } else {
+                at++;
+            }
+        }
+    }
+
+    /**
+     * Le littéral hexadécimal se parse en couleur ARGB (null : il ne
+     * se parse pas — le chip ne se peint pas).
+     */
+    private static Integer parseColorLiteral(String literal) {
+        try {
+            long value = Long.parseLong(literal.substring(1), 16);
+            return switch (literal.length() - 1) {
+                case 3 -> 0xFF000000 | (int) (((value >> 8 & 0xF) * 17) << 16
+                        | ((value >> 4 & 0xF) * 17) << 8
+                        | (value & 0xF) * 17);
+                case 4 -> 0xFF000000 | (int) (((value >> 12 & 0xF) * 17) << 16
+                        | ((value >> 8 & 0xF) * 17) << 8
+                        | (value >> 4 & 0xF) * 17);
+                case 6 -> (int) (0xFF000000L | value);
+                case 8 -> (int) value;
+                default -> null;
+            };
+        } catch (NumberFormatException error) {
+            return null;
+        }
     }
 
     /**
@@ -5040,8 +5391,14 @@ public final class EditorView extends View {
                 if (buffer.getText(start, at).toString().equals(symbol)) {
                     final int line = buffer.lineOfOffset(start);
                     final int column = start - buffer.getLineStart(line);
+                    // la ligne se BORNE au moment de la navigation (la
+                    // carte peut vivre plus que le document d'avant :
+                    // une annulation a pu tuer sa ligne — la navigation
+                    // y reste dans le texte vivant)
                     found.add(new UsageCard.Usage(line, column, "",
-                            () -> caretTo(buffer.getLineStart(line) + column)));
+                            () -> caretTo(buffer.getLineStart(
+                                    Math.min(line, buffer.getLineCount() - 1))
+                                    + column)));
                 }
             } else {
                 at++;
@@ -5098,14 +5455,33 @@ public final class EditorView extends View {
         final int literalStart = start;
         final int literalEnd = end;
         final int literalDigits = digits;
+        final long literalRevision = buffer.getRevision();
         colorPickerCard.open(color, literalDigits, picked -> {
             // le littéral se remplace EN PLACE (sa largeur tient : la
-            // forme courte quantifie au nibble — la leçon de la référence)
-            String fresh = ColorPickerCard.format(picked
-                    | (literalDigits == 3 || literalDigits == 4 ? 0 : 0),
-                    literalDigits);
+            // forme courte quantifie au nibble — la leçon de la
+            // référence) — SA révision se relit : le document a pu
+            // bouger depuis l'ouverture (une annulation, une autre
+            // frappe) ; l'ancienne plage ne vaut plus rien (le
+            // harnais l'a épinglé : checkRange levait) — le littéral
+            // se RETROUVE au caret au moment d'appliquer
+            int freshStart = literalStart;
+            int freshEnd = literalEnd;
+            if (buffer.getRevision() != literalRevision) {
+                int caretNow = Math.min(selection.caret(), buffer.length());
+                int found = buffer.getText(
+                        Math.max(0, caretNow - 32), caretNow).toString().lastIndexOf('#');
+                if (found < 0) {
+                    return;
+                }
+                freshStart = Math.max(0, caretNow - 32) + found;
+                freshEnd = Math.min(buffer.length(), freshStart + 1 + literalDigits);
+                if (freshEnd - freshStart != 1 + literalDigits) {
+                    return;
+                }
+            }
+            String fresh = ColorPickerCard.format(picked, literalDigits);
             pendingEditLabel = "couleur";
-            applyEdit(literalStart, literalEnd, fresh);
+            applyEdit(freshStart, freshEnd, fresh);
         });
         invalidate();
     }
@@ -6078,6 +6454,11 @@ public final class EditorView extends View {
      * ligne courte n'y défile jamais — le plancher reste zéro).
      */
     private float maxScrollX() {
+        // NUL au soft wrap : les lignes coupent à la largeur, rien ne
+        // dépasse (le défilement horizontal s'y éteint)
+        if (softWrap) {
+            return 0.0f;
+        }
         float widest = 0.0f;
         int count = buffer.getLineCount();
         for (int line = 0; line < count; line++) {

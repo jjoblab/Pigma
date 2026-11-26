@@ -1,5 +1,7 @@
 package jo.pigma.editor.popups;
 
+import jo.pigma.editor.EditorView;
+
 import android.graphics.Canvas;
 import android.graphics.Paint;
 
@@ -57,6 +59,12 @@ public final class UsageCard {
     /** La première rangée de la fenêtre (le défilement de la carte). */
     private int topRow;
 
+    /** La rangée armée par le DOWN (-1 : aucune — l'UP la joue). */
+    private int armedRow = -1;
+
+    /** La vue porteuse (la navigation s'y poste). */
+    private EditorView editor;
+
     /** Le nombre de rangées visibles à la pose courante. */
     private int visibleRows;
 
@@ -108,6 +116,16 @@ public final class UsageCard {
     /** Le style courant (le harnais le lit). */
     public PopupStyle style() {
         return style;
+    }
+
+    /**
+     * Branche la vue porteuse : la navigation d'une rangée s'y poste
+     * (hors du geste — la carte vit dans la vue).
+     *
+     * @param view la vue, jamais null
+     */
+    public void bind(EditorView view) {
+        editor = view;
     }
 
     /** Reconfigure les pinceaux au style courant. */
@@ -191,20 +209,37 @@ public final class UsageCard {
             close();
             return true;
         }
-        // la rangée d'un usage : la carte se range, la navigation se
-        // joue APRÈS (le geste ne se rejoue pas au prochain dessin)
+        // la rangée d'un usage s'ARME au DOWN, se JOUE à l'UP (les
+        // cartes sœurs ne jouent qu'au relâchement : le DOWN du
+        // harnais et le doigt réel n'y exécutent rien deux fois)
         float cursor = poseY + dp(HEADER_DP);
         for (int at = topRow; at < topRow + visibleRows
                 && at < usages.size(); at++) {
             if (y >= cursor && y < cursor + rowHeight()) {
-                Usage chosen = usages.get(at);
-                close();
-                if (chosen.go() != null) {
-                    chosen.go().run();
-                }
+                armedRow = at;
                 return true;
             }
             cursor += rowHeight();
+        }
+        return true;
+    }
+
+    /**
+     * Le relâchement joue la rangée armée (la navigation s'y exécute,
+     * la carte se range APRÈS — le geste ne se rejoue pas au dessin).
+     */
+    public boolean onRelease() {
+        if (armedRow < 0) {
+            return false;
+        }
+        Usage chosen = usages.get(armedRow);
+        armedRow = -1;
+        close();
+        if (chosen != null && chosen.go() != null && editor != null) {
+            // la navigation se JOUE HORS du geste (postée au tour
+            // suivant) : la réentrance du caret pendant le traitement
+            // du touch tuait le harnais — le geste se clôt d'abord
+            editor.post(chosen.go());
         }
         return true;
     }

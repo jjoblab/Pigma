@@ -34,7 +34,7 @@ public final class Minimap {
     /** L'écart entre les pastilles (dp). */
     private static final int BUTTON_GAP_DP = 6;
 
-    /** La hauteur de la section des pastilles (dp). */
+    /** La hauteur de la section des pastilles (dp) — la colonne À CÔTÉ de la bande. */
     private static final int BAR_DP = 40;
 
     /** L'alpha du cadre de la fenêtre courante. */
@@ -154,24 +154,34 @@ public final class Minimap {
     }
 
     /**
-     * Le doigt est-il sur une PASTILLE — et laquelle ?
+     * Le doigt est-il sur une PASTILLE — et laquelle ? La colonne des
+     * pastilles vit à GAUCHE de la bande (annuler en haut, rétablir
+     * dessous — la carte du document garde TOUTE sa hauteur).
      *
      * @param x l'abscisse du doigt (px, coordonnées de la vue)
      * @param y l'ordonnée du doigt (px, coordonnées de la vue)
      * @return -1 rien, 0 annuler, 1 rétablir
      */
     public int buttonAt(float x, float y, float viewWidth) {
-        if (actions == null || y > dp(BAR_DP)) {
+        if (actions == null) {
             return -1;
         }
-        float cx = viewWidth - width() / 2.0f;
-        float half = (dp(BUTTON_DP) + dp(BUTTON_GAP_DP)) / 2.0f;
-        if (y < dp(5) || y > dp(5) + dp(BUTTON_DP)
-                || Math.abs(x - cx) > half) {
-            return -1;
+        float columnCx = viewWidth - width() - columnWidth() / 2.0f;
+        if (y >= dp(6) && y < dp(6) + dp(BUTTON_DP)
+                && Math.abs(x - columnCx) <= dp(BUTTON_DP) / 2.0f + dp(2)) {
+            return 0;
         }
-        // la moitié gauche : annuler ; la droite : rétablir
-        return x < cx ? 0 : 1;
+        if (y >= dp(6) + dp(BUTTON_DP) + dp(BUTTON_GAP_DP)
+                && y < dp(6) + 2 * dp(BUTTON_DP) + dp(BUTTON_GAP_DP)
+                && Math.abs(x - columnCx) <= dp(BUTTON_DP) / 2.0f + dp(2)) {
+            return 1;
+        }
+        return -1;
+    }
+
+    /** La largeur de la colonne des pastilles (dp) — elle vit à gauche de la bande. */
+    public float columnWidth() {
+        return dp(BUTTON_DP) + dp(8);
     }
 
     /**
@@ -218,7 +228,10 @@ public final class Minimap {
             LineLength lineLength) {
         float left = viewWidth - width();
         float top = 0.0f;
-        float mapTop = actions != null ? dp(BAR_DP) : 0.0f;
+        // la carte du document prend TOUTE la hauteur (les pastilles
+        // vivent À CÔTÉ, dans leur colonne à gauche — plus de section
+        // en tête)
+        float mapTop = 0.0f;
         float mapH = Math.max(1.0f, viewHeight - mapTop);
         canvas.drawRect(left, top, viewWidth, viewHeight, panelPaint);
         canvas.drawLine(left, top, left, viewHeight, borderPaint);
@@ -248,18 +261,17 @@ public final class Minimap {
         float vpBottom = mapTop + (lastLine + 1) * rowH * scaleY;
         canvas.drawRect(left, vpTop, viewWidth,
                 Math.min(viewHeight, vpBottom), viewportPaint);
-        // LA SECTION DES PASTILLES (annuler, rétablir) : deux carrés
-        // arrondis au centre de la bande, la flèche recourbée à la
-        // référence (annuler : la flèche revient ; rétablir : elle
+        // LA COLONNE DES PASTILLES (annuler, rétablir) À GAUCHE de la
+        // bande : deux carrés arrondis empilés, la flèche recourbée à
+        // la référence (annuler : la flèche revient ; rétablir : elle
         // repart) — éteinte quand sa pile est morte
         if (actions != null) {
             lastCanUndo = actions.canUndo();
             lastCanRedo = actions.canRedo();
-            float cx = viewWidth - width() / 2.0f;
-            drawUndoButton(canvas, cx - dp(BUTTON_DP) / 2.0f - dp(BUTTON_GAP_DP) / 2.0f,
-                    dp(5), true);
-            drawUndoButton(canvas, cx + dp(BUTTON_DP) / 2.0f + dp(BUTTON_GAP_DP) / 2.0f,
-                    dp(5), false);
+            float cx = viewWidth - width() - columnWidth() / 2.0f;
+            drawUndoButton(canvas, cx, dp(6), true);
+            drawUndoButton(canvas, cx, dp(6) + dp(BUTTON_DP) + dp(BUTTON_GAP_DP),
+                    false);
         }
     }
 
@@ -322,7 +334,7 @@ public final class Minimap {
      * @return l'indice de ligne visé, borné
      */
     public int lineAt(float y, float viewHeight, int lineCount) {
-        float mapTop = actions != null ? dp(BAR_DP) : 0.0f;
+        float mapTop = 0.0f;
         float mapH = Math.max(1.0f, viewHeight - mapTop);
         float rowH = Math.min(ROW_PX, mapH / Math.max(1, lineCount));
         float scaleY = lineCount * rowH > mapH

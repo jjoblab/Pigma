@@ -105,7 +105,11 @@ public final class PopupAnimation {
 
     /**
      * Le facteur d'opacité de la carte (0 à 1) : celui de
-     * l'ouverture, celui de la sortie, 1 au repos posé.
+     * l'ouverture, celui de la sortie, et AU REPOS — la carte qui a
+     * fini d'ouvrir reste PLEINEMENT opaque (le drapeau opening ne
+     * retombe pas : sans lui la carte s'effacerait 110 ms après sa
+     * naissance — le popup fantôme, invisible mais vivant au doigt),
+     * celle qui a fini de ranger reste éteinte.
      */
     public float alphaFactor() {
         if (isOpening()) {
@@ -114,7 +118,10 @@ public final class PopupAnimation {
         if (isClosing()) {
             return closeProgress();
         }
-        return opening || closing ? 0.0f : 1.0f;
+        if (closing) {
+            return 0.0f;
+        }
+        return 1.0f;
     }
 
     /**

@@ -1250,6 +1250,16 @@ public final class OpenHarness {
         check("la carte SURVIT à la frappe suivante (le bug du référence)",
                 editor.completionCard().isShown()
                         && editor.completionCard().prefix().equals("cla"));
+        // LE FANTÔME : après l'animation d'ouverture (le drain l'a
+        // dépassée), la carte doit rester PLEINEMENT opaque — le bug
+        // de l'alpha au repos la peignait éteinte 110 ms après sa
+        // naissance, vivante au doigt mais invisible (le signalement
+        // du terrain)
+        detail("alpha peint : " + editor.completionCard().paintedAlpha()
+                + " anim=" + editor.completionCard().isAnimating());
+        check("la carte reste OPAQUE après l'ouverture (le popup fantôme)",
+                editor.completionCard().isShown()
+                        && editor.completionCard().paintedAlpha() > 0.99f);
         // une frappe de plus : la carte vit toujours
         connection.commitText("s", 1);
         View.harnessDrain(1_200L);
@@ -1278,10 +1288,12 @@ public final class OpenHarness {
         frame();
         check("l'édition vit (le bouton annuler aura de quoi)",
                 !editor.getBuffer().toString().equals(original));
-        // le centre EXACT du bouton ANNULER (le gauche : le centre de
-        // la bande moins la moitié de l'ensemble bouton+écart)
-        float undoX = editor.getWidth() - 21.0f * DENSITY - 18.0f * DENSITY;
-        tap(undoX, 10.0f * DENSITY + 15.0f * DENSITY);
+        // la pastille ANNULER vit dans sa COLONNE à gauche de la
+        // bande (annuler en haut, rétablir dessous)
+        // la colonne des pastilles : cx = largeur - bande(42dp) -
+        // colonne(38dp/2), la pastille ANNULER en tête (y ~ dp(6)+15)
+        float undoX = editor.getWidth() - 42.0f * DENSITY - 19.0f * DENSITY;
+        tap(undoX, 6.0f * DENSITY + 15.0f * DENSITY);
         frame();
         check("la pastille ANNULER de la minimap défait l'édition",
                 editor.getBuffer().toString().equals(original));
@@ -1305,8 +1317,13 @@ public final class OpenHarness {
         frame();
         View.harnessDrain(400L);
         frame();
-        tap(px, lineTop(editor.getBuffer().lineOfOffset(
-                Math.min(editor.caretOffset(), editor.getBuffer().length()))));
+        // le DOUBLE-TAP ouvre le sélecteur (la leçon de la référence :
+        // le simple tap pose le caret, le double ouvre)
+        py = lineTop(editor.getBuffer().lineOfOffset(
+                Math.min(editor.caretOffset(), editor.getBuffer().length())));
+        tap(px, py);
+        frame();
+        tap(px, py);
         frame();
         detail("picker : hashAt=" + hashAt + " ligne=" + hashLine
                 + " tapY=" + lineTop(editor.getBuffer().lineOfOffset(
@@ -1365,14 +1382,18 @@ public final class OpenHarness {
             check("la carte des usages vit au symbole",
                     editor.usageCard().isShown()
                             && !editor.usageCard().usages().isEmpty());
-            // la rangée y navigue (le curseur saute à l'occurrence)
+            // la rangée y navigue (le curseur saute à l'occurrence) —
+            // la rangée VISIBLE seule (une rangée hors fenêtre se
+            // saute : son centre ne se pose pas à l'écran)
             if (editor.usageCard().isShown()
-                    && !editor.usageCard().usages().isEmpty()) {
+                    && !editor.usageCard().usages().isEmpty()
+                    && editor.usageCard().rowCenterY(0) > 0.0f) {
                 int before = editor.caretLine();
                 int wantedLine = editor.usageCard().usages().get(0).line();
                 tap(editor.usageCard().poseX()
                                 + editor.usageCard().width() / 2.0f,
                         editor.usageCard().rowCenterY(0));
+                View.harnessDrain(200L);
                 frame();
                 check("la rangée d'usage y navigue",
                         editor.caretLine() == wantedLine
@@ -1397,9 +1418,18 @@ public final class OpenHarness {
             frame();
             check("le tap au panneau replie le pli",
                     editor.hiddenLineCount() > 0);
+            // le second tap se pose HORS de la zone des numéros (un
+            // tap trop proche deviendrait un DOUBLE-TAP sur les
+            // numéros : le point d'arrêt y vivrait, pas le pli)
             tap(foldX, lineTop(foldLine) + LINE_HEIGHT / 2.0f);
             frame();
             check("le re-tap le rend", editor.hiddenLineCount() == 0);
+            // les points d'arrêt du scénario se rangent (le scénario
+            // suivant exige le départ propre)
+            for (int line : new java.util.ArrayList<>(editor.breakpoints())) {
+                editor.toggleBreakpoint(line);
+            }
+            frame();
         }
         // le rangement final : les popups se ferment, le texte revient,
         // le scroll remonte (les scénarios suivants tapent à Y fixes)
@@ -1414,6 +1444,17 @@ public final class OpenHarness {
         for (int undo = 0; undo < 6
                 && !editor.getBuffer().toString().equals(original); undo++) {
             click("Annuler");
+        }
+        frame();
+        // le rangement des cartes flottantes (usages, sélecteur) : le
+        // scénario suivant tape à Y fixes — une carte ouverte
+        // couvrirait son bouton (l'échec historique « Quitter la
+        // sélection »)
+        if (editor.usageCard().isShown()) {
+            editor.usageCard().close();
+        }
+        if (editor.colorPickerCard().isShown()) {
+            editor.colorPickerCard().close();
         }
         frame();
         check("le texte revient à la fin du scénario",
@@ -1871,6 +1912,10 @@ public final class OpenHarness {
         // Quitter la sélection, depuis le débordement
         tap(editor.selectionBar().overflowCenterX(), editor.selectionBar().centerY());
         frame();
+        // la liste se RELIT après réouverture (l'entrée « Usages de
+        // « mot » » y vit selon le mot au caret : l'index d'avant
+        // pourrait viser la mauvaise rangée)
+        repliees = editor.overflowCard().labels();
         int quitterAt = repliees.indexOf("Quitter la sélection");
         tap(editor.overflowCard().poseX() + 10.0f,
                 editor.overflowCard().rowCenterY(quitterAt));
@@ -3072,14 +3117,16 @@ public final class OpenHarness {
         // le geste plat se décale latéralement : le doigt tire la
         // largeur (scrollX croît quand le doigt va à gauche)
         float before = editor.harnessScrollX();
+        // le geste vise le CORPS du texte (la bande minimap vit au
+        // bord droit — ses ~172 px ne se défilent pas)
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
-                VIEW_WIDTH - 40.0f, 300.0f));
+                VIEW_WIDTH - 220.0f, 300.0f));
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_MOVE,
-                VIEW_WIDTH - 140.0f, 300.0f));
+                VIEW_WIDTH - 320.0f, 300.0f));
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_MOVE,
-                VIEW_WIDTH - 340.0f, 300.0f));
+                VIEW_WIDTH - 520.0f, 300.0f));
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
-                VIEW_WIDTH - 340.0f, 300.0f));
+                VIEW_WIDTH - 520.0f, 300.0f));
         frame();
         check("le geste plat défile la largeur",
                 editor.harnessScrollX() > before + 10.0f);
@@ -3088,12 +3135,14 @@ public final class OpenHarness {
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_DOWN,
                 600.0f, 200.0f));
         Thread.sleep(600L);
+        // le traîné vise le bord du CORPS (la bande minimap au-delà
+        // ne se défile pas)
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_MOVE,
-                VIEW_WIDTH - 10.0f, 200.0f));
+                VIEW_WIDTH - 200.0f, 200.0f));
         frame();
         float duringDrag = editor.harnessScrollX();
         editor.onTouchEvent(MotionEvent.obtain(MotionEvent.ACTION_UP,
-                VIEW_WIDTH - 10.0f, 200.0f));
+                VIEW_WIDTH - 200.0f, 200.0f));
         frame();
         check("le traîné au bord latéral fait défiler la largeur",
                 duringDrag > before + 5.0f);

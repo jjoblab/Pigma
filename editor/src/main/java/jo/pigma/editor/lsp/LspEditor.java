@@ -997,10 +997,16 @@ public final class LspEditor {
                                 () -> view.applyTextEdits(action.edits())));
                     }
                     // la carte ouverte à la ligne se rouvre fraîche ;
-                    // la carte close y laisse la trame suivante lire
+                    // la carte close y laisse la trame suivante lire —
+                    // LA CARTE DE DIAGNOSTIC aussi (l'étage des
+                    // correctifs y vit sous les messages)
                     if (view.quickActionCard() != null && view.quickActionCard().isShown()
                             && view.quickActionCard().line() == asked) {
                         view.openQuickActionsAtLine(asked);
+                    } else if (view.diagnosticCard() != null
+                            && view.diagnosticCard().isShown()
+                            && view.diagnosticCard().line() == asked) {
+                        view.openDiagnosticsAtLine(asked);
                     } else {
                         view.setServerQuickActionProvider(this::serverQuickActionsAt);
                     }
