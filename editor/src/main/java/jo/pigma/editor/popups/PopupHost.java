@@ -60,7 +60,14 @@ public final class PopupHost {
         TYPING,
 
         /** La carte de la sélection : elle vit de l'ancre vivante. */
-        SELECTION
+        SELECTION,
+
+        /** L'ANCRE HORS EXCLUSION : la pastille du tap (A1) — seule
+         * la PERTE DE CONTEXTE la range (elle vit trois secondes et
+         * le doigt y revient la rouvrir : ni l'exclusion mutuelle
+         * des cartes flottantes, ni le tap au texte ne la touchent —
+         * son heure ou son geste seuls). */
+        ANCHOR
     }
 
     /** Une popup inscrite : sa fermeture et sa vie. */
@@ -171,7 +178,8 @@ public final class PopupHost {
      * retourne l'écran, le focus se perd — TOUT se range, la liste
      * y vit ENTIÈRE (aucune carte inscrite ne reste sur le carreau —
      * le fantôme meurt là où il naissait : la liste de fermeture
-     * oubliée d'une carte).
+     * oubliée d'une carte ; l'ancre du tap y vit pareillement, la
+     * pastille d'un document ne survit pas au document suivant).
      */
     public void contextLost() {
         for (Registered card : cards) {

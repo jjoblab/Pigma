@@ -847,6 +847,11 @@ public final class EditorView extends View {
                 rebuildWrapModel();
             }
             dismissInfoPopup();
+            // LA PASTILLE DU DIAGNOSTIC (A1) : l'édition déplace les
+            // lignes et les colonnes — son ancre ne désigne plus son
+            // mot, la pastille d'un texte qui bouge meurt (le
+            // diagnostic repartira de l'analyse neuve)
+            dismissDiagnosticBadge();
             // le remplissage n'est PAS relancé ici : la salve du fond ne
             // doit pas chevaucher le dessin qui suit l'édition —
             // l'odomètre l'a vu (moteur 9,2 ms à l'ouverture du gros
@@ -1909,6 +1914,23 @@ public final class EditorView extends View {
     }
 
     /**
+     * Range la pastille du diagnostic (A1) : le changement de
+     * document la laisse sinon vivre trois secondes dans le texte
+     * NEUF, tapable, ancrée à la ligne d'un autre document — la
+     * carte qu'elle y ouvrirait parlerait de ce document-là. Toute
+     * édition la range pareillement (l'édition déplace les lignes
+     * et les colonnes : l'ancre ne désigne plus son mot).
+     */
+    public void dismissDiagnosticBadge() {
+        if (diagnosticBadgeLine < 0) {
+            return;
+        }
+        diagnosticBadgeLine = -1;
+        badgePop.reset();
+        invalidate();
+    }
+
+    /**
      * Le doigt est-il sur l'ampoule vivante ? Le tap y ouvre la carte
      * de la ligne ancrée.
      *
@@ -2944,6 +2966,18 @@ public final class EditorView extends View {
                 overflowCard::close, overflowCard::isShown);
         popups.register(historyCard, PopupHost.Role.SELECTION,
                 historyCard::close, historyCard::isShown);
+        // LA PASTILLE DU DIAGNOSTIC (A1) : son état vivait HORS du
+        // gestionnaire — le changement de document la laissait vivre
+        // trois secondes dans le texte neuf, tapable. Elle s'inscrit
+        // au rôle ANCRE : la perte de contexte seule la range (ni
+        // l'exclusion mutuelle — le doigt doit la TAPER, ni le tap au
+        // texte — le tap suivant la DÉPLACE), sa fermeture vit dans
+        // LA liste du gestionnaire, nulle seconde liste de fermeture
+        // ne naît
+        popups.register(badgePop, PopupHost.Role.ANCHOR,
+                this::dismissDiagnosticBadge,
+                () -> diagnosticBadgeLine >= 0
+                        && System.nanoTime() <= diagnosticBadgeUntilNanos);
         popups.setAnnouncer(card -> announceForAccessibility(
                 announcedPopupLabel(card)));
     }

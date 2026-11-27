@@ -58,8 +58,10 @@ public class PopupHostTest {
     private final Probe selectionBar = new Probe();
     private final Probe overflow = new Probe();
     private final Probe history = new Probe();
+    /** La pastille du tap (A1) — le rôle ANCRE. */
+    private final Probe badge = new Probe();
 
-    /** Inscrit les treize, l'ordre de la vue. */
+    /** Inscrit les quatorze, l'ordre de la vue. */
     private void registerAll() {
         host.register(info, PopupHost.Role.FLOATING, info::close, info::isShown);
         host.register(usages, PopupHost.Role.FLOATING, usages::close, usages::isShown);
@@ -81,6 +83,8 @@ public class PopupHostTest {
                 overflow::isShown);
         host.register(history, PopupHost.Role.SELECTION, history::close,
                 history::isShown);
+        host.register(badge, PopupHost.Role.ANCHOR, badge::close,
+                badge::isShown);
     }
 
     /**
@@ -235,6 +239,37 @@ public class PopupHostTest {
         }
         assertNull("l'active se vide", host.activeFloating());
         assertFalse("aucune flottante ne vit", host.anyFloatingShown());
+    }
+
+    /**
+     * LE RÔLE ANCRE (A1) : la pastille du tap ne vit AUCUNE exclusion
+     * — ni le tap au texte (le doigt y revient la TAPER), ni
+     * l'ouverture d'une carte flottante (elle meurt de son heure ou
+     * de son geste, pas de la présence d'une autre) ; seule la PERTE
+     * DE CONTEXTE la range (le document change : la pastille d'un
+     * texte n'a pas à survivre au texte).
+     */
+    @Test
+    public void theAnchorSurvivesEverythingButContextLost() {
+        registerAll();
+        badge.open();
+        // le tap au texte ne la range pas
+        host.dismissFloating();
+        assertTrue("le tap au texte ne range pas la pastille",
+                badge.isShown());
+        // l'ouverture d'une carte flottante ne l'évince pas
+        usages.open();
+        host.shown(usages);
+        assertTrue("l'ouverture d'une carte n'évince pas la pastille",
+                badge.isShown());
+        // la sélection morte ne la range pas
+        host.dismissSelection();
+        assertTrue("la sélection morte ne range pas la pastille",
+                badge.isShown());
+        // LA PERTE DE CONTEXTE seule la range
+        host.contextLost();
+        assertFalse("la perte de contexte range la pastille",
+                badge.isShown());
     }
 
     /**
