@@ -116,8 +116,16 @@ l'ampoule.
 | 108 | B6 — L'« IA DE DÉMONSTRATION » DU SAMPLE : `FakeAiBackend` déterministe (les réponses parlent de la demande, le flux par morceaux à la file du thread principal, aucun réseau, la poignée retire les morceaux non joués), les états joués (normale, indisponible, délai, refus, muette, démesurée), l'INTERRUPTEUR au drawer (éteinte par défaut — aucune action d'IA ne se propose sans lui), le manifeste demeure sans permission | B6 | **fait** | `docs/chantiers/108.md` | `d2a34fa` |
 | 109 | B7 — LA VOIX ET LA CIBLE : l'annonce DÉDIÉE de l'assistant (« Assistant ouvert » — `showAssistantPopup`, la documentation garde sa voix), la cible du bouton ANNULER respire à 48 dp (bornée à la boîte), la croix de la barre d'instruction pareil, les trois verdicts y vivaient déjà ; ce qui vivait se consigne (les réponses sont des données, les vingt-neuf chaînes, aucune journalisation, aucun réseau) | B7 | **fait** | `docs/chantiers/109.md` | `3c22aea` |
 | 110 | LE RETOUR DE TERRAIN DES ICÔNES : « les options du popup de l'ampoule ont toutes la même icône » — chaque action porte SA NATURE, dix-neuf glyphes AU TRAIT à la grille 24 (la façon de SeverityIcon) : l'éditeur (le commentaire //, les casses, le double, la poubelle), l'entourage, les extraits, l'hôte (le calendrier, la loupe), le serveur (la flèche à la barre, l'œil, les guillemets, le crayon, l'alignement, l'arbre), l'assistant (la bulle, la feuille, la coche) ; l'éclair d'action demeure le défaut | — | **fait** | `docs/chantiers/110.md` | `c38b934` |
+| 111 | LE DÉBORDEMENT AU TRAIT (la demande du propriétaire : « créé aussi des icônes au trait pour les options du popup view overflow card (le … débordement) ») : le peintre partagé `ActionGlyphs` (les dix-neuf glyphes du 110 y déménagent — l'ampoule et le débordement peignent à la MÊME main, l'encre chez le consommateur ; l'éclair plein demeure à l'ampoule, la boucle au filet au débordement) ; SIX natures de plus (vingt-cinq) — les ciseaux du couper, le cadre du tout sélectionner, la croix du quitter, la planche du presse-papiers, l'horloge de l'historique, le triangle des problèmes ; les autres rangées voyagent du même peintre (GOTO, SEARCH, QUOTES, TREE, SNIPPET, la nature du REGISTRE à l'étage d'édition) ; preuve aux pixels : OverflowIconIT au mode graphique natif | — | **fait** | `docs/chantiers/111.md` | à pousser |
 
 ## Journal des mises à jour
+
+- 2026-11-27 — chantier 111 fermé : le DÉBORDEMENT AU TRAIT — chaque
+  option du popup « … » de la barre de sélection porte SA NATURE
+  (vingt-cinq glyphes au peintre partagé ActionGlyphs, six natures
+  de plus : ciseaux, cadre, croix, planche, horloge, triangle) ;
+  l'éclair demeure le défaut au trait (la boucle fermée — le plein
+  reste à l'ampoule) ; la preuve aux pixels vit à OverflowIconIT.
 
 - 2026-11-27 — LA FEUILLE RATTRAPE LES CHANTIERS 97 à 110 : la table
   porte les quatorze rangées (le bug des onglets A1–A4, la couche IA
