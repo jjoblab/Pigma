@@ -318,18 +318,24 @@ public final class AiAssistant implements EditorView.AssistantProvider,
         PopupStrings strings = view.popupStrings();
         if (capabilities.accepts(AiTask.EXPLAIN)) {
             entries.add(new QuickActionCard.Entry(
-                    strings.aiExplain(), () -> start(AiTask.EXPLAIN, "",
-                            List.of(), -1, -1)));
+                    strings.aiExplain(),
+                    () -> start(AiTask.EXPLAIN, "",
+                            List.of(), -1, -1),
+                    QuickActionCard.Glyph.CHAT));
         }
         if (capabilities.accepts(AiTask.DOCUMENT)) {
             entries.add(new QuickActionCard.Entry(
-                    strings.aiDocument(), () -> start(AiTask.DOCUMENT, "",
-                            List.of(), -1, -1)));
+                    strings.aiDocument(),
+                    () -> start(AiTask.DOCUMENT, "",
+                            List.of(), -1, -1),
+                    QuickActionCard.Glyph.DOC));
         }
         if (capabilities.accepts(AiTask.WRITE_TEST)) {
             entries.add(new QuickActionCard.Entry(
-                    strings.aiWriteTest(), () -> start(AiTask.WRITE_TEST, "",
-                            List.of(), -1, -1)));
+                    strings.aiWriteTest(),
+                    () -> start(AiTask.WRITE_TEST, "",
+                            List.of(), -1, -1),
+                    QuickActionCard.Glyph.CHECK));
         }
         return entries;
     }

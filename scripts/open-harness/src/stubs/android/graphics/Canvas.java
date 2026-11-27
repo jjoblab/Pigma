@@ -204,6 +204,20 @@ public final class Canvas {
     }
 
     /**
+     * Peint un ovale au trait (l'œil d'un glyphe d'action).
+     *
+     * @param left   bord gauche
+     * @param top    bord haut
+     * @param right  bord droit
+     * @param bottom bord bas
+     * @param paint  pinceau
+     */
+    public void drawOval(float left, float top, float right, float bottom,
+            Paint paint) {
+        circleCount++;
+    }
+
+    /**
      * Peint un chemin (le triangle d'un marqueur, l'ampoule).
      *
      * @param path  le chemin

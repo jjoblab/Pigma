@@ -602,8 +602,11 @@ public final class MainActivity extends Activity {
      */
     private List<QuickActionCard.Entry> hostQuickActions(int line, int column) {
         return List.of(
-                new QuickActionCard.Entry("Insérer la date du jour", this::insertToday),
-                new QuickActionCard.Entry("Ouvrir la recherche", editorView::toggleSearchPopup));
+                new QuickActionCard.Entry("Insérer la date du jour",
+                        this::insertToday, QuickActionCard.Glyph.CALENDAR),
+                new QuickActionCard.Entry("Ouvrir la recherche",
+                        editorView::toggleSearchPopup,
+                        QuickActionCard.Glyph.SEARCH));
     }
 
     /**

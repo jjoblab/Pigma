@@ -694,12 +694,17 @@ public final class EditorView extends View {
      * y mènent leurs rangées.
      */
     private final ActionRegistry editActions = new ActionRegistry()
-            .add("Commenter / décommenter", this::toggleLineComment,
+            .add("Commenter / décommenter", QuickActionCard.Glyph.COMMENT,
+                    this::toggleLineComment,
                     () -> !lineCommentPrefix().isEmpty())
-            .add("En majuscules", this::uppercaseSelection, this::hasSelection)
-            .add("En minuscules", this::lowercaseSelection, this::hasSelection)
-            .add("Dupliquer la ligne", this::duplicateLine, () -> true)
-            .add("Supprimer la ligne", this::deleteLines, () -> true);
+            .add("En majuscules", QuickActionCard.Glyph.UPPERCASE,
+                    this::uppercaseSelection, this::hasSelection)
+            .add("En minuscules", QuickActionCard.Glyph.LOWERCASE,
+                    this::lowercaseSelection, this::hasSelection)
+            .add("Dupliquer la ligne", QuickActionCard.Glyph.DUPLICATE,
+                    this::duplicateLine, () -> true)
+            .add("Supprimer la ligne", QuickActionCard.Glyph.TRASH,
+                    this::deleteLines, () -> true);
 
     /** Le fournisseur de diagnostics de l'hôte (le LSP y monte ses erreurs). */
     private DiagnosticProvider diagnosticProvider;
@@ -2068,19 +2073,21 @@ public final class EditorView extends View {
         // listes à tenir à la main
         for (ActionRegistry.Action action : editActions.live()) {
             actions.add(new QuickActionCard.Entry(
-                    action.label(), action::run));
+                    action.label(), action::run, action.glyph()));
         }
         // L'ENTOUREMENT (l'entourer de du rapport) : la sélection vivante
         // seule s'y propose (le rapport : « sélection de lignes »)
         if (hasSelection()) {
             actions.add(new QuickActionCard.Entry(
-                    popupStrings.surroundRow(), this::showSurroundPopup));
+                    popupStrings.surroundRow(), this::showSurroundPopup,
+                    QuickActionCard.Glyph.SURROUND));
         }
         // LES EXTRAITS (les extraits du rapport) : le registre vivant seul
         // s'y propose (l'hôte y pose ses squelettes)
         if (!snippetRegistry.snippets().isEmpty()) {
             actions.add(new QuickActionCard.Entry(
-                    popupStrings.snippetsRow(), this::showSnippetsPopup));
+                    popupStrings.snippetsRow(), this::showSnippetsPopup,
+                    QuickActionCard.Glyph.SNIPPET));
         }
         if (quickActionProvider != null) {
             int caretOffset = Math.min(selection.caret(), buffer.length());

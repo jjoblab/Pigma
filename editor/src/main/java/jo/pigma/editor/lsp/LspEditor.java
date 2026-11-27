@@ -1635,29 +1635,34 @@ public final class LspEditor {
         // le français courant)
         if (capabilities.definition()) {
             actions.add(new QuickActionCard.Entry(
-                    view.popupStrings().definitionEntry(), this::requestDefinition));
+                    view.popupStrings().definitionEntry(),
+                    this::requestDefinition, QuickActionCard.Glyph.GOTO));
             // L'APERÇU DE LA DÉFINITION (la définition en aperçu) :
             // lire la déclaration SANS quitter la position (le bouton «
             // Ouvrir » y saute)
             actions.add(new QuickActionCard.Entry(
                     view.popupStrings().definitionPreviewEntry(),
-                    this::requestDefinitionPreview));
+                    this::requestDefinitionPreview, QuickActionCard.Glyph.EYE));
         }
         if (capabilities.references()) {
             actions.add(new QuickActionCard.Entry(
-                    view.popupStrings().referencesEntry(), view::showUsagesPopup));
+                    view.popupStrings().referencesEntry(),
+                    view::showUsagesPopup, QuickActionCard.Glyph.QUOTES));
         }
         if (capabilities.rename()) {
             actions.add(new QuickActionCard.Entry(
-                    view.popupStrings().renameEntry(), this::requestRename));
+                    view.popupStrings().renameEntry(),
+                    this::requestRename, QuickActionCard.Glyph.PENCIL));
         }
         if (capabilities.formatting()) {
             actions.add(new QuickActionCard.Entry(
-                    view.popupStrings().formatEntry(), this::formatDocument));
+                    view.popupStrings().formatEntry(),
+                    this::formatDocument, QuickActionCard.Glyph.ALIGN));
         }
         if (capabilities.documentSymbol()) {
             actions.add(new QuickActionCard.Entry(
-                    view.popupStrings().symbolsEntry(), this::showSymbolsCard));
+                    view.popupStrings().symbolsEntry(),
+                    this::showSymbolsCard, QuickActionCard.Glyph.TREE));
         }
         if (capabilities.codeAction()) {
             actions.addAll(codeActionsAt(line));

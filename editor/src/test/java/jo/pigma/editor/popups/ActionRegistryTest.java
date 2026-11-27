@@ -105,4 +105,42 @@ public final class ActionRegistryTest {
         assertEquals(1, live.size());
         assertEquals("La bonne", live.get(0).label());
     }
+
+    /**
+     * LA NATURE DE L'ACTION voyage avec elle (le glyphe au trait de
+     * la carte d'actions rapides — le retour du terrain : « les
+     * options ont toutes la même icône ») : l'enregistrement SANS
+     * nature garde l'éclair d'action (le défaut d'avant), celui AVEC
+     * nature la porte — la même aux deux cartes.
+     */
+    @Test
+    public void theGlyphTravelsWithTheAction() {
+        ActionRegistry registry = new ActionRegistry()
+                .add("Commenter / décommenter",
+                        QuickActionCard.Glyph.COMMENT,
+                        () -> played.add("commenter"), () -> true)
+                .add("Dupliquer la ligne",
+                        () -> played.add("dupliquer"), () -> true)
+                .add("Renommer", null, () -> played.add("renommer"),
+                        () -> true);
+        List<ActionRegistry.Action> live = registry.live();
+        assertEquals("la nature dite se lit",
+                QuickActionCard.Glyph.COMMENT, live.get(0).glyph());
+        assertEquals("sans nature dite : l'éclair d'action demeure",
+                QuickActionCard.Glyph.ACTION, live.get(1).glyph());
+        assertEquals("la nature nulle garde l'éclair aussi",
+                QuickActionCard.Glyph.ACTION, live.get(2).glyph());
+        // l'entrée de la carte la porte : la nature ne se perd pas au
+        // voyage du registre à la rangée
+        QuickActionCard.Entry entry = new QuickActionCard.Entry(
+                live.get(0).label(), live.get(0)::run, live.get(0).glyph());
+        assertEquals("l'entrée porte la nature",
+                QuickActionCard.Glyph.COMMENT, entry.glyph());
+        // l'entrée SANS nature dite garde l'éclair (le défaut
+        // d'avant — les entrées existantes ne changent pas)
+        QuickActionCard.Entry bare = new QuickActionCard.Entry(
+                "Libellé", () -> { });
+        assertEquals("l'entrée sans nature garde l'éclair",
+                QuickActionCard.Glyph.ACTION, bare.glyph());
+    }
 }
