@@ -36,6 +36,20 @@ public class Context {
         return null;
     }
 
+    /** L'information d'application du harnais (le répertoire natif vide). */
+    private final ApplicationInfo applicationInfo = new ApplicationInfo();
+
+    /** L'information d'application (le répertoire des natives s'y lit). */
+    public ApplicationInfo getApplicationInfo() {
+        return applicationInfo;
+    }
+
+    /** Le répertoire de cache du harnais (un répertoire temporaire réel). */
+    public java.io.File getCacheDir() {
+        return new java.io.File(System.getProperty("java.io.tmpdir", "/tmp"),
+                "pigma-harness-cache");
+    }
+
     /** Les ressources (métriques fixes). */
     /** Le thème porteur (le harnais n'en porte pas : un objet quelconque). */
     public Object getTheme() {

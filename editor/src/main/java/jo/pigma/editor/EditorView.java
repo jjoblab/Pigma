@@ -2217,6 +2217,37 @@ public final class EditorView extends View {
      * @param language descripteur du langage, jamais {@code null}
      * @param text     texte de démonstration, jamais {@code null}
      */
+    /**
+     * OUVRE UN DOCUMENT D'UN SEUL TRAIT (la demande du terrain :
+     * « trop de méthodes dans le sample qui devraient être dans
+     * l'éditeur — l'intégration doit être facile ») : le langage et
+     * le texte se posent, les EXTRAITS DU LANGAGE s'inscrivent au
+     * registre (le squelette au caret — « l'hôte y vit », dit le
+     * rapport des popups, mais le STANDARD y vit aussi : le porteur
+     * n'inscrit que ses propres extraits PAR-DESSUS), le document
+     * s'enregistre aux FICHIERS RÉCENTS (la carte des récents y le
+     * rouvre au doigt — le porteur dit comment).
+     *
+     * @param language     le langage du document, jamais null
+     * @param text         le texte du document
+     * @param documentName le nom du document (l'étiquette du récent)
+     * @param reopen       la réouverture du document (le récent y
+     *                     part), null pour nul récent
+     */
+    public void openDocument(LanguageSyntax language, String text,
+            String documentName, Runnable reopen) {
+        setLanguage(language, text);
+        snippetRegistry().clear();
+        for (SnippetRegistry.Snippet snippet
+                : SnippetRegistry.standard(language.name())) {
+            snippetRegistry().register(snippet);
+        }
+        if (reopen != null) {
+            recentFiles().recordFile(documentName,
+                    android.os.SystemClock.uptimeMillis(), reopen);
+        }
+    }
+
     public void setLanguage(LanguageSyntax language, String text) {
         // le même texte au même langage : le document ouvert EST déjà
         // exact — le re-ouvrir ne doit ni relancer le fond ni recuire

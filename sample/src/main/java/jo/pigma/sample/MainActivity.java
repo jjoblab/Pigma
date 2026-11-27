@@ -263,8 +263,8 @@ public final class MainActivity extends Activity {
         // édition à défaire, l'histoire repart vide) ; LES EXTRAITS du
         // langage s'y posent, le document s'y enregistre AUX RÉCENTS
         // (l'hôte y vit : le registre et la mémoire sont à lui)
-        editorView.setLanguage(Languages.JAVA, DemoTexts.JAVA);
-        hostAppliesLanguage("Java", () -> openDocument("Java"));
+        editorView.openDocument(Languages.JAVA, DemoTexts.JAVA,
+                "Java (démo)", () -> openDocument("Java"));
         // le style des popups : l'hôte pose le sien — fond translucide
         // un peu plus léger, coins plus ronds, largeur accrue (l'API
         // de la bibliothèque, tout y se règle)
@@ -422,34 +422,16 @@ public final class MainActivity extends Activity {
      * @param name le nom du langage (Java, XML, JSON, Kotlin, Lua, SQL)
      */
     private void openDocument(String name) {
-        editorView.setLanguage(languageOf(name), textOf(name));
-        // LES EXTRAITS du langage s'y posent, le document s'y
-        // enregistre AUX RÉCENTS (l'hôte y vit)
-        hostAppliesLanguage(name, () -> openDocument(name));
+        // UN SEUL TRAIT à l'éditeur : le langage, le texte, les
+        // EXTRAITS du langage, l'enregistrement AUX RÉCENTS —
+        // l'hôte n'inscrit plus que ses SURCHARGES propres
+        editorView.openDocument(languageOf(name), textOf(name),
+                name + " (démo)", () -> openDocument(name));
         currentScenario = name + " (démo)";
         CrashJournal.setSection(currentScenario);
         loggedFirstColoration = false;
         updateStatus();
         watchDiagnostics();
-    }
-
-    /**
-     * L'HÔTE POSE SON LANGAGE : les EXTRAITS du langage s'y inscrivent
-     * au registre (le squelette au caret — le rapport des popups dit « l'hôte y
-     * vit »), le document s'y enregistre aux FICHIERS RÉCENTS (les fichiers récents —
-     * la carte des récents y le rouvre au doigt).
-     *
-     * @param name    le nom du langage posé
-     * @param reopen  la réouverture du document (le récent y part)
-     */
-    private void hostAppliesLanguage(String name, Runnable reopen) {
-        editorView.snippetRegistry().clear();
-        for (SnippetRegistry.Snippet snippet : SnippetRegistry.standard(
-                languageOf(name).name())) {
-            editorView.snippetRegistry().register(snippet);
-        }
-        editorView.recentFiles().recordFile(name + " (démo)",
-                android.os.SystemClock.uptimeMillis(), reopen);
     }
 
     /**
@@ -989,7 +971,7 @@ public final class MainActivity extends Activity {
                 lspButton.setText("LSP");
                 lspLuaButton.setText("LSP Lua");
                 lspLabel = null;
-                String stderr = tailOfEmmyluaStderr();
+                String stderr = lsp.lastEmmyLuaError(this);
                 String message = reason != null || stderr != null
                         ? "serveur déconnecté"
                                 + (reason != null ? " — " + reason : "")
@@ -998,35 +980,6 @@ public final class MainActivity extends Activity {
                 Toast.makeText(this, message, Toast.LENGTH_LONG).show();
                 updateStatus();
                 break;
-        }
-    }
-
-    /**
-     * La dernière ligne parlante de la stderr du serveur EmmyLua
-     * (l'arrière du processus y dit sa mort : l'erreur de démarrage,
-     * le port occupé, la ressource manquante).
-     *
-     * @return la ligne, ou null quand elle ne parle pas
-     */
-    private String tailOfEmmyluaStderr() {
-        File log = new File(new File(getCacheDir(), "emmylua"),
-                "resources/stderr.log");
-        if (!log.isFile()) {
-            return null;
-        }
-        try (java.io.BufferedReader lines = new java.io.BufferedReader(
-                new java.io.FileReader(log))) {
-            String last = null;
-            String line;
-            while ((line = lines.readLine()) != null) {
-                if (!line.isBlank()) {
-                    last = line;
-                }
-            }
-            return last != null && last.length() > 120
-                    ? last.substring(0, 120) : last;
-        } catch (java.io.IOException noRead) {
-            return null;
         }
     }
 
@@ -1047,48 +1000,16 @@ public final class MainActivity extends Activity {
         updateStatus();
         watchDiagnostics();
 
-        File executable = new File(getApplicationInfo().nativeLibraryDir,
-                "libemmylua_ls.so");
-        if (!executable.canExecute()) {
-            Toast.makeText(this, "le serveur EmmyLua manque pour cette architecture ("
-                            + Build.SUPPORTED_ABIS[0] + ")", Toast.LENGTH_LONG).show();
-            return;
-        }
-        File workspace = new File(getCacheDir(), "emmylua");
-        File resources = new File(workspace, "resources");
-        File document = new File(workspace, "demo.lua");
+        // UN SEUL TRAIT à la façade : l'espace de travail, le
+        // fichier, le processus, la liaison — l'écran ne tient plus
+        // que son bouton et son toast
         try {
-            // l'espace de travail naît ici (le cache le laisse absent au
-            // premier lancement) — sans lui l'écriture du démo échoue et
-            // le serveur ne part jamais
-            java.nio.file.Files.createDirectories(resources.toPath());
-            // writeString n'existe pas dans android.jar (Java 11, jamais
-            // porté) — l'écriture classique y va, byte par byte
-            java.io.FileOutputStream out = new java.io.FileOutputStream(document);
-            try {
-                out.write(DemoTexts.LUA.getBytes(
-                        java.nio.charset.StandardCharsets.UTF_8));
-            } finally {
-                out.close();
-            }
-        } catch (java.io.IOException noFile) {
-            Toast.makeText(this, "l'espace de travail ne s'écrit pas : "
-                    + noFile.getMessage(), Toast.LENGTH_SHORT).show();
+            lsp.connectEmmyLua(this, DemoTexts.LUA);
+        } catch (java.io.IOException noServer) {
+            Toast.makeText(this, "le serveur Lua ne part pas : "
+                    + noServer.getMessage(), Toast.LENGTH_LONG).show();
             return;
         }
-        Process server;
-        try {
-            server = new ProcessBuilder(executable.getAbsolutePath(),
-                            "--resources-path", resources.getAbsolutePath())
-                    .directory(workspace)
-                    .redirectError(new File(resources, "stderr.log"))
-                    .start();
-        } catch (java.io.IOException noProcess) {
-            Toast.makeText(this, "le serveur ne part pas : " + noProcess.getMessage(),
-                    Toast.LENGTH_LONG).show();
-            return;
-        }
-        lsp.connectProcess(server, document.toURI().toString(), "lua");
         // l'état de la connexion y décide désormais : le toast
         // « serveur connecté » naît de la machine à états (le
         // branchement seul ne vaut pas connexion — le handshake y

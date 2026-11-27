@@ -60,7 +60,14 @@ branchent `undo()`/`redo()`, `canUndo()`/`canRedo()`).
 import jo.pigma.syntax.Languages;
 import jo.pigma.editor.EditorThemes;
 
-// un langage parmi JAVA, XML, JSON, KOTLIN, LUA, SQL
+// UN SEUL TRAIT (le chantier 95) : le langage, le texte, les EXTRAITS
+// du langage au registre, le document aux FICHIERS RÉCENTS (la carte
+// des récents le rouvre au doigt — votre runnable dit comment)
+editor.openDocument(Languages.JAVA, "package demo;\n\nclass Hello {\n}\n",
+        "Hello.java", () -> editor.openDocument(Languages.JAVA, leTexte,
+                "Hello.java", null));
+
+// ou l'original, nu : le langage et le texte seuls
 editor.setLanguage(Languages.JAVA, "package demo;\n\nclass Hello {\n}\n");
 ```
 
@@ -99,6 +106,10 @@ lsp.connectInProcess(new MonServeur(), "file:///doc.java", "java");
 
 // ou par processus externe (jar, binaire natif) :
 // lsp.connectProcess(process, "file:///doc.lua", "lua");
+
+// ou le serveur EMMYLUA RÉEL, d'UN SEUL TRAIT (l'espace de travail au
+// cache, le document écrit, le processus parti, la liaison branchée) :
+// lsp.connectEmmyLua(context, leTexteLua);
 ```
 
 Chaque fonction se coupe individuellement (`setHoverEnabled(false)`,

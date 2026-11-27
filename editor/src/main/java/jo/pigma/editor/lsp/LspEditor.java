@@ -567,6 +567,86 @@ public final class LspEditor {
     }
 
     /**
+     * Branche le serveur EMMYLUA RÉEL, d'UN SEUL TRAIT (la demande du
+     * terrain : « trop de méthodes dans le sample qui devraient
+     * être dans l'éditeur — l'intégration doit être facile ») : le
+     * porteur n'a plus qu'à tenir le texte. L'espace de travail naît
+     * au cache de l'application (la bibliothèque standard Lua s'y
+     * extrait, le document y devient un vrai fichier — seul
+     * répertoire où un exécutable vit depuis l'appareil), le serveur
+     * part par processus ({@code libemmylua_ls.so}, tiré du
+     * {@code nativeLibraryDir} du porteur), la liaison s'y branche.
+     *
+     * @param context le contexte du porteur (l'application hôte)
+     * @param luaText le texte du document Lua de démonstration
+     * @throws IOException si le serveur manque à l'architecture ou si
+     *                     l'espace de travail ne s'écrit pas
+     */
+    public void connectEmmyLua(android.content.Context context, String luaText)
+            throws IOException {
+        java.io.File executable = new java.io.File(
+                context.getApplicationInfo().nativeLibraryDir,
+                "libemmylua_ls.so");
+        if (!executable.canExecute()) {
+            throw new IOException("le serveur EmmyLua manque pour cette architecture ("
+                    + android.os.Build.SUPPORTED_ABIS[0] + ")");
+        }
+        java.io.File workspace = new java.io.File(context.getCacheDir(), "emmylua");
+        java.io.File resources = new java.io.File(workspace, "resources");
+        java.io.File document = new java.io.File(workspace, "demo.lua");
+        // l'espace de travail naît ici (le cache le laisse absent au
+        // premier lancement) — sans lui l'écriture du texte échoue et
+        // le serveur ne part jamais
+        java.nio.file.Files.createDirectories(resources.toPath());
+        // writeString n'existe pas dans android.jar (Java 11, jamais
+        // porté) — l'écriture classique y va, octet par octet
+        java.io.FileOutputStream out = new java.io.FileOutputStream(document);
+        try {
+            out.write(luaText.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } finally {
+            out.close();
+        }
+        Process server = new ProcessBuilder(executable.getAbsolutePath(),
+                        "--resources-path", resources.getAbsolutePath())
+                .directory(workspace)
+                .redirectError(new java.io.File(resources, "stderr.log"))
+                .start();
+        connectProcess(server, document.toURI().toString(), "lua");
+    }
+
+    /**
+     * La dernière ligne parlante de la stderr du serveur EmmyLua
+     * (l'arrière du processus y dit sa mort : l'erreur de démarrage,
+     * le port occupé, la ressource manquante) — le porteur s'y sert
+     * à son toast de déconnexion.
+     *
+     * @param context le contexte du porteur
+     * @return la ligne, ou null quand elle ne parle pas
+     */
+    public String lastEmmyLuaError(android.content.Context context) {
+        java.io.File log = new java.io.File(
+                new java.io.File(context.getCacheDir(), "emmylua"),
+                "resources/stderr.log");
+        if (!log.isFile()) {
+            return null;
+        }
+        try (java.io.BufferedReader lines = new java.io.BufferedReader(
+                new java.io.FileReader(log))) {
+            String last = null;
+            String line;
+            while ((line = lines.readLine()) != null) {
+                if (!line.isBlank()) {
+                    last = line;
+                }
+            }
+            return last != null && last.length() > 120
+                    ? last.substring(0, 120) : last;
+        } catch (IOException noRead) {
+            return null;
+        }
+    }
+
+    /**
      * Branche un serveur lancé PAR PROCESSUS (l'exécutable vit hors
      * de la machine virtuelle) : lsp4j cadre les messages sur son
      * entrée et sa sortie standard.
