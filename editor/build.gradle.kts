@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.library)
+    `maven-publish`
 }
 
 android {
@@ -30,6 +31,15 @@ android {
             isReturnDefaultValues = true
         }
     }
+
+    // La publication Maven du variant release (AGP ne l'expose que
+    // s'il y est dit de publier) : le composant « release » naît de
+    // cette déclaration, la publication s'y attache dessous.
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+        }
+    }
 }
 
 dependencies {
@@ -55,4 +65,26 @@ dependencies {
     // jamais la façade, lsp4j dort.
     api(project(":lsp"))
     testImplementation(libs.junit)
+}
+
+// La publication Maven : JitPack construit le dépôt sur demande et
+// l'artefact vit sous com.github.jjoblab.Pigma:editor:VERSION (le
+// group posé ici, JitPack le remappe au sien ; le variant publié
+// est le release, sa source l'accompagne). La bibliothèque ne se
+// consomme qu'ainsi hors du dépôt : un hôte n'a QUE cette
+// dépendance à déclarer. Le composant « release » n'existe
+// qu'après la configuration du plugin Android : la publication
+// s'y attache à l'évaluation close (la façon du guide JitPack).
+afterEvaluate {
+    publishing {
+        publications {
+            create<MavenPublication>("editor") {
+                groupId = "jo.pigma"
+                artifactId = "editor"
+                version = "1.0.0"
+
+                from(components["release"])
+            }
+        }
+    }
 }

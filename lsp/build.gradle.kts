@@ -1,5 +1,22 @@
 plugins {
     id("java-library")
+    `maven-publish`
+}
+
+// La publication Maven : JitPack construit le dépôt sur demande et
+// l'artefact vit sous com.github.jjoblab.Pigma:lsp:VERSION (le group
+// posé ici, JitPack le remappe au sien — les dépendances api du
+// POM s'y résolvent entre modules publiés).
+publishing {
+    publications {
+        register<MavenPublication>("lsp") {
+            groupId = "jo.pigma"
+            artifactId = "lsp"
+            version = "1.0.0"
+
+            from(components.getByName("java"))
+        }
+    }
 }
 
 dependencies {

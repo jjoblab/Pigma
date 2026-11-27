@@ -1,0 +1,14 @@
+# La consigne de build de JitPack : le dépôt s'y construit sur demande
+# (un tag poussé, la première requête). Le JDK : AGP 8.7.3 exige le 17.
+# La commande : la publication au Maven local y suffit — le « build »
+# complet (le check des 545 tests, le harnais, les IT Robolectric du
+# sample) vit au dépôt même, exécuté à chaque chantier avant le push ;
+# JitPack n'a pas à le repayer pour livrer un artefact.
+jdk:
+  - openjdk17
+
+install:
+  # La publication seule : les vérifications (tests, style, politique)
+  # vivent au dépôt même, exécutées à chaque chantier avant le push —
+  # JitPack livre l'artefact, il ne re-paie pas la preuve.
+  - ./gradlew publishToMavenLocal --no-daemon --stacktrace
