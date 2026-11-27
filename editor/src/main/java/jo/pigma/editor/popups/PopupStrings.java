@@ -181,6 +181,32 @@ public final class PopupStrings {
     /** La phrase de la réponse MUETTE (vide). */
     private final String aiEmpty;
 
+    // LES CHAÎNES DE LA MODIFICATION PAR INSTRUCTION (B3 — l'IA écrit
+    // à la sélection)
+
+    /** La pastille « Modifier avec l'IA… » (la barre de sélection). */
+    private final String aiEditSelection;
+    /** L'invite de la barre d'instruction. */
+    private final String aiEditInvite;
+    /** L'indication du champ vierge de la barre. */
+    private final String aiEditHint;
+    /** Le retour d'une instruction vide (la validation sans texte). */
+    private final String aiEditEmpty;
+    /** Le titre de l'aperçu de la modification proposée. */
+    private final String aiDiffTitle;
+    /** L'étiquette de la section « Avant » de l'aperçu. */
+    private final String aiDiffBefore;
+    /** L'étiquette de la section « Après » de l'aperçu. */
+    private final String aiDiffAfter;
+    /** Le bouton « Accepter » de l'aperçu. */
+    private final String aiDiffAccept;
+    /** Le bouton « Rejeter » de l'aperçu. */
+    private final String aiDiffReject;
+    /** Le bouton « Réessayer » de l'aperçu. */
+    private final String aiDiffRetry;
+    /** La phrase des erreurs NÉES de la modification posée. */
+    private final String aiNewErrors;
+
     private PopupStrings(Builder builder) {
         structure = builder.structure;
         problems = builder.problems;
@@ -251,6 +277,17 @@ public final class PopupStrings {
         aiInternal = builder.aiInternal;
         aiStale = builder.aiStale;
         aiEmpty = builder.aiEmpty;
+        aiEditSelection = builder.aiEditSelection;
+        aiEditInvite = builder.aiEditInvite;
+        aiEditHint = builder.aiEditHint;
+        aiEditEmpty = builder.aiEditEmpty;
+        aiDiffTitle = builder.aiDiffTitle;
+        aiDiffBefore = builder.aiDiffBefore;
+        aiDiffAfter = builder.aiDiffAfter;
+        aiDiffAccept = builder.aiDiffAccept;
+        aiDiffReject = builder.aiDiffReject;
+        aiDiffRetry = builder.aiDiffRetry;
+        aiNewErrors = builder.aiNewErrors;
     }
 
     /**
@@ -654,6 +691,63 @@ public final class PopupStrings {
         return aiEmpty;
     }
 
+    // LES CHAÎNES DE LA MODIFICATION PAR INSTRUCTION (B3)
+
+    /** La pastille « Modifier avec l'IA… » (la barre de sélection). */
+    public String aiEditSelection() {
+        return aiEditSelection;
+    }
+
+    /** L'invite de la barre d'instruction. */
+    public String aiEditInvite() {
+        return aiEditInvite;
+    }
+
+    /** L'indication du champ vierge de la barre. */
+    public String aiEditHint() {
+        return aiEditHint;
+    }
+
+    /** Le retour d'une instruction vide (la validation sans texte). */
+    public String aiEditEmpty() {
+        return aiEditEmpty;
+    }
+
+    /** Le titre de l'aperçu de la modification proposée. */
+    public String aiDiffTitle() {
+        return aiDiffTitle;
+    }
+
+    /** L'étiquette de la section « Avant » de l'aperçu. */
+    public String aiDiffBefore() {
+        return aiDiffBefore;
+    }
+
+    /** L'étiquette de la section « Après » de l'aperçu. */
+    public String aiDiffAfter() {
+        return aiDiffAfter;
+    }
+
+    /** Le bouton « Accepter » de l'aperçu. */
+    public String aiDiffAccept() {
+        return aiDiffAccept;
+    }
+
+    /** Le bouton « Rejeter » de l'aperçu. */
+    public String aiDiffReject() {
+        return aiDiffReject;
+    }
+
+    /** Le bouton « Réessayer » de l'aperçu. */
+    public String aiDiffRetry() {
+        return aiDiffRetry;
+    }
+
+    /** La phrase des erreurs NÉES de la modification posée. */
+    public String aiNewErrors() {
+        return aiNewErrors;
+    }
+
     /**
      * Le bâtisseur des chaînes : chaque poseur y remplace UNE valeur,
      * {@link #build()} fige le tout.
@@ -729,6 +823,17 @@ public final class PopupStrings {
         private String aiInternal = "Panne interne de l'assistant.";
         private String aiStale = "Le texte a changé depuis la demande — la réponse ne se pose pas.";
         private String aiEmpty = "La réponse est vide.";
+        private String aiEditSelection = "Modifier avec l'IA…";
+        private String aiEditInvite = "Instruction : ";
+        private String aiEditHint = "que changer ?";
+        private String aiEditEmpty = "l'instruction est vide";
+        private String aiDiffTitle = "Modification proposée";
+        private String aiDiffBefore = "Avant";
+        private String aiDiffAfter = "Après";
+        private String aiDiffAccept = "Accepter";
+        private String aiDiffReject = "Rejeter";
+        private String aiDiffRetry = "Réessayer";
+        private String aiNewErrors = "De nouvelles erreurs sont nées de la modification — vérifie la zone.";
 
         /** Un bâtisseur aux valeurs par défaut. */
         public Builder() {
@@ -1145,6 +1250,72 @@ public final class PopupStrings {
         /** Pose la phrase de la réponse vide. */
         public Builder aiEmpty(String value) {
             aiEmpty = value;
+            return this;
+        }
+
+        /** Pose la pastille « Modifier avec l'IA… ». */
+        public Builder aiEditSelection(String value) {
+            aiEditSelection = value;
+            return this;
+        }
+
+        /** Pose l'invite de la barre d'instruction. */
+        public Builder aiEditInvite(String value) {
+            aiEditInvite = value;
+            return this;
+        }
+
+        /** Pose l'indication du champ vierge de la barre. */
+        public Builder aiEditHint(String value) {
+            aiEditHint = value;
+            return this;
+        }
+
+        /** Pose le retour d'une instruction vide. */
+        public Builder aiEditEmpty(String value) {
+            aiEditEmpty = value;
+            return this;
+        }
+
+        /** Pose le titre de l'aperçu de la modification. */
+        public Builder aiDiffTitle(String value) {
+            aiDiffTitle = value;
+            return this;
+        }
+
+        /** Pose l'étiquette de la section « Avant ». */
+        public Builder aiDiffBefore(String value) {
+            aiDiffBefore = value;
+            return this;
+        }
+
+        /** Pose l'étiquette de la section « Après ». */
+        public Builder aiDiffAfter(String value) {
+            aiDiffAfter = value;
+            return this;
+        }
+
+        /** Pose le bouton « Accepter ». */
+        public Builder aiDiffAccept(String value) {
+            aiDiffAccept = value;
+            return this;
+        }
+
+        /** Pose le bouton « Rejeter ». */
+        public Builder aiDiffReject(String value) {
+            aiDiffReject = value;
+            return this;
+        }
+
+        /** Pose le bouton « Réessayer ». */
+        public Builder aiDiffRetry(String value) {
+            aiDiffRetry = value;
+            return this;
+        }
+
+        /** Pose la phrase des erreurs nées de la modification. */
+        public Builder aiNewErrors(String value) {
+            aiNewErrors = value;
             return this;
         }
 

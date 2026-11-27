@@ -49,6 +49,8 @@ import jo.pigma.editor.popups.GotoCard;
 import jo.pigma.editor.popups.RecentCard;
 import jo.pigma.editor.popups.RecentFiles;
 import jo.pigma.editor.popups.RenamePreviewCard;
+import jo.pigma.editor.popups.AiEditBar;
+import jo.pigma.editor.popups.AiDiffCard;
 import jo.pigma.editor.popups.SurroundCard;
 import jo.pigma.editor.popups.SnippetCard;
 import jo.pigma.editor.popups.SnippetRegistry;
@@ -441,6 +443,9 @@ public final class EditorView extends View {
     /** Horodatage du dernier rafraîchissement d'analyse (le ralenti). */
     private long lastAnalysisNanos;
 
+    /** L'écouteur de la passe d'analyse close (null : aucun). */
+    private Runnable analysisListener;
+
     /** Les bâtisseurs de la passe d'analyse en cours (par tranches postées). */
     private SymbolIndex.Builder indexBuilder;
 
@@ -579,6 +584,21 @@ public final class EditorView extends View {
      * façade du serveur l'ouvre.
      */
     private RenamePreviewCard renamePreviewCard;
+
+    /**
+     * LA BARRE D'INSTRUCTION DE L'ASSISTANT (B3 — « Modifier avec
+     * l'IA… ») : paresseuse — l'assistant l'ouvre à la pastille de
+     * la sélection (l'instruction s'y écrit, le clavier délégué).
+     */
+    private AiEditBar aiEditBar;
+
+    /**
+     * LA CARTE DE L'APERÇU DE LA MODIFICATION DE L'ASSISTANT (B3 — la
+     * réponse qui ÉCRIT se PROPOSE, jamais ne se pose d'elle-même) :
+     * paresseuse — l'assistant l'ouvre (Accepter / Rejeter /
+     * Réessayer).
+     */
+    private AiDiffCard aiDiffCard;
 
     /**
      * LA CARTE DE L'ENTOUREMENT (l'entourer de — les patrons sur la
@@ -1488,6 +1508,12 @@ public final class EditorView extends View {
         if (renamePreviewCard != null) {
             renamePreviewCard.setStyle(popupStyle);
         }
+        if (aiEditBar != null) {
+            aiEditBar.setStyle(popupStyle);
+        }
+        if (aiDiffCard != null) {
+            aiDiffCard.setStyle(popupStyle);
+        }
         if (surroundCard != null) {
             surroundCard.setStyle(popupStyle);
         }
@@ -1548,6 +1574,12 @@ public final class EditorView extends View {
         }
         if (renamePreviewCard != null) {
             renamePreviewCard.setStrings(popupStrings);
+        }
+        if (aiEditBar != null) {
+            aiEditBar.setStrings(popupStrings);
+        }
+        if (aiDiffCard != null) {
+            aiDiffCard.setStrings(popupStrings);
         }
         if (surroundCard != null) {
             surroundCard.setStrings(popupStrings);
@@ -3261,6 +3293,89 @@ public final class EditorView extends View {
         }
     }
 
+    /**
+     * LA BARRE D'INSTRUCTION DE L'ASSISTANT (B3) : la SÉLECTION se
+     * modifie PAR INSTRUCTION — la barre s'ouvre au caret, le
+     * clavier délégué y écrit l'instruction, la validation la porte
+     * au porteur (l'assistant y démarre son vol), la croix la range.
+     *
+     * @param target le porteur de l'instruction
+     */
+    public void showAiEditPopup(AiEditBar.EditTarget target) {
+        if (aiEditBar == null) {
+            aiEditBar = new AiEditBar(dp(1));
+            aiEditBar.bind(this);
+            // la barre s'instruit au gestionnaire (l'inscription unique)
+            popups.register(aiEditBar, PopupHost.Role.KEYBOARD,
+                    aiEditBar::hide, aiEditBar::isShown);
+        }
+        aiEditBar.setStyle(popupStyle);
+        aiEditBar.setStrings(popupStrings);
+        aiEditBar.show(target);
+        // L'EXCLUSION MUTUELLE : la barre qui ouvre devient LA carte
+        // active — toute carte flottante ou à champ vivante se range
+        popups.shown(aiEditBar);
+        // la barre naît clavier levé : l'instruction attend une
+        // frappe — même règle que la recherche
+        openKeyboard();
+        invalidate();
+    }
+
+    /** Range la barre d'instruction de l'assistant. */
+    public void dismissAiEditPopup() {
+        if (aiEditBar != null && aiEditBar.isShown()) {
+            popups.dismiss(aiEditBar);
+            invalidate();
+        }
+    }
+
+    /** La barre d'instruction de l'assistant, null si jamais ouverte. */
+    public AiEditBar aiEditBar() {
+        return aiEditBar;
+    }
+
+    /**
+     * L'APERÇU DE LA MODIFICATION DE L'ASSISTANT (B3) : la réponse
+     * qui ÉCRIT se PROPOSE — le texte AVANT, le texte APRÈS, les
+     * trois verdicts au pied (Accepter pose en UNE unité
+     * d'annulation après vérification, Rejeter jette, Réessayer
+     * repose la question).
+     *
+     * @param instruction l'instruction suscitante, vide permise
+     * @param beforeText  le texte que le remplacement vise
+     * @param afterText   le texte neuf proposé
+     * @param verdicts    les verdicts de l'assistant
+     */
+    public void showAiDiffPreview(String instruction, String beforeText,
+            String afterText, AiDiffCard.Verdicts verdicts) {
+        if (aiDiffCard == null) {
+            aiDiffCard = new AiDiffCard(dp(1));
+            aiDiffCard.bind(this, verdicts);
+            popups.register(aiDiffCard, PopupHost.Role.FLOATING,
+                    aiDiffCard::close, aiDiffCard::isShown);
+        } else {
+            aiDiffCard.bind(this, verdicts);
+        }
+        aiDiffCard.setStyle(popupStyle);
+        aiDiffCard.setStrings(popupStrings);
+        aiDiffCard.open(instruction, beforeText, afterText);
+        popups.shown(aiDiffCard);
+        invalidate();
+    }
+
+    /** Range l'aperçu de la modification de l'assistant. */
+    public void dismissAiDiffPopup() {
+        if (aiDiffCard != null && aiDiffCard.isShown()) {
+            popups.dismiss(aiDiffCard);
+            invalidate();
+        }
+    }
+
+    /** La carte de l'aperçu de l'assistant, null si jamais ouverte. */
+    public AiDiffCard aiDiffCard() {
+        return aiDiffCard;
+    }
+
     /** La carte « renommer le symbole », null si jamais ouverte (le harnais la lit). */
     public RenameCard renameBar() {
         return renameBar;
@@ -3358,6 +3473,12 @@ public final class EditorView extends View {
         if (card == renameBar) {
             return "Renommer le symbole ouvert";
         }
+        if (card == aiEditBar) {
+            return "Modification par instruction ouverte";
+        }
+        if (card == aiDiffCard) {
+            return "Aperçu de la modification ouverte";
+        }
         if (card == targetCard) {
             return "Choix de cibles ouvert";
         }
@@ -3408,6 +3529,12 @@ public final class EditorView extends View {
         }
         if (renameBar != null && renameBar.isShown()) {
             return renameBar;
+        }
+        // LA BARRE D'INSTRUCTION DE L'ASSISTANT reçoit le clavier
+        // pareillement : l'instruction s'y écrit à la frappe (le
+        // tampon ne bouge pas)
+        if (aiEditBar != null && aiEditBar.isShown()) {
+            return aiEditBar;
         }
         // la STRUCTURE (la structure du fichier) reçoit le clavier pareillement : le
         // FILTRE s'y vit à la frappe (les lettres tapées y
@@ -4110,6 +4237,12 @@ public final class EditorView extends View {
             boolean caretOnRenamePreview = renamePreviewCard != null
                     && renamePreviewCard.isShown()
                     && renamePreviewCard.onTouchArea(event.getX(), event.getY());
+            // L'APERÇU DE L'ASSISTANT (B3) : posé au caret pareillement
+            // — le tap qui le VISE le prend, le tap ailleurs le range
+            // (la proposition rejetée se jette)
+            boolean caretOnAiDiff = aiDiffCard != null
+                    && aiDiffCard.isShown()
+                    && aiDiffCard.onTouchArea(event.getX(), event.getY());
             boolean caretOnSurround = surroundCard != null
                     && surroundCard.isShown()
                     && surroundCard.onTouchArea(event.getX(), event.getY());
@@ -4149,6 +4282,9 @@ public final class EditorView extends View {
             if (!caretOnRenamePreview) {
                 popups.dismiss(renamePreviewCard);
             }
+            if (!caretOnAiDiff) {
+                popups.dismiss(aiDiffCard);
+            }
             if (!caretOnSurround) {
                 popups.dismiss(surroundCard);
             }
@@ -4162,13 +4298,16 @@ public final class EditorView extends View {
             boolean touchedRename = !touchedSearch && !touchedGoto
                     && renameBar != null && renameBar.isShown()
                     && renameBar.onTouchArea(event.getX(), event.getY());
+            boolean touchedAiEdit = !touchedSearch && !touchedGoto && !touchedRename
+                    && aiEditBar != null && aiEditBar.isShown()
+                    && aiEditBar.onTouchArea(event.getX(), event.getY());
             // la barre et ses cartes ne prennent le doigt que d'une
             // sélection VIVANTE : une sélection morte sans trame
             // intermédiaire y laisserait une barre périmée — le doigt
             // passerait à travers le texte (la sélection se range à
             // la trame suivante, la barre l'ignore entre-temps)
             boolean selectionAlive = hasSelection() && !touch.isHandleDragging();
-            downOnCard = touchedSearch || touchedGoto || touchedRename
+            downOnCard = touchedSearch || touchedGoto || touchedRename || touchedAiEdit
                     || (completionCard != null && completionCard.isShown()
                             && completionCard.onTouchArea(event.getX(), event.getY()))
                     || (signatureCard != null && signatureCard.isShown()
@@ -4198,6 +4337,8 @@ public final class EditorView extends View {
                             && recentCard.onTouchArea(event.getX(), event.getY()))
                     || (renamePreviewCard != null && renamePreviewCard.isShown()
                             && renamePreviewCard.onTouchArea(event.getX(), event.getY()))
+                    || (aiDiffCard != null && aiDiffCard.isShown()
+                            && aiDiffCard.onTouchArea(event.getX(), event.getY()))
                     || (surroundCard != null && surroundCard.isShown()
                             && surroundCard.onTouchArea(event.getX(), event.getY()))
                     || (snippetCard != null && snippetCard.isShown()
@@ -4216,7 +4357,8 @@ public final class EditorView extends View {
                 // reste à l'éditeur qui route les frappes à la carte
                 if ((touchedSearch && searchBar.keyboardWanted())
                         || (touchedGoto && gotoBar.keyboardWanted())
-                        || (touchedRename && renameBar.keyboardWanted())) {
+                        || (touchedRename && renameBar.keyboardWanted())
+                        || (touchedAiEdit && aiEditBar.keyboardWanted())) {
                     openKeyboard();
                 }
                 // le geste naît PROPRE : le tap n'a pas encore traîné
@@ -4285,6 +4427,9 @@ public final class EditorView extends View {
                     }
                     if (renamePreviewCard != null) {
                         renamePreviewCard.onRelease();
+                    }
+                    if (aiDiffCard != null) {
+                        aiDiffCard.onRelease();
                     }
                     if (surroundCard != null) {
                         surroundCard.onRelease();
@@ -4734,12 +4879,14 @@ public final class EditorView extends View {
                 || (gotoCard != null && gotoCard.isShown() && gotoCard.floating())
                 || (recentCard != null && recentCard.isShown() && recentCard.floating())
                 || (renamePreviewCard != null && renamePreviewCard.isShown() && renamePreviewCard.floating())
+                || (aiDiffCard != null && aiDiffCard.isShown() && aiDiffCard.floating())
                 || (surroundCard != null && surroundCard.isShown() && surroundCard.floating())
                 || (snippetCard != null && snippetCard.isShown() && snippetCard.floating())
                 || (completionCard != null && completionCard.isShown() && completionCard.floating())
                 || (searchBar != null && searchBar.isShown())
                 || (gotoBar != null && gotoBar.isShown())
-                || (renameBar != null && renameBar.isShown());
+                || (renameBar != null && renameBar.isShown())
+                || (aiEditBar != null && aiEditBar.isShown());
     }
 
     /**
@@ -5077,6 +5224,15 @@ public final class EditorView extends View {
             renameBar.draw(canvas, popupMetrics());
             canvas.restore();
         }
+        // LA BARRE D'INSTRUCTION DE L'ASSISTANT, par-dessus tout elle
+        // aussi : posée au caret, le clavier délégué — la pose se
+        // recalcule ici, le caret la suit (le harnais la lit)
+        if (aiEditBar != null && aiEditBar.isShown()) {
+            int flotSave = canvas.save();
+            canvas.translate(aiEditBar.floatOffsetX(), aiEditBar.floatOffsetY());
+            aiEditBar.draw(canvas, popupMetrics());
+            canvas.restore();
+        }
         // la carte des usages, par-dessus tout : posée au caret, la
         // rangée choisie y navigue (le harnais la lit)
         if (usageCard != null && usageCard.isShown()) {
@@ -5216,6 +5372,22 @@ public final class EditorView extends View {
             int flotSave = canvas.save();
             canvas.translate(renamePreviewCard.floatOffsetX(), renamePreviewCard.floatOffsetY());
             renamePreviewCard.draw(canvas, caretTop, caretTop + lineHeight,
+                    popupMetrics());
+            canvas.restore();
+        }
+        // L'APERÇU DE LA MODIFICATION DE L'ASSISTANT (B3), posé au
+        // caret pareillement : la proposition s'y lit (Avant / Après),
+        // les verdicts y vivent
+        if (aiDiffCard != null && aiDiffCard.isShown()) {
+            int caretLineIndex = buffer.lineOfOffset(
+                    Math.min(selection.caret(), buffer.length()));
+            float caretTop = getPaddingTop()
+                    + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            // AU FLOT : la carte glisse à sa pose nouvelle au lieu
+            // d'y sauter (le retour du terrain)
+            int flotSave = canvas.save();
+            canvas.translate(aiDiffCard.floatOffsetX(), aiDiffCard.floatOffsetY());
+            aiDiffCard.draw(canvas, caretTop, caretTop + lineHeight,
                     popupMetrics());
             canvas.restore();
         }
@@ -7308,6 +7480,26 @@ public final class EditorView extends View {
         invalidate();
     }
 
+    /**
+     * ÔTE UNE pastille de l'hôte (l'assistant y retire sa proposition
+     * quand son moteur ne déclare plus la tâche — la pastille morte
+     * ne se montre pas).
+     *
+     * @param label le libellé de la pastille ôtée
+     */
+    public void removeSelectionAction(String label) {
+        if (label == null) {
+            return;
+        }
+        for (int at = 0; at < hostSelectionActions.size(); at++) {
+            if (label.equals(hostSelectionActions.get(at).label())) {
+                hostSelectionActions.remove(at);
+                invalidate();
+                return;
+            }
+        }
+    }
+
     /** Range les pastilles de l'hôte (l'application les retire). */
     public void clearSelectionActions() {
         hostSelectionActions.clear();
@@ -8520,6 +8712,9 @@ public final class EditorView extends View {
                 indexBuilder = null;
                 diagnosticsBuilder = null;
                 invalidate();
+                if (analysisListener != null) {
+                    analysisListener.run();
+                }
             } else {
                 indexBuilder = null;
                 diagnosticsBuilder = null;
@@ -8534,6 +8729,32 @@ public final class EditorView extends View {
      */
     public void ensureAnalysis() {
         refreshAnalysis();
+    }
+
+    /** La passe d'analyse a-t-elle rattrapé la révision courante ?
+     * (l'hôte qui vérifie les diagnostics d'après une pose y attend
+     * le rattrapage — une passe périmée ne dirait rien de la zone
+     * posée).
+     *
+     * @return vrai quand les diagnostics lus sont à jour
+     */
+    public boolean analysisSettled() {
+        return diagnostics != null
+                && analysisRevision == buffer.getRevision();
+    }
+
+    /**
+     * L'écouteur de la PASSE D'ANALYSE CLOSE : la passe qui vient de
+     * rattraper la révision y dit son mot (l'hôte qui vérifie les
+     * diagnostics d'après une pose — le contrôle des erreurs nées
+     * de l'assistant y attend la passe, la cadence ralentie la
+     * retient : le sondage y serait faux). Un seul écouteur vit —
+     * le dernier posé.
+     *
+     * @param listener l'écouteur, null pour le ranger
+     */
+    public void setAnalysisListener(Runnable listener) {
+        analysisListener = listener;
     }
 
     /**

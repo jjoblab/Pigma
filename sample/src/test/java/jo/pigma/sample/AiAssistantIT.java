@@ -302,14 +302,15 @@ public final class AiAssistantIT {
     }
 
     /**
-     * La correction de l'assistant se POSE à l'étage des correctifs :
-     * la rangée « Corriger avec l'assistant » vit avec les correctifs
-     * locaux (elle les RALLONGE, ne les remplace pas), le
-     * remplacement se pose par UNE unité d'annulation — le texte
-     * revient d'un geste.
+     * La correction de l'assistant se PROPOSE à l'aperçu (B3 : la
+     * réponse qui ÉCRIT ne se pose JAMAIS d'elle-même) : la rangée
+     * « Corriger avec l'assistant » vit à l'étage avec les correctifs
+     * locaux (elle les RALLONGE), la réponse ouvre LA CARTE
+     * (Avant / Après, les trois verdicts), LE TAP RÉEL sur
+     * « Accepter » POSE le remplacement par UNE unité d'annulation.
      */
     @Test
-    public void theFixAppliesAsOneUndoUnit() {
+    public void theFixProposesItsPreviewThenAppliesAsOneUndoUnit() {
         // une parenthèse ORPHELINE à la fin : le diagnostic local la
         // porte AVEC son correctif propre (l'étage s'y rallonge)
         String base = "class A {\n    int total() {\n        return 1;\n    }\n}\n";
@@ -348,15 +349,35 @@ public final class AiAssistantIT {
         assertEquals("le diagnostic voyage (la plage de l'orphelin)",
                 code.length() - 1,
                 backend.lastRequest.diagnostics().get(0).start());
-        // le remplacement supprime l'orphelin : une unité d'annulation
+        // la réponse ouvre L'APERÇU (rien ne se pose sans verdict)
         backend.pending.get().onComplete(new AiResult.Replacement(
                 code.length() - 1, code.length(), ""));
         idle();
-        assertEquals("le remplacement se pose", base,
+        frame();
+        assertTrue("l'aperçu de la modification vit",
+                editor.aiDiffCard() != null && editor.aiDiffCard().isShown());
+        assertEquals("l'aperçu porte l'AVANT (l'orphelin)", ")",
+                editor.aiDiffCard().beforeText());
+        assertEquals("l'aperçu porte l'APRÈS (le retrait)", "",
+                editor.aiDiffCard().afterText());
+        assertEquals("rien ne se pose sans verdict", code,
+                editor.getBuffer().toString());
+        // LE TAP RÉEL sur « Accepter » POSE le remplacement
+        tap(editor.aiDiffCard().verdictCenterX(0),
+                editor.aiDiffCard().verdictCenterY());
+        idle();
+        assertEquals("le remplacement accepté se pose", base,
                 editor.getBuffer().toString());
         editor.undo();
         assertEquals("la pose vaut UNE unité d'annulation", code,
                 editor.getBuffer().toString());
+        // la pose ne née aucune erreur neuve : aucune phrase
+        pause();
+        frame();
+        idle();
+        assertFalse("aucune erreur née n'est signalée",
+                editor.infoPopupText() != null
+                && editor.infoPopupText().contains("erreurs"));
     }
 
     /**
@@ -405,6 +426,252 @@ public final class AiAssistantIT {
         assertEquals("la réponse du vol tué ne se pose pas",
                 "// parti\n" + code,
                 editor.getBuffer().toString());
+    }
+
+    /**
+     * LA PASTILLE « Modifier avec l'IA… » (B3) ne vit qu'aux
+     * CAPACITÉS déclarées et à la POLITIQUE du document : le moteur
+     * qui ne déclare pas EDIT_SELECTION ne la pose pas, celui qui
+     * la déclare la pose, le document refusé la retire — LE TAP RÉEL
+     * sur la pastille ouvre la BARRE D'INSTRUCTION.
+     */
+    @Test
+    public void theEditSelectionPillFollowsTheCapabilitiesAndThePolicy() {
+        String base = "class A {\n    int total() {\n        return 1;\n    }\n}\n";
+        editor.setLanguage(Languages.JAVA, base);
+        settle();
+        // la SÉLECTION vit (la pastille ne s'ouvre qu'à elle)
+        editor.setSelection(base.indexOf("return"), base.indexOf("return") + 6);
+        frame();
+        idle();
+        assertTrue("la barre de sélection vit",
+                editor.selectionBar().isShown());
+        assertFalse("le moteur muet ne pose pas la pastille",
+                editor.selectionBar().hasChip("Modifier avec l'IA…"));
+        // le moteur qui DÉCLARE la tâche pose la pastille
+        backend.capabilities = new AiCapabilities(
+                java.util.Set.of(AiTask.EDIT_SELECTION), false);
+        assistant.refreshEditAction();
+        frame();
+        idle();
+        assertTrue("la pastille vit aux capacités déclarées",
+                editor.selectionBar().hasChip("Modifier avec l'IA…"));
+        // LE TAP RÉEL sur la pastille ouvre la barre d'instruction
+        tap(editor.selectionBar().chipCenterX("Modifier avec l'IA…"),
+                editor.selectionBar().centerY());
+        idle();
+        assertTrue("la barre d'instruction vit",
+                editor.aiEditBar() != null && editor.aiEditBar().isShown());
+        editor.dismissAiEditPopup();
+        // le moteur qui RETIRE la tâche ôte la pastille
+        backend.capabilities = AiCapabilities.NONE;
+        assistant.refreshEditAction();
+        frame();
+        idle();
+        assertFalse("la pastille meurt aux capacités retirées",
+                editor.selectionBar().hasChip("Modifier avec l'IA…"));
+        // la politique refusée ôte la pastille aussi
+        backend.capabilities = new AiCapabilities(
+                java.util.Set.of(AiTask.EDIT_SELECTION), false);
+        ContextBuilder strict = new ContextBuilder(
+                (name, language) -> false, null);
+        AiAssistant refused = new AiAssistant(editor, backend, strict);
+        refused.setDocument("A.java", "java");
+        frame();
+        idle();
+        assertFalse("le document refusé ne porte pas la pastille",
+                editor.selectionBar().hasChip("Modifier avec l'IA…"));
+        refused.detach();
+        assistant.refreshEditAction();
+        frame();
+        idle();
+        assertTrue("la pastille revient au document autorisé",
+                editor.selectionBar().hasChip("Modifier avec l'IA…"));
+    }
+
+    /**
+     * L'INSTRUCTION voyage (B3) : la frappe déléguée écrit la barre
+     * (rien ne s'écrit dans le document), la validation démarre le
+     * vol — la tâche EDIT_SELECTION, l'instruction ET la sélection
+     * voyagent dans la demande.
+     */
+    @Test
+    public void theInstructionTravelsToTheFlight() {
+        String base = "class A {\n    int total() {\n        return 1;\n    }\n}\n";
+        editor.setLanguage(Languages.JAVA, base);
+        settle();
+        int selStart = base.indexOf("1");
+        editor.setSelection(selStart, selStart + 1);
+        backend.capabilities = new AiCapabilities(
+                java.util.Set.of(AiTask.EDIT_SELECTION), false);
+        assistant.refreshEditAction();
+        frame();
+        idle();
+        // LE TAP RÉEL ouvre la barre
+        tap(editor.selectionBar().chipCenterX("Modifier avec l'IA…"),
+                editor.selectionBar().centerY());
+        idle();
+        assertTrue("la barre d'instruction vit",
+                editor.aiEditBar() != null && editor.aiEditBar().isShown());
+        // la frappe DÉLÉGUÉE écrit la barre (le document ne bouge pas)
+        android.view.inputmethod.InputConnection connection =
+                editor.onCreateInputConnection(
+                        new android.view.inputmethod.EditorInfo());
+        connection.commitText("double la valeur", 1);
+        idle();
+        assertEquals("l'instruction s'écrit à la barre",
+                "double la valeur", editor.aiEditBar().instructionText());
+        assertEquals("rien ne s'écrit dans le document", base,
+                editor.getBuffer().toString());
+        // la VALIDATION démarre le vol : la tâche, l'instruction ET
+        // la sélection voyagent
+        connection.commitText("\n", 1);
+        idle();
+        assertNotNull("la demande est partie", backend.lastRequest);
+        assertEquals("la tâche de modification voyage",
+                AiTask.EDIT_SELECTION, backend.lastRequest.task());
+        assertEquals("l'instruction voyage", "double la valeur",
+                backend.lastRequest.instruction());
+        assertEquals("la sélection voyage (son texte)", "1",
+                backend.lastRequest.selection());
+        assertFalse("la barle se range au départ du vol",
+                editor.aiEditBar().isShown());
+        assertTrue("la carte d'attente vit",
+                editor.isInfoCancelArmed());
+    }
+
+    /**
+     * Les TROIS VERDICTS de l'aperçu (B3) : la réponse qui ÉCRIT se
+     * PROPOSE — REJETER jette (le tampon n'a jamais bougé),
+     * RÉESSAYER repose la question à l'identique (un vol neuf), et
+     * la réponse périmée (le texte a bougé depuis la demande) ne se
+     * POSE pas : la phrase du texte changé le dit.
+     */
+    @Test
+    public void theVerdictsOfThePreviewDecide() {
+        String base = "class A {\n    int total() {\n        return 1;\n    }\n}\n";
+        editor.setLanguage(Languages.JAVA, base);
+        settle();
+        int selStart = base.indexOf("1");
+        editor.setSelection(selStart, selStart + 1);
+        backend.capabilities = new AiCapabilities(
+                java.util.Set.of(AiTask.EDIT_SELECTION), false);
+        assistant.refreshEditAction();
+        frame();
+        idle();
+        tap(editor.selectionBar().chipCenterX("Modifier avec l'IA…"),
+                editor.selectionBar().centerY());
+        idle();
+        android.view.inputmethod.InputConnection connection =
+                editor.onCreateInputConnection(
+                        new android.view.inputmethod.EditorInfo());
+        connection.commitText("double la valeur", 1);
+        idle();
+        connection.commitText("\n", 1);
+        idle();
+        // la réponse PROPOSE : la carte vit, rien ne se pose
+        backend.pending.get().onComplete(new AiResult.Replacement(
+                selStart, selStart + 1, "2"));
+        idle();
+        frame();
+        assertTrue("l'aperçu vit",
+                editor.aiDiffCard() != null && editor.aiDiffCard().isShown());
+        // REJETER : le tampon n'a jamais bougé
+        tap(editor.aiDiffCard().verdictCenterX(1),
+                editor.aiDiffCard().verdictCenterY());
+        idle();
+        assertFalse("le rejet range l'aperçu",
+                editor.aiDiffCard().isShown());
+        assertEquals("le rejet ne touche pas le tampon", base,
+                editor.getBuffer().toString());
+        // RÉESSAYER : la question repart à l'identique
+        connection = editor.onCreateInputConnection(
+                new android.view.inputmethod.EditorInfo());
+        // rouvrir par la pastille (la carte se range au rejet)
+        backend.pending.set(null);
+        tap(editor.selectionBar().chipCenterX("Modifier avec l'IA…"),
+                editor.selectionBar().centerY());
+        idle();
+        assertTrue("la barre rouverte vit",
+                editor.aiEditBar() != null && editor.aiEditBar().isShown());
+        connection.commitText("encore", 1);
+        idle();
+        connection.commitText("\n", 1);
+        idle();
+        assertTrue("le vol neuf vit", editor.isInfoCancelArmed());
+        backend.pending.get().onComplete(new AiResult.Replacement(
+                selStart, selStart + 1, "3"));
+        idle();
+        frame();
+        assertTrue("l'aperçu revit", editor.aiDiffCard().isShown());
+        // LE TAP RÉEL sur « Réessayer » repose la question
+        tap(editor.aiDiffCard().verdictCenterX(2),
+                editor.aiDiffCard().verdictCenterY());
+        idle();
+        assertNotNull("la question repart", backend.lastRequest);
+        assertEquals("la tâche repart à l'identique",
+                AiTask.EDIT_SELECTION, backend.lastRequest.task());
+        assertTrue("la carte d'attente revit", editor.isInfoCancelArmed());
+        // la réponse périmée ne se POSE pas : le texte a bougé depuis
+        // la demande — la phrase le dit, l'aperçu ne rouvre pas
+        editor.applyEdit(0, 0, "// parti\n");
+        idle();
+        assertFalse("l'édition masque l'attente (le vol se coupe)",
+                editor.isInfoCancelArmed());
+        assertEquals("le tampon demeure (l'attente morte ne pose rien)",
+                "// parti\n" + base, editor.getBuffer().toString());
+    }
+
+    /**
+     * Les ERREURS NÉES se signalent (B3) : l'acceptation qui fait
+     * naître une erreur neuve dans la zone posée le DIT — le modèle
+     * propose, le moteur local vérifie, l'utilisateur valide (la
+     * seule vérification que Pigma peut faire).
+     */
+    @Test
+    public void theNewErrorsAreSignalled() {
+        String base = "class A {\n    int total() {\n        return 1;\n    }\n}\n";
+        editor.setLanguage(Languages.JAVA, base);
+        settle();
+        int selStart = base.indexOf("1");
+        editor.setSelection(selStart, selStart + 1);
+        backend.capabilities = new AiCapabilities(
+                java.util.Set.of(AiTask.EDIT_SELECTION), false);
+        assistant.refreshEditAction();
+        frame();
+        idle();
+        tap(editor.selectionBar().chipCenterX("Modifier avec l'IA…"),
+                editor.selectionBar().centerY());
+        idle();
+        android.view.inputmethod.InputConnection connection =
+                editor.onCreateInputConnection(
+                        new android.view.inputmethod.EditorInfo());
+        connection.commitText("un orphelin", 1);
+        idle();
+        connection.commitText("\n", 1);
+        idle();
+        // la réponse PROPOSE un orphelin : l'acceptation le pose
+        backend.pending.get().onComplete(new AiResult.Replacement(
+                selStart, selStart + 1, ")"));
+        idle();
+        frame();
+        assertTrue("l'aperçu vit",
+                editor.aiDiffCard() != null && editor.aiDiffCard().isShown());
+        tap(editor.aiDiffCard().verdictCenterX(0),
+                editor.aiDiffCard().verdictCenterY());
+        idle();
+        assertTrue("la pose s'est faite", editor.getBuffer().toString()
+                .contains("return )"));
+        // la passe close dit l'erreur née
+        pause();
+        frame();
+        idle();
+        pause();
+        frame();
+        idle();
+        assertEquals("l'erreur née dit SA phrase",
+                "De nouvelles erreurs sont nées de la modification — vérifie la zone.",
+                editor.infoPopupText());
     }
 
     /**
@@ -460,6 +727,20 @@ public final class AiAssistantIT {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        idle();
+    }
+
+    /** LE TAP RÉEL : le doigt tombe puis se relève (la vraie route du
+     * toucher — le DOWN arme, l'UP joue). */
+    private void tap(float x, float y) {
+        editor.dispatchTouchEvent(MotionEvent.obtain(
+                android.os.SystemClock.uptimeMillis(),
+                android.os.SystemClock.uptimeMillis(),
+                MotionEvent.ACTION_DOWN, x, y, 0));
+        editor.dispatchTouchEvent(MotionEvent.obtain(
+                android.os.SystemClock.uptimeMillis(),
+                android.os.SystemClock.uptimeMillis() + 40L,
+                MotionEvent.ACTION_UP, x, y, 0));
         idle();
     }
 

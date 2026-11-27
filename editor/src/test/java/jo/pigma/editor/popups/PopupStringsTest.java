@@ -79,6 +79,28 @@ public class PopupStringsTest {
                 strings.aiStale());
         assertEquals("la réponse muette",
                 "La réponse est vide.", strings.aiEmpty());
+        // les chaînes de la modification par instruction (B3)
+        assertEquals("la pastille de modification",
+                "Modifier avec l'IA…", strings.aiEditSelection());
+        assertEquals("l'invite de la barre", "Instruction : ",
+                strings.aiEditInvite());
+        assertEquals("l'indication du champ", "que changer ?",
+                strings.aiEditHint());
+        assertEquals("le retour d'une instruction vide",
+                "l'instruction est vide", strings.aiEditEmpty());
+        assertEquals("le titre de l'aperçu", "Modification proposée",
+                strings.aiDiffTitle());
+        assertEquals("la section avant", "Avant", strings.aiDiffBefore());
+        assertEquals("la section après", "Après", strings.aiDiffAfter());
+        assertEquals("le bouton d'acceptation", "Accepter",
+                strings.aiDiffAccept());
+        assertEquals("le bouton de rejet", "Rejeter",
+                strings.aiDiffReject());
+        assertEquals("le bouton de nouvelle tentative", "Réessayer",
+                strings.aiDiffRetry());
+        assertEquals("la phrase des erreurs nées",
+                "De nouvelles erreurs sont nées de la modification — vérifie la zone.",
+                strings.aiNewErrors());
     }
 
     /** Le bâtisseur y remplace UNE valeur — le reste demeure. */
@@ -120,6 +142,17 @@ public class PopupStringsTest {
                 .aiInternal("The assistant failed internally.")
                 .aiStale("The text changed since the request.")
                 .aiEmpty("The response is empty.")
+                .aiEditSelection("Edit with AI…")
+                .aiEditInvite("Instruction: ")
+                .aiEditHint("what to change?")
+                .aiEditEmpty("the instruction is empty")
+                .aiDiffTitle("Proposed change")
+                .aiDiffBefore("Before")
+                .aiDiffAfter("After")
+                .aiDiffAccept("Accept")
+                .aiDiffReject("Reject")
+                .aiDiffRetry("Retry")
+                .aiNewErrors("New errors were born of the change — check the area.")
                 .build();
         assertEquals("le titre posé", "Assistant AI", strings.assistant());
         assertEquals("l'attente posée", "Thinking…", strings.aiThinking());
@@ -147,6 +180,28 @@ public class PopupStringsTest {
                 "The text changed since the request.", strings.aiStale());
         assertEquals("la réponse vide posée", "The response is empty.",
                 strings.aiEmpty());
+        assertEquals("la pastille posée", "Edit with AI…",
+                strings.aiEditSelection());
+        assertEquals("l'invite posée", "Instruction: ",
+                strings.aiEditInvite());
+        assertEquals("l'indication posée", "what to change?",
+                strings.aiEditHint());
+        assertEquals("le retour vide posé", "the instruction is empty",
+                strings.aiEditEmpty());
+        assertEquals("le titre posé", "Proposed change",
+                strings.aiDiffTitle());
+        assertEquals("la section avant posée", "Before",
+                strings.aiDiffBefore());
+        assertEquals("la section après posée", "After",
+                strings.aiDiffAfter());
+        assertEquals("l'acceptation posée", "Accept",
+                strings.aiDiffAccept());
+        assertEquals("le rejet posé", "Reject", strings.aiDiffReject());
+        assertEquals("la nouvelle tentative posée", "Retry",
+                strings.aiDiffRetry());
+        assertEquals("les erreurs nées posées",
+                "New errors were born of the change — check the area.",
+                strings.aiNewErrors());
         // le reste demeure (le français courant)
         assertEquals("les correctifs du serveur demeurent",
                 "Correctif : Couper", strings.fixTitle("Couper"));

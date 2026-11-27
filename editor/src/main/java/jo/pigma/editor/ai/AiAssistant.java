@@ -1,7 +1,9 @@
 package jo.pigma.editor.ai;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
@@ -17,6 +19,7 @@ import jo.pigma.ai.AiTask;
 import jo.pigma.ai.ContextBuilder;
 import jo.pigma.core.TextBuffer;
 import jo.pigma.editor.EditorView;
+import jo.pigma.editor.popups.AiDiffCard;
 import jo.pigma.editor.popups.DiagnosticCard;
 import jo.pigma.editor.popups.PopupStrings;
 import jo.pigma.editor.popups.QuickActionCard;
@@ -32,9 +35,10 @@ import jo.pigma.syntax.StructureDocument;
  * non déclarée ne se propose jamais), la demande part par le
  * préparateur ({@code ContextBuilder} — la politique et le filtre
  * de l'hôte s'y appliquent TOUJOURS), la réponse revient à la vue :
- * le texte qui se LIT s'y montre balisé dans la popup d'info, le
- * remplacement et l'insertion s'y POSENT par UNE unité
- * d'annulation — après VÉRIFICATION : un texte qui a bougé depuis
+ * le texte qui se LIT s'y montre balisé dans la popup d'info, la
+ * réponse qui ÉCRIT se PROPOSE à l'aperçu (Accepter / Rejeter /
+ * Réessayer) — l'acceptation seule POSE, par UNE unité
+ * d'annulation, après VÉRIFICATION : un texte qui a bougé depuis
  * la demande ne se pose pas.
  *
  * <p>LE VOL VIT ANNULABLE : la question part, la popup d'info vit
@@ -48,7 +52,10 @@ import jo.pigma.syntax.StructureDocument;
  *
  * <p>Les tâches proposées : EXPLIQUER et DOCUMENTER à l'ampoule,
  * EXPLIQUER L'ERREUR et CORRIGER à l'étage des correctifs de la
- * carte de diagnostic, ÉCRIRE LE TEST à l'ampoule (la réponse se
+ * carte de diagnostic (la correction se PROPOSE à l'aperçu — jamais
+ * elle ne se pose d'elle-même), MODIFIER LA SÉLECTION à la pastille
+ * de la barre de sélection (la barre d'instruction y demande CE que
+ * l'utilisateur veut), ÉCRIRE LE TEST à l'ampoule (la réponse se
  * lit ET se rend à l'écouteur de l'hôte — lui seul sait où créer un
  * fichier, Pigma n'en crée jamais). Le document courant se dit à la
  * façade ({@link #setDocument}) : l'hôte qui change d'onglet y
@@ -90,11 +97,31 @@ public final class AiAssistant implements EditorView.AssistantProvider {
      * fichier). */
     private Consumer<String> testListener;
 
+    /** Le libellé de la pastille « Modifier avec l'IA… » posée à la
+     * barre de sélection (null : aucune — le moteur qui ne déclare
+     * pas la tâche ne la propose pas). */
+    private String posedEditLabel;
+
+    /** La dernière question partie (la NOUVELLE ESSAIE la repose à
+     * l'identique). */
+    private Ask lastAsk;
+
+    /** La proposition en attente de verdict (null : aucune). */
+    private Proposal proposal;
+
+    /** Le contrôle des erreurs nées en attente de la passe close
+     * (null : aucun — la cadence ralentie retient la passe, le
+     * contrôle y attend SON mot). */
+    private NewErrorCheck newErrorCheck;
+
     /**
      * La façade se branche d'elle-même : le fournisseur des entrées
      * se pose sur la vue (l'ampoule et l'étage des correctifs y
      * trouvent leurs rangées), l'action d'annulation aussi (le
-     * bouton de la carte d'attente y coupe le vol).
+     * bouton de la carte d'attente y coupe le vol) — et la pastille
+     * « Modifier avec l'IA… » se pose à la barre de sélection SI le
+     * moteur déclare la tâche ET que la politique autorise le
+     * document.
      *
      * @param view    la vue, jamais null
      * @param backend le moteur de l'hôte, jamais null
@@ -108,24 +135,36 @@ public final class AiAssistant implements EditorView.AssistantProvider {
         this.context = context;
         view.setAssistantProvider(this);
         view.setInfoCancelAction(this::cancelFlight);
+        view.setAnalysisListener(this::analysisSettled);
+        refreshEditAction();
     }
 
     /**
      * Débranche la façade : le vol vivant se coupe (sans phrase —
      * l'écran s'en va), les entrées disparaissent de l'ampoule et de
-     * l'étage des correctifs, le bouton d'annulation se range.
+     * l'étage des correctifs, la pastille de la sélection se range,
+     * le bouton d'annulation se range, la proposition en attente se
+     * jette.
      */
     public void detach() {
         killFlight();
         view.setAssistantProvider(null);
         view.setInfoCancelAction(null);
+        view.setAnalysisListener(null);
         view.armInfoCancel(null);
+        view.dismissAiEditPopup();
+        view.dismissAiDiffPopup();
+        proposal = null;
+        lastAsk = null;
+        newErrorCheck = null;
+        refreshEditAction();
     }
 
     /**
      * Dit le document courant (l'hôte y suit ses onglets) : le nom
      * et le langage voyagent dans chaque demande, la politique de
-     * l'hôte s'y éprouve (un document refusé ne propose RIEN).
+     * l'hôte s'y éprouve (un document refusé ne propose RIEN — la
+     * pastille de la sélection se retire).
      *
      * @param name     le nom du document (l'étiquette), vide permis
      * @param language l'identifiant du langage, vide permis
@@ -133,6 +172,7 @@ public final class AiAssistant implements EditorView.AssistantProvider {
     public void setDocument(String name, String language) {
         documentName = name == null ? "" : name;
         languageId = language == null ? "" : language;
+        refreshEditAction();
     }
 
     /**
@@ -160,6 +200,62 @@ public final class AiAssistant implements EditorView.AssistantProvider {
     }
 
     /**
+     * REPOSE la pastille « Modifier avec l'IA… » : elle ne vit que
+     * si le moteur DÉCLARE la tâche ET que la politique AUTORISE le
+     * document — la façade la repose au branchement et à chaque
+     * document ; l'hôte dont le moteur change d'avis à la course y
+     * repasse.
+     */
+    public void refreshEditAction() {
+        String label = view.popupStrings().aiEditSelection();
+        AiCapabilities capabilities = served();
+        boolean wanted = capabilities != null
+                && capabilities.accepts(AiTask.EDIT_SELECTION)
+                && context.allowed(documentName, languageId);
+        if (wanted && posedEditLabel == null) {
+            view.addSelectionAction(label, this::openEditBar);
+            posedEditLabel = label;
+        } else if (!wanted && posedEditLabel != null) {
+            view.removeSelectionAction(posedEditLabel);
+            posedEditLabel = null;
+        } else if (wanted && !label.equals(posedEditLabel)) {
+            // les chaînes ont bougé : la pastille les suit
+            view.removeSelectionAction(posedEditLabel);
+            view.addSelectionAction(label, this::openEditBar);
+            posedEditLabel = label;
+        }
+    }
+
+    /**
+     * La pastille ouvre la BARRE D'INSTRUCTION : elle ne vit qu'à la
+     * SÉLECTION vivante (la tâche modifie CE qui est sélectionné) et
+     * aux capacités et à la politique du moment (le moteur qui a
+     * changé d'avis n'ouvre rien).
+     */
+    private void openEditBar() {
+        AiCapabilities capabilities = served();
+        if (!view.hasSelection() || capabilities == null
+                || !capabilities.accepts(AiTask.EDIT_SELECTION)
+                || !context.allowed(documentName, languageId)) {
+            return;
+        }
+        view.showAiEditPopup(this::submitInstruction);
+    }
+
+    /**
+     * L'instruction soumise : le vol part (la tâche EDIT_SELECTION,
+     * l'instruction et la sélection voyagent, le préparateur bâtit
+     * la demande).
+     *
+     * @param instruction l'instruction tapée, jamais vide
+     * @return vrai (le vol part — la barre se range)
+     */
+    private boolean submitInstruction(String instruction) {
+        start(AiTask.EDIT_SELECTION, instruction, List.of(), -1, -1);
+        return true;
+    }
+
+    /**
      * Les entrées de l'ampoule : les tâches que le moteur DÉCLARE et
      * que la politique AUTORISE — rien d'autre ne se propose (une
      * tâche non acceptée ne paraît jamais, un document refusé ne
@@ -181,17 +277,17 @@ public final class AiAssistant implements EditorView.AssistantProvider {
         PopupStrings strings = view.popupStrings();
         if (capabilities.accepts(AiTask.EXPLAIN)) {
             entries.add(new QuickActionCard.Entry(
-                    strings.aiExplain(), () -> start(AiTask.EXPLAIN,
+                    strings.aiExplain(), () -> start(AiTask.EXPLAIN, "",
                             List.of(), -1, -1)));
         }
         if (capabilities.accepts(AiTask.DOCUMENT)) {
             entries.add(new QuickActionCard.Entry(
-                    strings.aiDocument(), () -> start(AiTask.DOCUMENT,
+                    strings.aiDocument(), () -> start(AiTask.DOCUMENT, "",
                             List.of(), -1, -1)));
         }
         if (capabilities.accepts(AiTask.WRITE_TEST)) {
             entries.add(new QuickActionCard.Entry(
-                    strings.aiWriteTest(), () -> start(AiTask.WRITE_TEST,
+                    strings.aiWriteTest(), () -> start(AiTask.WRITE_TEST, "",
                             List.of(), -1, -1)));
         }
         return entries;
@@ -226,7 +322,7 @@ public final class AiAssistant implements EditorView.AssistantProvider {
         if (capabilities.accepts(AiTask.EXPLAIN_ERROR)) {
             fixes.add(new DiagnosticCard.Fix(
                     strings.aiExplainError(), () -> start(
-                            AiTask.EXPLAIN_ERROR,
+                            AiTask.EXPLAIN_ERROR, "",
                             List.of(new AiDiagnostic(
                                     AiDiagnostic.Severity.ERROR,
                                     message, 0, 0)),
@@ -234,7 +330,7 @@ public final class AiAssistant implements EditorView.AssistantProvider {
         }
         if (capabilities.accepts(AiTask.FIX) && start >= 0 && end >= start) {
             fixes.add(new DiagnosticCard.Fix(
-                    strings.aiFix(), () -> start(AiTask.FIX,
+                    strings.aiFix(), () -> start(AiTask.FIX, "",
                             List.of(new AiDiagnostic(
                                     AiDiagnostic.Severity.ERROR,
                                     message, start, end)),
@@ -264,17 +360,20 @@ public final class AiAssistant implements EditorView.AssistantProvider {
      * profondeur d'accolades), la demande part par le préparateur
      * (la politique d'abord, le filtre ensuite — un refus rend la
      * phrase REFUSÉE, rien ne part), la carte d'attente vit
-     * immédiate avec son bouton ANNULER armé.
+     * immédiate avec son bouton ANNULER armé. La question se garde
+     * (la NOUVELLE ESSAIE la repose à l'identique).
      *
      * @param task        la tâche demandée
+     * @param instruction l'instruction de la modification (vide :
+     *                    aucune)
      * @param diagnostics les diagnostics qui voyagent (vide : aucun)
      * @param fixStart    la plage visée par une correction (-1 :
      *                    aucune)
      * @param fixEnd      la plage visée par une correction (-1 :
      *                    aucune)
      */
-    private void start(AiTask task, List<AiDiagnostic> diagnostics,
-            int fixStart, int fixEnd) {
+    private void start(AiTask task, String instruction,
+            List<AiDiagnostic> diagnostics, int fixStart, int fixEnd) {
         AiCapabilities capabilities = served();
         if (capabilities == null || !capabilities.accepts(task)) {
             return;
@@ -290,17 +389,21 @@ public final class AiAssistant implements EditorView.AssistantProvider {
                 enclosingBlockAt(caret));
         PopupStrings strings = view.popupStrings();
         // l'ancrage de la carte : la ligne du curseur, celle du
-        // diagnostic pour les tâches de l'erreur
+        // diagnostic pour les tâches de l'erreur, celle de la
+        // sélection pour la modification par instruction
         int anchorLine = view.caretLine();
         if (fixStart >= 0) {
             anchorLine = buffer.lineOfOffset(
                     Math.min(fixStart, buffer.length()));
+        } else if (task == AiTask.EDIT_SELECTION && selectionStart >= 0) {
+            anchorLine = buffer.lineOfOffset(
+                    Math.min(selectionStart, buffer.length()));
         }
         int anchorColumn = fixStart >= 0
                 ? Math.min(fixStart, buffer.length())
                         - buffer.getLineStart(anchorLine)
                 : caret - buffer.getLineStart(anchorLine);
-        AiRequest request = context.prepare(task, "", source,
+        AiRequest request = context.prepare(task, instruction, source,
                 contextChars, null);
         if (request == null) {
             // le crochet de l'hôte a refusé (le filtre d'ordinaire —
@@ -310,10 +413,12 @@ public final class AiAssistant implements EditorView.AssistantProvider {
                     strings.aiRefused(), anchorLine, anchorColumn);
             return;
         }
+        // la question se garde : la NOUVELLE ESSAIE la repose
+        lastAsk = new Ask(task, instruction, diagnostics, fixStart, fixEnd);
         // le vol naît : la génération tue toute réponse d'avant, la
         // carte d'attente vit avec son bouton
         long flight = flights.incrementAndGet();
-        Flight listener = new Flight(flight, task,
+        Flight listener = new Flight(flight, task, instruction,
                 buffer.getRevision(), anchorLine, anchorColumn);
         flying = backend.start(request, listener);
         view.showInfoPopup(strings.assistant(), strings.aiThinking(),
@@ -396,6 +501,246 @@ public final class AiAssistant implements EditorView.AssistantProvider {
     }
 
     /**
+     * LA PROPOSITION : la réponse qui ÉCRIT ne se pose JAMAIS
+     * d'elle-même — l'aperçu la montre (le texte AVANT, le texte
+     * APRÈS), les TROIS VERDICTS y vivent. La proposition se garde :
+     * l'ACCEPTATION seule la pose (après vérification de la
+     * révision), le REJET la jette, la NOUVELLE ESSAIE repose la
+     * question à l'identique.
+     *
+     * @param task        la tâche qui a suscité la proposition
+     * @param instruction l'instruction suscitante (vide : aucune)
+     * @param start       le début de la plage visée
+     * @param end         la fin de la plage visée
+     * @param text        le texte neuf proposé
+     * @param revision    la révision du tampon au départ
+     * @param anchorLine   la ligne d'ancrage
+     * @param anchorColumn la colonne d'ancrage
+     */
+    private void propose(AiTask task, String instruction, int start,
+            int end, String text, int revision, int anchorLine,
+            int anchorColumn) {
+        TextBuffer buffer = view.getBuffer();
+        int boundedStart = Math.max(0, Math.min(start, buffer.length()));
+        int boundedEnd = Math.max(boundedStart,
+                Math.min(end, buffer.length()));
+        String before = buffer.getText(boundedStart, boundedEnd).toString();
+        proposal = new Proposal(task, boundedStart, boundedEnd, text,
+                revision, anchorLine, anchorColumn);
+        view.showAiDiffPreview(instruction, before, text,
+                new AiDiffCard.Verdicts() {
+                    @Override
+                    public void onAccept() {
+                        applyProposal();
+                    }
+
+                    @Override
+                    public void onReject() {
+                        proposal = null;
+                    }
+
+                    @Override
+                    public void onRetry() {
+                        retryLastAsk();
+                    }
+                });
+    }
+
+    /**
+     * L'ACCEPTATION : la proposition se POSE — après VÉRIFICATION de
+     * la révision (un texte qui a bougé depuis la demande ne se pose
+     * pas : la phrase le dit), par UNE unité d'annulation (la pose
+     * se défait d'un geste) — puis le contrôle des ERREURS NÉES :
+     * l'analyse relancée, une erreur neuve dans la zone posée se
+     * SIGNALE (le modèle propose, le moteur local vérifie,
+     * l'utilisateur valide — la seule vérification que Pigma peut
+     * faire).
+     */
+    private void applyProposal() {
+        Proposal pending = proposal;
+        proposal = null;
+        if (pending == null) {
+            return;
+        }
+        PopupStrings strings = view.popupStrings();
+        TextBuffer buffer = view.getBuffer();
+        if (buffer.getRevision() != pending.revision()) {
+            view.showInfoPopup(strings.assistant(), strings.aiStale(),
+                    pending.anchorLine(), pending.anchorColumn());
+            return;
+        }
+        // les erreurs d'avant se prennent (la zone visée, à la
+        // révision d'avant la pose)
+        int fromLine = buffer.lineOfOffset(pending.start());
+        int toLine = buffer.lineOfOffset(
+                Math.min(pending.end(), buffer.length()));
+        Set<String> before = errorFingerprints(fromLine, toLine);
+        // LA POSE : une seule unité d'annulation
+        view.applyEdit(pending.start(), pending.end(), pending.text());
+        int revision = buffer.getRevision();
+        // la zone après la pose (le texte neuf peut compter des
+        // lignes de plus) — le contrôle des ERREURS NÉES s'arme : la
+        // passe close le dira
+        int newLines = 0;
+        for (int at = 0; at < pending.text().length(); at++) {
+            if (pending.text().charAt(at) == '\n') {
+                newLines++;
+            }
+        }
+        newErrorCheck = new NewErrorCheck(fromLine,
+                Math.max(toLine, fromLine + newLines), before, revision);
+    }
+
+    /**
+     * Les empreintes des ERREURS d'une zone (un message par erreur —
+     * la position dérive à la pose, le message parle).
+     *
+     * @param fromLine la première ligne de la zone
+     * @param toLine   la dernière ligne de la zone
+     * @return les empreintes, jamais null
+     */
+    private Set<String> errorFingerprints(int fromLine, int toLine) {
+        Set<String> fingerprints = new HashSet<>();
+        int last = Math.min(toLine, view.getBuffer().getLineCount() - 1);
+        for (int line = Math.max(0, fromLine); line <= last; line++) {
+            for (DiagnosticCard.Entry entry : view.diagnosticsOfLine(line)) {
+                if (entry.severity() == DiagnosticCard.SEVERITY_ERROR
+                        && entry.message() != null) {
+                    fingerprints.add(entry.message());
+                }
+            }
+        }
+        return fingerprints;
+    }
+
+    /**
+     * Le contrôle des ERREURS NÉES : l'analyse doit rattraper la
+     * révision posée (la passe ralentie y vit — la question se
+     * repose à la file tant qu'elle ne l'a pas rattrapée), puis les
+     * erreurs de la zone se comparent à celles d'avant : une erreur
+     * NEUVE dit SA phrase (la zone posée se vérifie à l'œil).
+     *
+     * @param fromLine la première ligne de la zone
+     * @param toLine   la dernière ligne de la zone
+     * @param before   les empreintes d'avant la pose
+     * @param revision la révision posée
+     * @param attempts les re-questions restantes
+     */
+    private void checkNewErrors(int fromLine, int toLine,
+            Set<String> before, int revision, int attempts) {
+        if (view.getBuffer().getRevision() != revision) {
+            return; // le texte a encore bougé : la garde se perd
+        }
+        if (!view.analysisSettled()) {
+            if (attempts > 0) {
+                view.ensureAnalysis();
+                view.post(() -> checkNewErrors(fromLine, toLine, before,
+                        revision, attempts - 1));
+            }
+            return;
+        }
+        Set<String> after = errorFingerprints(fromLine, toLine);
+        for (String fingerprint : after) {
+            if (!before.contains(fingerprint)) {
+                PopupStrings strings = view.popupStrings();
+                view.showInfoPopup(strings.assistant(),
+                        strings.aiNewErrors(), fromLine, 0);
+                return;
+            }
+        }
+    }
+
+    /**
+     * La NOUVELLE ESSAIE : la question se repose à l'identique (la
+     * tâche, l'instruction, les diagnostics, la plage) — un vol
+     * neuf, la réponse d'avant se jette (la génération du vol neuf
+     * la tue).
+     */
+    private void retryLastAsk() {
+        Ask ask = lastAsk;
+        proposal = null;
+        if (ask == null) {
+            return;
+        }
+        start(ask.task(), ask.instruction(), ask.diagnostics(),
+                ask.fixStart(), ask.fixEnd());
+    }
+
+    /**
+     * La passe d'analyse vient de SE CLOSE : le contrôle des erreurs
+     * nées s'y joue (la passe a rattrapé la révision posée — la
+     * cadence ralentie la retenait). Une erreur NEUVE dans la zone
+     * posée dit SA phrase (le modèle propose, le moteur local
+     * vérifie, l'utilisateur valide — la seule vérification que
+     * Pigma peut faire) ; un texte qui a encore bougé perd la garde
+     * (le contrôle se jette).
+     */
+    private void analysisSettled() {
+        NewErrorCheck check = newErrorCheck;
+        if (check == null) {
+            return;
+        }
+        if (view.getBuffer().getRevision() != check.revision()) {
+            newErrorCheck = null; // le texte a encore bougé : la garde se perd
+            return;
+        }
+        newErrorCheck = null;
+        Set<String> after = errorFingerprints(check.fromLine(), check.toLine());
+        for (String fingerprint : after) {
+            if (!check.before().contains(fingerprint)) {
+                PopupStrings strings = view.popupStrings();
+                view.showInfoPopup(strings.assistant(),
+                        strings.aiNewErrors(), check.fromLine(), 0);
+                return;
+            }
+        }
+    }
+
+    /**
+     * Une question partie (la NOUVELLE ESSAIE la repose à
+     * l'identique).
+     *
+     * @param task        la tâche demandée
+     * @param instruction l'instruction (vide : aucune)
+     * @param diagnostics les diagnostics qui voyagent
+     * @param fixStart    la plage visée (-1 : aucune)
+     * @param fixEnd      la plage visée (-1 : aucune)
+     */
+    private record Ask(AiTask task, String instruction,
+            List<AiDiagnostic> diagnostics, int fixStart, int fixEnd) {
+    }
+
+    /**
+     * Le contrôle des erreurs nées : la zone vérifiée, les empreintes
+     * d'avant la pose, la révision posée (un texte qui bouge encore
+     * perd la garde).
+     *
+     * @param fromLine la première ligne de la zone
+     * @param toLine   la dernière ligne de la zone
+     * @param before   les empreintes d'avant la pose
+     * @param revision la révision posée
+     */
+    private record NewErrorCheck(int fromLine, int toLine,
+            Set<String> before, int revision) {
+    }
+
+    /**
+     * Une proposition en attente de verdict (l'ACCEPTATION seule la
+     * pose).
+     *
+     * @param task         la tâche suscitante
+     * @param start        le début de la plage visée
+     * @param end          la fin de la plage visée
+     * @param text         le texte neuf proposé
+     * @param revision     la révision du tampon au départ
+     * @param anchorLine   la ligne d'ancrage
+     * @param anchorColumn la colonne d'ancrage
+     */
+    private record Proposal(AiTask task, int start, int end, String text,
+            int revision, int anchorLine, int anchorColumn) {
+    }
+
+    /**
      * L'écouteur d'un vol : les rappels viennent de N'IMPORTE QUEL
      * fil (le moteur de l'hôte travaille où il veut) — chaque issue
      * y repasse par le fil de la vue, et la GÉNÉRATION s'y éprouve
@@ -408,6 +753,9 @@ public final class AiAssistant implements EditorView.AssistantProvider {
 
         /** La tâche demandée (le test écrit se rend à son écouteur). */
         private final AiTask task;
+
+        /** L'instruction de la modification (vide : aucune). */
+        private final String instruction;
 
         /** La révision du tampon au départ (un texte qui a bougé ne
          * se pose pas). */
@@ -424,14 +772,16 @@ public final class AiAssistant implements EditorView.AssistantProvider {
          *
          * @param id           la génération du vol
          * @param task         la tâche demandée
+         * @param instruction  l'instruction (vide : aucune)
          * @param revision     la révision du tampon au départ
          * @param anchorLine   la ligne d'ancrage
          * @param anchorColumn la colonne d'ancrage
          */
-        private Flight(long id, AiTask task, int revision,
-                int anchorLine, int anchorColumn) {
+        private Flight(long id, AiTask task, String instruction,
+                int revision, int anchorLine, int anchorColumn) {
             this.id = id;
             this.task = task;
+            this.instruction = instruction == null ? "" : instruction;
             this.revision = revision;
             this.anchorLine = anchorLine;
             this.anchorColumn = anchorColumn;
@@ -468,23 +818,20 @@ public final class AiAssistant implements EditorView.AssistantProvider {
                         replace(strings.aiStale(), false);
                         return;
                     }
-                    TextBuffer buffer = view.getBuffer();
-                    int start = Math.max(0,
-                            Math.min(fix.start(), buffer.length()));
-                    int end = Math.max(start,
-                            Math.min(fix.end(), buffer.length()));
-                    view.applyEdit(start, end, fix.text());
+                    // la réponse qui ÉCRIT se PROPOSE : l'aperçu la
+                    // montre, l'acceptation seule la pose
                     view.dismissInfoPopup();
+                    propose(task, instruction, fix.start(), fix.end(),
+                            fix.text(), revision, anchorLine, anchorColumn);
                 } else if (result instanceof AiResult.Insertion insert) {
                     if (view.getBuffer().getRevision() != revision) {
                         replace(strings.aiStale(), false);
                         return;
                     }
-                    TextBuffer buffer = view.getBuffer();
-                    int at = Math.max(0,
-                            Math.min(insert.offset(), buffer.length()));
-                    view.applyEdit(at, at, insert.text());
                     view.dismissInfoPopup();
+                    propose(task, instruction, insert.offset(),
+                            insert.offset(), insert.text(), revision,
+                            anchorLine, anchorColumn);
                 }
             });
         }
