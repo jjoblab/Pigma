@@ -206,6 +206,8 @@ public final class PopupStrings {
     private final String aiDiffRetry;
     /** La phrase des erreurs NÉES de la modification posée. */
     private final String aiNewErrors;
+    /** L'annonce de la suggestion disponible (le fantôme au caret). */
+    private final String aiGhostReady;
 
     private PopupStrings(Builder builder) {
         structure = builder.structure;
@@ -288,6 +290,7 @@ public final class PopupStrings {
         aiDiffReject = builder.aiDiffReject;
         aiDiffRetry = builder.aiDiffRetry;
         aiNewErrors = builder.aiNewErrors;
+        aiGhostReady = builder.aiGhostReady;
     }
 
     /**
@@ -748,6 +751,11 @@ public final class PopupStrings {
         return aiNewErrors;
     }
 
+    /** L'annonce de la suggestion disponible (le fantôme au caret). */
+    public String aiGhostReady() {
+        return aiGhostReady;
+    }
+
     /**
      * Le bâtisseur des chaînes : chaque poseur y remplace UNE valeur,
      * {@link #build()} fige le tout.
@@ -834,6 +842,7 @@ public final class PopupStrings {
         private String aiDiffReject = "Rejeter";
         private String aiDiffRetry = "Réessayer";
         private String aiNewErrors = "De nouvelles erreurs sont nées de la modification — vérifie la zone.";
+        private String aiGhostReady = "Suggestion disponible";
 
         /** Un bâtisseur aux valeurs par défaut. */
         public Builder() {
@@ -1316,6 +1325,12 @@ public final class PopupStrings {
         /** Pose la phrase des erreurs nées de la modification. */
         public Builder aiNewErrors(String value) {
             aiNewErrors = value;
+            return this;
+        }
+
+        /** Pose l'annonce de la suggestion disponible. */
+        public Builder aiGhostReady(String value) {
+            aiGhostReady = value;
             return this;
         }
 

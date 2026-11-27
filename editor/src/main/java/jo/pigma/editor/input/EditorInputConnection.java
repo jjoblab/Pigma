@@ -100,6 +100,14 @@ public final class EditorInputConnection extends BaseInputConnection {
                 case KeyEvent.KEYCODE_DPAD_DOWN:
                     editor.moveCaretVertically(1);
                     return true;
+                case KeyEvent.KEYCODE_TAB:
+                    // LE FANTÔME SE POSE (B4) : la touche TAB accepte la
+                    // proposition entière au caret (rien ne vivait : la
+                    // touche reprend sa vie d'avant)
+                    if (editor.acceptGhostText()) {
+                        return true;
+                    }
+                    break;
                 default:
                     break;
             }

@@ -36,6 +36,9 @@ public class KeyEvent {
     /** Entrée du pavé numérique. */
     public static final int KEYCODE_NUMPAD_ENTER = 160;
 
+    /** Tabulation (le fantôme se pose). */
+    public static final int KEYCODE_TAB = 61;
+
     private final int action;
     private final int keyCode;
 

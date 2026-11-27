@@ -14,6 +14,7 @@ import jo.pigma.editor.selection.SelectionRenderer;
 import jo.pigma.editor.selection.SelectionState;
 
 
+import jo.pigma.editor.ai.GhostTextState;
 import jo.pigma.editor.popups.KeyboardCard;
 import jo.pigma.editor.popups.GotoBar;
 import jo.pigma.editor.popups.HistoryCard;
@@ -445,6 +446,44 @@ public final class EditorView extends View {
 
     /** L'écouteur de la passe d'analyse close (null : aucun). */
     private Runnable analysisListener;
+
+    // LE TEXTE FANTÔME (B4 — la complétion en ligne)
+
+    /** LA MACHINE DU FANTÔME : les phases pures (l'attente, le vol,
+     * l'affichage — l'horloge s'y injecte, le harnais JVM l'éprouve). */
+    private final GhostTextState ghost = new GhostTextState();
+
+    /** Le texte du fantôme affiché (le harnais le lit). */
+    private String ghostText = "";
+
+    /** Le fantôme vit-il à l'œil de l'hôte ? (désactivé par défaut —
+     * l'hôte l'arme quand son moteur déclare la tâche). */
+    private boolean ghostEnabled;
+
+    /** L'écouteur des suggestions du fantôme (l'assistant y branche
+     * son moteur — null : personne n'écoute, le fantôme ne naît
+     * pas). */
+    private GhostListener ghostListener;
+
+    /** La révision d'ancrage du fantôme (un texte qui bouge le masque). */
+    private int ghostRevision = -1;
+
+    /** La position d'ancrage du fantôme (un curseur qui bouge le masque). */
+    private int ghostOffset = -1;
+
+    /** La pose d'un mot du fantôme vit (sa propre frappe ne
+     * re-déclenche pas l'attente). */
+    private boolean ghostApplying;
+
+    /** Le geste du fantôme se joue UNE fois par contact. */
+    private boolean ghostGesturePlayed;
+
+    /** L'encre du fantôme (la proposition s'y lit, effacée — l'indication du style). */
+    private final Paint ghostPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** L'échéance de l'attente du fantôme (la temporisation de la frappe
+     * la porte — la trame ne paie rien tant qu'elle ne court pas). */
+    private final Runnable ghostTimeout = this::ghostTimeoutFired;
 
     /** Les bâtisseurs de la passe d'analyse en cours (par tranches postées). */
     private SymbolIndex.Builder indexBuilder;
@@ -896,6 +935,12 @@ public final class EditorView extends View {
             // mot, la pastille d'un texte qui bouge meurt (le
             // diagnostic repartira de l'analyse neuve)
             dismissDiagnosticBadge();
+            // LE TEXTE FANTÔME (B4) : la frappe reprécède tout — sa
+            // propre pose (un mot accepté) ne re-déclenche pas
+            // l'attente
+            if (!ghostApplying) {
+                ghostTyped();
+            }
             // le remplissage n'est PAS relancé ici : la salve du fond ne
             // doit pas chevaucher le dessin qui suit l'édition —
             // l'odomètre l'a vu (moteur 9,2 ms à l'ouverture du gros
@@ -1290,9 +1335,10 @@ public final class EditorView extends View {
         }
         textPx = clamped;
         // le peintre suit le corps (le pinceau partagé y gagne sa
-        // taille, le placeholder la sienne)
+        // taille, le placeholder la sienne, le fantôme la sienne)
         painter.applyTextSize(clamped);
         inlayPaint.setTextSize(clamped * 0.85f);
+        ghostPaint.setTextSize(clamped);
         // la gouttière suit le zoom : les numéros s'agrandissent au
         // pincement comme le corps (le facteur porte le corps courant
         // sur le corps de repos de 14 sp)
@@ -1452,6 +1498,10 @@ public final class EditorView extends View {
      */
     public void setPopupStyle(PopupStyle fresh) {
         popupStyle = fresh == null ? PopupStyle.defaults() : fresh;
+        // l'encre du fantôme suit le thème (la proposition s'y lit
+        // effacée — l'indication du style posé)
+        ghostPaint.setColor(popupStyle.hintArgb());
+        ghostPaint.setTextSkewX(-0.25f);
         infoPopup.setStyle(popupStyle);
         completionCard.setStyle(popupStyle);
         signatureCard.setStyle(popupStyle);
@@ -1704,6 +1754,31 @@ public final class EditorView extends View {
          */
         List<DiagnosticCard.Fix> diagnosticFixesAt(int line,
                 String message, int start, int end);
+    }
+
+    /**
+     * L'écouteur des suggestions du TEXTE FANTÔME (B4) : la vue y
+     * pose sa question quand la temporisation de la frappe échut
+     * (le caret et la révision du départ y voyagent) ; l'écouteur
+     * qui décline rend faux (le fantôme se range — un moteur qui ne
+     * déclare pas INLINE_COMPLETION n'est jamais interrogé deux
+     * fois).
+     */
+    public interface GhostListener {
+
+        /**
+         * La suggestion demandée (la temporisation a échue).
+         *
+         * @param caret   la position du curseur
+         * @param revision la révision du tampon
+         * @return vrai quand la demande part (une réponse ou une
+         *         annulation viendra) ; faux : le fantôme se range
+         */
+        boolean ghostSuggest(int caret, int revision);
+
+        /** Le vol du fantôme se COUPE (la frappe a repris, le masque
+         * est tombé — la poignée s'annule). */
+        void ghostCancel();
     }
 
     /**
@@ -4074,6 +4149,11 @@ public final class EditorView extends View {
             }
 
             @Override
+            public boolean acceptGhostText() {
+                return EditorView.this.acceptGhostText();
+            }
+
+            @Override
             public boolean hasSelection() {
                 return EditorView.this.hasSelection();
             }
@@ -4462,6 +4542,9 @@ public final class EditorView extends View {
             case MotionEvent.ACTION_DOWN:
                 touch.begin(event.getX(), event.getY());
                 pinch.reset();
+                // le geste du fantôme renaît : chaque contact porte SON
+                // verdict (le balayage horizontal ne se joue qu'une fois)
+                ghostGesturePlayed = false;
                 // LA MINIMAP ET SA BARRE D'ANNULER/RÉTABLIR prennent
                 // leur geste au DOWN : la barre COIFFE la région (les
                 // pastilles y jouent au tap), la carte du document
@@ -4633,6 +4716,31 @@ public final class EditorView extends View {
                         && touch.beyondSlop(event.getX(), event.getY(), touchSlop())) {
                     touch.engageScroll();
                 }
+                // LE GESTE DU FANTÔME (B4) : le balayage HORIZONTAL décide
+                // de la proposition — ample à droite : TOUT se pose ; court
+                // à droite : LE MOT suivant se pose (le reste demeure) ; à
+                // gauche : la proposition se REJETE. Le geste se consomme
+                // (le défilement n'y a pas droit) et ne se joue qu'UNE fois
+                // par contact.
+                if (ghost.isShown() && !ghostGesturePlayed
+                        && !touch.isHandleDragging() && !touch.isTextDragging()
+                        && Math.abs(event.getX() - touch.startX())
+                                > 2 * touchSlop()
+                        && Math.abs(event.getX() - touch.startX())
+                                > 2 * Math.abs(event.getY() - touch.startY())) {
+                    float dx = event.getX() - touch.startX();
+                    if (dx > dp(96)) {
+                        acceptGhostText();
+                    } else if (dx > 0) {
+                        acceptGhostWord();
+                    } else {
+                        rejectGhostText();
+                    }
+                    ghostGesturePlayed = true;
+                    touch.settle();
+                    touch.forgetTap();
+                    break;
+                }
                 if (touch.isDragging()) {
                     // le défilement à DEUX axes : le texte suit le
                     // doigt en hauteur et en largeur (la ligne longue
@@ -4713,6 +4821,12 @@ public final class EditorView extends View {
                 if (touch.isMapDragging()) {
                     touch.releaseMap();
                     touch.forgetTap();
+                    break;
+                }
+                if (ghostGesturePlayed) {
+                    // le geste du fantôme se clôt : le relâchement ne vaut
+                    // ni un tap ni un geste — la proposition posée demeure
+                    ghostGesturePlayed = false;
                     break;
                 }
                 if (touch.isDragging()) {
@@ -5163,6 +5277,7 @@ public final class EditorView extends View {
         }
         drawStructure(canvas, first, last, count);
         drawCaret(canvas);
+        drawGhostText(canvas);
         drawSelectionHandles(canvas);
         drawDragPreview(canvas);
         canvas.restore();
@@ -8755,6 +8870,263 @@ public final class EditorView extends View {
      */
     public void setAnalysisListener(Runnable listener) {
         analysisListener = listener;
+    }
+
+    // LE TEXTE FANTÔME (B4) — la complétion en ligne
+
+    /**
+     * LE FANTÔME S'ARME (B4) : désactivé par défaut — l'hôte l'arme
+     * quand son moteur déclare INLINE_COMPLETION (la façade de
+     * l'assistant y veille). Sans lui, aucune proposition ne naît :
+     * la frappe ne déclenche rien.
+     *
+     * @param enabled le fantôme vit-il à l'œil de l'hôte ?
+     */
+    public void setGhostTextEnabled(boolean enabled) {
+        ghostEnabled = enabled;
+        if (!enabled) {
+            dismissGhost();
+        }
+    }
+
+    /** Le fantôme vit-il à l'œil de l'hôte ? (désactivé par défaut). */
+    public boolean isGhostTextEnabled() {
+        return ghostEnabled;
+    }
+
+    /**
+     * La temporisation du fantôme (le plan B4 la veut entre 300 et
+     * 500 ms — l'hôte la règle à sa main : la frappe déclenche la
+     * question après elle).
+     *
+     * @param millis la temporisation, en millisecondes
+     */
+    public void setGhostTimeoutMs(long millis) {
+        ghost.setTimeoutMs(millis);
+    }
+
+    /**
+     * Branche l'écouteur des suggestions (l'assistant y branche son
+     * moteur — null : personne n'écoute, le fantôme ne naît pas).
+     *
+     * @param listener l'écouteur, ou null
+     */
+    public void setGhostListener(GhostListener listener) {
+        ghostListener = listener;
+    }
+
+    /**
+     * LA RÉPONSE DU FANTÔME : la proposition arrive — elle ne vit
+     * QUE si le texte n'a pas bougé (la machine l'éprouve à la
+     * révision et à la position du départ) ; la proposition qui
+     * vit s'ANNONCE (le service qui parle dit « suggestion
+     * disponible ») et la trame suivante la peint au caret.
+     *
+     * @param proposed la proposition (le texte à deviner au caret)
+     * @param revision la révision du tampon au départ
+     * @param offset   la position du curseur au départ
+     * @return vrai quand le fantôme vit
+     */
+    public boolean showGhostText(String proposed, int revision, int offset) {
+        if (!ghost.answered(proposed, revision, offset)) {
+            return false;
+        }
+        ghostText = proposed;
+        ghostRevision = revision;
+        ghostOffset = offset;
+        announceForAccessibility(popupStrings.aiGhostReady());
+        invalidate();
+        return true;
+    }
+
+    /** Le fantôme se range (la réponse muette, la panne, le
+     * débranchement — le vol vivant se coupe). */
+    public void dismissGhost() {
+        if (ghost.masked() && ghostListener != null) {
+            ghostListener.ghostCancel();
+        }
+        ghostText = "";
+        invalidate();
+    }
+
+    /** Le texte du fantôme affiché (vide : aucun — le harnais le lit). */
+    public String ghostText() {
+        return ghost.isShown() ? ghostText : "";
+    }
+
+    /** La phase du fantôme (le harnais la lit). */
+    public GhostTextState.Phase ghostPhase() {
+        return ghost.phase();
+    }
+
+    /**
+     * TOUT ACCEPTER (la touche TAB) : la proposition entière se pose
+     * au caret par UNE unité d'annulation — jamais écrite au tampon
+     * avant l'acceptation.
+     *
+     * @return vrai quand une proposition vivait
+     */
+    public boolean acceptGhostText() {
+        String all = ghost.takeAll();
+        if (all.isEmpty()) {
+            return false;
+        }
+        poseGhost(all);
+        return true;
+    }
+
+    /**
+     * LE MOT SUIVANT (le balayage court à droite) : le premier mot
+     * de la proposition se pose (son espace suit), le RESTE demeure
+     * au caret — chaque mot SA transaction.
+     *
+     * @return vrai quand un mot se posa
+     */
+    public boolean acceptGhostWord() {
+        String word = ghost.takeWord();
+        if (word.isEmpty()) {
+            return false;
+        }
+        poseGhost(word);
+        return true;
+    }
+
+    /** Le fantôme se rejette (le balayage à gauche — la proposition
+     * meurt, le tampon n'a jamais bougé). */
+    public void rejectGhostText() {
+        ghost.masked();
+        ghostText = "";
+        invalidate();
+    }
+
+    /**
+     * La pose d'une part du fantôme : UNE unité d'annulation, le
+     * reste (s'il vit) se ré-ancre à la position neuve — sa propre
+     * frappe ne re-déclenche pas l'attente (le fantôme garde son
+     * mot posé).
+     *
+     * @param part la part posée (un mot ou tout)
+     */
+    private void poseGhost(String part) {
+        int at = Math.min(ghostOffset < 0 ? selection.caret() : ghostOffset,
+                buffer.length());
+        ghostApplying = true;
+        try {
+            applyEdit(at, at, part);
+        } finally {
+            ghostApplying = false;
+        }
+        // le reste se ré-ancre : la position avance de la part posée,
+        // la révision dit le texte neuf
+        ghostOffset = Math.min(at + part.length(), buffer.length());
+        ghostRevision = buffer.getRevision();
+        ghostText = ghost.text();
+        invalidate();
+    }
+
+    /**
+     * LA FRAPPE ARME L'ATTENTE : le vol vivant se coupe (une seule
+     * demande en vol — la frappe suivante l'emporte), la
+     * temporisation se (ré)arme, son échéance part à la file.
+     */
+    private void ghostTyped() {
+        if (!ghostEnabled) {
+            return;
+        }
+        if (ghost.typed() && ghostListener != null) {
+            ghostListener.ghostCancel();
+        }
+        removeCallbacks(ghostTimeout);
+        postDelayed(ghostTimeout, ghost.timeoutMs());
+    }
+
+    /**
+     * L'ATTENTE A ÉCHU : la demande part SI le fantôme vit à l'œil
+     * de l'hôte et que rien ne le masque — l'écouteur qui décline
+     * range le fantôme (un moteur muet n'interroge pas).
+     */
+    private void ghostTimeoutFired() {
+        if (!ghost.timeoutReached()) {
+            // l'échéance court encore (la file l'a jouée avant l'horloge) :
+            // elle se repose pour son reste
+            postDelayed(ghostTimeout, Math.max(1L, ghost.remainingMs()));
+            return;
+        }
+        if (ghostListener == null || !ghostEnabled || ghostMaskedNow()) {
+            ghost.masked();
+            return;
+        }
+        int caret = Math.min(selection.caret(), buffer.length());
+        ghost.flew(buffer.getRevision(), caret);
+        if (!ghostListener.ghostSuggest(caret, buffer.getRevision())) {
+            ghost.masked();
+        }
+    }
+
+    /**
+     * Le MASQUAGE OBLIGATOIRE (le plan B4) : la carte de complétion
+     * ouverte, la composition IME en cours, une sélection vivante,
+     * la ligne repliée, l'éditeur figé — le fantôme ne se montre
+     * jamais dans ces états.
+     *
+     * @return vrai quand le fantôme se masque
+     */
+    private boolean ghostMaskedNow() {
+        if (!isEnabled()) {
+            return true;
+        }
+        if (hasSelection() || composingStart >= 0) {
+            return true;
+        }
+        if (completionCard != null && completionCard.isShown()) {
+            return true;
+        }
+        int line = buffer.lineOfOffset(
+                Math.min(selection.caret(), buffer.length()));
+        return isHidden(line);
+    }
+
+    /**
+     * LE FANTÔME SE PEINT (B4) : au caret, APRÈS le texte — la
+     * première ligne y suit le curseur, les suivantes vivent aux
+     * lignes d'après (la proposition multi-lignes s'y devine
+     * entière). Les masques s'y éprouvent à CHAQUE trame (un texte
+     * qui bouge, un curseur qui bouge, un état qui masque : le
+     * fantôme meurt — sa proposition parlait du texte d'avant).
+     *
+     * @param canvas le canevas de la vue (la translation du défilement y vit)
+     */
+    private void drawGhostText(Canvas canvas) {
+        if (!ghost.isShown()) {
+            return;
+        }
+        if (buffer.getRevision() != ghostRevision
+                || selection.caret() != ghostOffset
+                || ghostMaskedNow()) {
+            // la proposition parlait du texte d'avant : elle meurt
+            ghost.masked();
+            ghostText = "";
+            return;
+        }
+        int line = buffer.lineOfOffset(Math.min(ghostOffset, buffer.length()));
+        if (line < firstVisibleLine() || line > lastVisibleLine()) {
+            return;
+        }
+        int column = ghostOffset - buffer.getLineStart(line);
+        float x = getPaddingLeft() + column * charWidth + caretWidth;
+        float baseline = lineBaseline(line);
+        String[] lines = ghostText.split("\n", -1);
+        for (int at = 0; at < lines.length; at++) {
+            float lineTop = getPaddingTop()
+                    + visibleIndexOf(line) * lineHeight - scrollY
+                    + at * lineHeight;
+            if (lineTop > getHeight()) {
+                break; // la proposition se coupe à la fenêtre
+            }
+            float lineX = at == 0 ? x : getPaddingLeft();
+            canvas.drawText(lines[at], lineX, baseline + at * lineHeight,
+                    ghostPaint);
+        }
     }
 
     /**

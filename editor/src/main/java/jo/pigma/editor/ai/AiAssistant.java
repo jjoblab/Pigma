@@ -61,7 +61,8 @@ import jo.pigma.syntax.StructureDocument;
  * façade ({@link #setDocument}) : l'hôte qui change d'onglet y
  * suit.</p>
  */
-public final class AiAssistant implements EditorView.AssistantProvider {
+public final class AiAssistant implements EditorView.AssistantProvider,
+        EditorView.GhostListener {
 
     /** Le budget de contexte par défaut (en caractères — Pigma
      * ignore les jetons d'un modèle, le moteur de l'hôte convertit). */
@@ -114,6 +115,18 @@ public final class AiAssistant implements EditorView.AssistantProvider {
      * contrôle y attend SON mot). */
     private NewErrorCheck newErrorCheck;
 
+    /** Le vol du FANTÔME vivant (null : aucun — la frappe suivante
+     * le coupe, une seule demande en vol). */
+    private AiCall ghostFlying;
+
+    /** L'écouteur du vol du fantôme vivant (la réponse d'un vol tué
+     * se jette à l'instance près). */
+    private AiListener liveGhost;
+
+    /** La complétion en ligne vit-elle à l'œil de l'hôte ?
+     * (désactivée par défaut — le plan B4 l'exige). */
+    private boolean inlineEnabled;
+
     /**
      * La façade se branche d'elle-même : le fournisseur des entrées
      * se pose sur la vue (l'ampoule et l'étage des correctifs y
@@ -136,6 +149,7 @@ public final class AiAssistant implements EditorView.AssistantProvider {
         view.setAssistantProvider(this);
         view.setInfoCancelAction(this::cancelFlight);
         view.setAnalysisListener(this::analysisSettled);
+        view.setGhostListener(this);
         refreshEditAction();
     }
 
@@ -148,12 +162,16 @@ public final class AiAssistant implements EditorView.AssistantProvider {
      */
     public void detach() {
         killFlight();
+        killGhostFlight();
         view.setAssistantProvider(null);
         view.setInfoCancelAction(null);
         view.setAnalysisListener(null);
+        view.setGhostListener(null);
+        view.setGhostTextEnabled(false);
         view.armInfoCancel(null);
         view.dismissAiEditPopup();
         view.dismissAiDiffPopup();
+        view.dismissGhost();
         proposal = null;
         lastAsk = null;
         newErrorCheck = null;
@@ -197,6 +215,29 @@ public final class AiAssistant implements EditorView.AssistantProvider {
      */
     public void setTestListener(Consumer<String> listener) {
         testListener = listener;
+    }
+
+    /**
+     * LA COMPLÉTION EN LIGNE S'ARME (B4) : désactivée par défaut —
+     * l'hôte l'arme quand il veut le texte fantôme au caret (le
+     * moteur doit DÉCLARER INLINE_COMPLETION : sans lui, la question
+     * ne part jamais, la frappe ne déclenche rien).
+     *
+     * @param enabled le fantôme vit-il à l'œil de l'hôte ?
+     */
+    public void setInlineCompletionEnabled(boolean enabled) {
+        inlineEnabled = enabled;
+        view.setGhostTextEnabled(enabled);
+    }
+
+    /**
+     * La temporisation du fantôme (le plan la veut entre 300 et
+     * 500 ms — l'hôte la règle à sa main).
+     *
+     * @param millis la temporisation, en millisecondes
+     */
+    public void setGhostTimeoutMs(long millis) {
+        view.setGhostTimeoutMs(millis);
     }
 
     /**
@@ -664,6 +705,126 @@ public final class AiAssistant implements EditorView.AssistantProvider {
         }
         start(ask.task(), ask.instruction(), ask.diagnostics(),
                 ask.fixStart(), ask.fixEnd());
+    }
+
+    // LE TEXTE FANTÔME (B4 — la complétion en ligne)
+
+    /**
+     * LA QUESTION DU FANTÔME (la temporisation de la frappe a échue) :
+     * le préfixe et le suffixe au caret voyagent (pas de sélection —
+     * le masque l'interdit, pas de bloc — le mot qui naît suffit), la
+     * demande part SI le moteur DÉCLARE la tâche et que la politique
+     * l'autorise ; le vol vivant se coupe d'abord (une seule demande
+     * en vol).
+     *
+     * @param caret    la position du curseur
+     * @param revision la révision du tampon
+     * @return vrai quand la demande part
+     */
+    @Override
+    public boolean ghostSuggest(int caret, int revision) {
+        AiCapabilities capabilities = served();
+        if (!inlineEnabled || capabilities == null
+                || !capabilities.accepts(AiTask.INLINE_COMPLETION)
+                || !context.allowed(documentName, languageId)) {
+            return false;
+        }
+        TextBuffer buffer = view.getBuffer();
+        ContextBuilder.Source source = new ContextBuilder.Source(
+                documentName, languageId, buffer, caret, -1, -1,
+                List.of(), "");
+        AiRequest request = context.prepare(AiTask.INLINE_COMPLETION, "",
+                source, contextChars, null);
+        if (request == null) {
+            return false; // le crochet de l'hôte a refusé : rien ne part
+        }
+        killGhostFlight();
+        GhostFlight flight = new GhostFlight(caret, revision);
+        liveGhost = flight;
+        ghostFlying = backend.start(request, flight);
+        return true;
+    }
+
+    /** Le vol du fantôme se COUPE (la frappe a repris, le masque est
+     * tombé) : la poignée s'annule, la réponse qui vient quand même
+     * se jette. */
+    @Override
+    public void ghostCancel() {
+        killGhostFlight();
+    }
+
+    /** Tue le vol du fantôme SANS phrase : la poignée s'annule
+     * (idempotent), l'écouteur vivant se range. */
+    private void killGhostFlight() {
+        AiCall inFlight = ghostFlying;
+        ghostFlying = null;
+        liveGhost = null;
+        if (inFlight != null) {
+            inFlight.cancel();
+        }
+    }
+
+    /**
+     * L'écouteur du vol du fantôme : la réponse (une INSERTION au
+     * caret) se montre à la vue — la machine y éprouve la révision
+     * et la position (une réponse périmée se jette) ; la panne et la
+     * réponse d'un autre genre se taisent (le fantôme se range — le
+     * plan : jamais une phrase au fil de la frappe).
+     */
+    private final class GhostFlight implements AiListener {
+
+        /** La position du curseur au départ (la réponse la vise). */
+        private final int offset;
+
+        /** La révision du tampon au départ (une réponse périmée se
+         * jette — la machine l'éprouve). */
+        private final int revision;
+
+        /**
+         * Un vol de fantôme neuf.
+         *
+         * @param offset   la position du curseur au départ
+         * @param revision la révision du tampon au départ
+         */
+        private GhostFlight(int offset, int revision) {
+            this.offset = offset;
+            this.revision = revision;
+        }
+
+        /** Le flux ne s'affiche pas : la proposition arrive d'un trait. */
+        @Override
+        public void onDelta(String textPart) {
+            // rien : la proposition entière vaut mieux qu'un mot à mot
+        }
+
+        @Override
+        public void onComplete(AiResult result) {
+            view.post(() -> {
+                if (GhostFlight.this != liveGhost) {
+                    return; // le vol est mort : la réponse se jette
+                }
+                ghostFlying = null;
+                liveGhost = null;
+                if (result instanceof AiResult.Insertion insert
+                        && insert.offset() == offset) {
+                    view.showGhostText(insert.text(), revision, offset);
+                } else {
+                    view.dismissGhost();
+                }
+            });
+        }
+
+        @Override
+        public void onError(AiError error) {
+            view.post(() -> {
+                if (GhostFlight.this != liveGhost) {
+                    return; // le vol est mort : l'erreur se jette
+                }
+                ghostFlying = null;
+                liveGhost = null;
+                view.dismissGhost();
+            });
+        }
     }
 
     /**

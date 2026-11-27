@@ -168,19 +168,32 @@ ai.setTestListener(test -> { /* vous seul créez le fichier */ });
   (« Expliquer », « Documenter », « Écrire le test ») et à l'étage
   des correctifs (« Expliquer l'erreur », « Corriger avec
   l'assistant ») — uniquement les tâches que votre moteur déclare ;
-  le CONTEXTE PRÉPARÉ (préfixe/suffixe bornés au budget en
+  la pastille « Modifier avec l'IA… » à la barre de sélection (la
+  barre d'instruction y demande CE que vous voulez, la sélection
+  voyage) ; le CONTEXTE PRÉPARÉ (préfixe/suffixe bornés au budget en
   caractères, sélection, bloc englobant de la profondeur
   d'accolades, diagnostics) ; le vol ANNULABLE au doigt ; les
-  réponses VÉRIFIÉES (le texte qui se lit arrive balisé, le
-  remplacement et l'insertion se posent par une unité
-  d'annulation — un texte qui a bougé depuis la demande ne se pose
-  pas) ; une phrase par famille de panne.
+  réponses VÉRIFIÉES — le texte qui se lit arrive balisé, la réponse
+  qui ÉCRIT se PROPOSE à l'aperçu (Avant / Après, Accepter /
+  Rejeter / Réessayer : l'acceptation seule pose, par UNE unité
+  d'annulation, un texte qui a bougé ne se pose pas) ; une phrase
+  par famille de panne ; le contrôle des ERREURS NÉES (l'analyse
+  relancée signale une erreur neuve dans la zone posée).
+- **La complétion en ligne** (le texte fantôme, désactivée par
+  défaut) : `ai.setInlineCompletionEnabled(true)` — la frappe
+  déclenche la question à la temporisation (300–500 ms,
+  `ai.setGhostTimeoutMs`), la proposition se devine au caret
+  (JAMAIS écrite au tampon avant l'acceptation), TAB pose tout,
+  le balayage court à droite pose LE mot, le balayement ample pose
+  tout, le balayage à gauche rejette ; la composition IME, la
+  sélection, la carte de complétion, le pli et le document qui
+  change masquent toujours la proposition.
 - **Ce que vous gardez** : où partent les données, ce qui les paie,
   vos secrets (la politique exclut vos documents AVANT que le
   contexte ne se lise, le filtre masque ce qui resterait ;
   `DefaultContextFilter`, le filet par défaut, ne remplace jamais
   une politique sérieuse).
-- Les chaînes se localisent (`setPopupStrings` — les quinze
+- Les chaînes se localisent (`setPopupStrings` — les vingt-huit
   chaînes de l'assistant y vivent avec toutes les autres).
 
 ## Ce que vous avez déjà, sans rien brancher

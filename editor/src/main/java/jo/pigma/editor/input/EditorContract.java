@@ -75,6 +75,15 @@ public interface EditorContract {
      */
     void deleteAround(int left, int right);
 
+    /**
+     * TOUT le TEXTE FANTÔME se pose (la touche TAB — la proposition
+     * vivante au caret, une unité d'annulation ; faux : rien ne
+     * vivait, la touche reprend sa vie).
+     *
+     * @return vrai quand une proposition se posa
+     */
+    boolean acceptGhostText();
+
     /** Déplace le curseur (delta en caractères). */
     void moveCaret(int delta);
 

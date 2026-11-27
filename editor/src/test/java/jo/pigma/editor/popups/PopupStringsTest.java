@@ -101,6 +101,8 @@ public class PopupStringsTest {
         assertEquals("la phrase des erreurs nées",
                 "De nouvelles erreurs sont nées de la modification — vérifie la zone.",
                 strings.aiNewErrors());
+        assertEquals("l'annonce de la suggestion disponible",
+                "Suggestion disponible", strings.aiGhostReady());
     }
 
     /** Le bâtisseur y remplace UNE valeur — le reste demeure. */
@@ -153,6 +155,7 @@ public class PopupStringsTest {
                 .aiDiffReject("Reject")
                 .aiDiffRetry("Retry")
                 .aiNewErrors("New errors were born of the change — check the area.")
+                .aiGhostReady("Suggestion available")
                 .build();
         assertEquals("le titre posé", "Assistant AI", strings.assistant());
         assertEquals("l'attente posée", "Thinking…", strings.aiThinking());
@@ -202,6 +205,8 @@ public class PopupStringsTest {
         assertEquals("les erreurs nées posées",
                 "New errors were born of the change — check the area.",
                 strings.aiNewErrors());
+        assertEquals("l'annonce posée", "Suggestion available",
+                strings.aiGhostReady());
         // le reste demeure (le français courant)
         assertEquals("les correctifs du serveur demeurent",
                 "Correctif : Couper", strings.fixTitle("Couper"));
