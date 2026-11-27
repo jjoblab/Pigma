@@ -7540,22 +7540,22 @@ public final class EditorView extends View {
         List<OverflowCard.Section> families = new ArrayList<>();
         List<OverflowCard.Row> navigation = new ArrayList<>();
         navigation.add(new OverflowCard.Row(popupStrings.gotoLineRow(),
-                this::toggleGotoPopup));
+                this::toggleGotoPopup, QuickActionCard.Glyph.GOTO));
         navigation.add(new OverflowCard.Row(popupStrings.searchRow(),
-                this::toggleSearchPopup));
+                this::toggleSearchPopup, QuickActionCard.Glyph.SEARCH));
         // LES USAGES du symbole au curseur (la leçon de la référence :
         // son menu y porte Find Usages — la carte liste chaque
         // occurrence, le choix y navigue)
         if (!wordAtCaret().isEmpty()) {
             navigation.add(new OverflowCard.Row(
                     popupStrings.usagesRow(wordAtCaret()),
-                    this::showUsagesPopup));
+                    this::showUsagesPopup, QuickActionCard.Glyph.QUOTES));
         }
         // LA LISTE DES PROBLÈMES (la liste des problèmes) : les diagnostics du document
         // y parcourent (le choix y navigue)
         if (!problemsOfDocument().isEmpty()) {
             navigation.add(new OverflowCard.Row(popupStrings.problemsRow(),
-                    this::showProblemsPopup));
+                    this::showProblemsPopup, QuickActionCard.Glyph.PROBLEM));
         }
         // L'ALLER AU SYMBOLE / FICHIER (l'aller au symbole du rapport) : le
         // fournisseur vivant seul y propose (la façade du serveur y
@@ -7563,14 +7563,15 @@ public final class EditorView extends View {
         // fichiers)
         if (gotoProvider != null) {
             navigation.add(new OverflowCard.Row(popupStrings.gotoSymbolRow(),
-                    () -> showGotoPopup(gotoProvider.get())));
+                    () -> showGotoPopup(gotoProvider.get()),
+                    QuickActionCard.Glyph.TREE));
         }
         // LES FICHIERS RÉCENTS (les fichiers récents du rapport) : la
         // mémoire vivante seule y propose (les fichiers et les
         // emplacements d'avant)
         if (!recentFiles.isEmpty()) {
             navigation.add(new OverflowCard.Row(popupStrings.recentFilesRow(),
-                    this::showRecentFilesPopup));
+                    this::showRecentFilesPopup, QuickActionCard.Glyph.SNIPPET));
         }
         families.add(new OverflowCard.Section(popupStrings.navigation(),
                 navigation));
@@ -7579,28 +7580,32 @@ public final class EditorView extends View {
         // construit tel quel (la disponibilité y vit au registre)
         List<OverflowCard.Row> edition = new ArrayList<>();
         for (ActionRegistry.Action action : editActions.live()) {
-            edition.add(new OverflowCard.Row(action.label(), action::run));
+            edition.add(new OverflowCard.Row(action.label(), action::run,
+                    action.glyph()));
         }
         families.add(new OverflowCard.Section(popupStrings.edition(), edition));
         // LE PRESSE-PAPIERS et SON HISTORIQUE (l'historique du presse-papiers — les dernières
         // copies s'y reprennent, le collage d'avant renaît au
         // doigt : la copie posée l'y propose)
         List<OverflowCard.Row> papiers = new ArrayList<>();
-        papiers.add(new OverflowCard.Row(popupStrings.cutRow(), this::cutSelection));
+        papiers.add(new OverflowCard.Row(popupStrings.cutRow(),
+                this::cutSelection, QuickActionCard.Glyph.CUT));
         papiers.add(new OverflowCard.Row(popupStrings.selectAllRow(),
-                this::selectAll));
+                this::selectAll, QuickActionCard.Glyph.SELECT_ALL));
         papiers.add(new OverflowCard.Row(popupStrings.quitSelectionRow(),
-                this::clearSelection));
+                this::clearSelection, QuickActionCard.Glyph.CLOSE));
         if (!clipboardHistory.isEmpty()) {
             papiers.add(new OverflowCard.Row(popupStrings.clipboardHistoryRow(),
-                    this::showClipboardHistoryPopup));
+                    this::showClipboardHistoryPopup,
+                    QuickActionCard.Glyph.CLIPBOARD));
         }
         families.add(new OverflowCard.Section(popupStrings.clipboardFamily(),
                 papiers));
         if (hasSelection()) {
             families.add(new OverflowCard.Section(popupStrings.historyFamily(),
                     List.of(new OverflowCard.Row(popupStrings.selectionHistoryRow(),
-                            this::showHistoryPopup))));
+                            this::showHistoryPopup,
+                            QuickActionCard.Glyph.HISTORY))));
         }
         List<OverflowCard.Row> hosts = new ArrayList<>();
         for (SelectionBar.HostAction action : selectionBar.hostOverflowActions()) {
