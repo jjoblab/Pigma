@@ -261,6 +261,11 @@ public final class DiagnosticRenderingIT {
     @Test
     public void minimapBarCapsTheMap() {
         arrive();
+        // la minimap ne vit plus par défaut (le retour du terrain) :
+        // l'écran de la carte se pose pour L'ÉPROUVER, l'hôte seul
+        // la demande
+        editor.setMinimapEnabled(true);
+        frame();
         float bandWidth = 42 * density;
         float barHeight = 40 * density;
         float bandLeft = VIEW_WIDTH - bandWidth;

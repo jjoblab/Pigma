@@ -679,8 +679,10 @@ public final class EditorView extends View {
     /** La minimap — la carte du document au bord droit, ses pastilles d'annulation en tête. */
     private Minimap minimap;
 
-    /** La minimap vit-elle à l'écran (l'hôte la retire quand son écran n'en veut pas). */
-    private boolean minimapEnabled = true;
+    /** La minimap vit-elle à l'écran (l'hôte la pose quand son écran
+     * la veut — elle ne vit plus par défaut : le retour du terrain
+     * la trouvait envahissante, l'hôte seul la demande). */
+    private boolean minimapEnabled = false;
 
     /** Le pont d'accessibilité (le service qui parle y lit la vue — D5). */
     private final jo.pigma.editor.accessibility.EditorAccessibility accessibility =
@@ -1125,22 +1127,15 @@ public final class EditorView extends View {
         inputContract = createInputContract();
         trackedLineCount = buffer.getLineCount();
         buffer.addListener(modelListener);
-        int padding = dp(12);
-        // la gouttière élargie : la colonne des marqueurs (erreur,
-        // avertissement, ampoule) vit AVANT les numéros, puis LA
-        // COLONNE DES PLIS à la référence (EditorGutterComponentImpl y
-        // pose ses chevrons APRÈS les numéros, dans le panneau —
-        // jamais dans le corps du texte)
-        // le padding droit reste léger : la minimap et sa BARRE de
-        // pastilles FLOTTENT au-dessus du texte (à la référence — la
-        // carte y recouvre le code, translucide) ; les lignes longues
-        // peuvent glisser dessous, le débordement se calcule au texte
-        // le panneau de la gouttière, à la référence : les marqueurs
-        // (0-22), les numéros (finissent à -28), la COLONNE DES PLIS
-        // (-14, DANS le panneau — jamais sur le filet), l'aperçu
-        // @Preview à -38 — le tout AVANT le filet du bord, l'ombre
-        // d'élévation ne touche que le texte
-        setPadding(dp(78), dp(16), dp(16), dp(16));
+        // la gouttière resserrée (le retour du terrain : 78 dp y
+        // volaient trop de l'écran) : la colonne des marqueurs
+        // (erreur, avertissement, ampoule — 0 à 22), les numéros
+        // (finissent à -26), l'aperçu @Preview à -32, LA COLONNE DES
+        // PLIS à -16 (le chevron de 12 dp y respire ENTIÈREMENT
+        // DANS le panneau, à deux dp du filet — le retour du
+        // terrain : le filet et son ombre d'élévation mangeaient les
+        // icônes de pli ; l'ombre est morte, la colonne rentre)
+        setPadding(dp(64), dp(16), dp(16), dp(16));
         setFocusable(true);
         setFocusableInTouchMode(true);
     }
@@ -3887,6 +3882,12 @@ public final class EditorView extends View {
                     if (snippetCard != null) {
                         snippetCard.onRelease();
                     }
+                    // LA CARTE DE DIAGNOSTIC joue son relâchement
+                    // pareillement (le retour du terrain : elle se
+                    // fermait au DOWN, sa liste ne se défilait jamais)
+                    if (diagnosticCard != null) {
+                        diagnosticCard.onRelease();
+                    }
                     if (clipboardCard != null && clipboardCard.onRelease()) {
                         // la copie choisie se COLLE au caret (l'historique du presse-papiers — le
                         // collage d'avant renaît au doigt)
@@ -4206,7 +4207,7 @@ public final class EditorView extends View {
                     // des plis garde son pli au double-tap)
                     if (touch.tappedTwice(event.getX(), event.getY(), touchSlop())
                             && event.getX() > dp(24)
-                            && event.getX() < getPaddingLeft() - dp(16)) {
+                            && event.getX() < getPaddingLeft() - dp(26)) {
                         toggleBreakpoint(line);
                         clearComposing();
                         touch.forgetTap();
@@ -4370,6 +4371,9 @@ public final class EditorView extends View {
         }
         if (completionCard != null && completionCard.isShown()) {
             moved |= completionCard.dragRows(dy);
+        }
+        if (diagnosticCard != null && diagnosticCard.isShown()) {
+            moved |= diagnosticCard.dragRows(dy);
         }
         return moved;
     }
@@ -5243,7 +5247,7 @@ public final class EditorView extends View {
                 continue;
             }
             gutter.drawNumber(canvas, line, lineBaseline(line),
-                    getPaddingLeft() - dp(28));
+                    getPaddingLeft() - dp(26));
             // la sévérité de la ligne — la PIRE y vit (l'erreur domine
             // l'avertissement, l'avertissement domine le
             // renseignement) : l'icône au trait de la référence y
@@ -5296,7 +5300,7 @@ public final class EditorView extends View {
             // respirent), le pli demeure au bord du panneau
             if (lineCarriesPreview(line)) {
                 gutter.drawMarker(canvas, Gutter.MARKER_PREVIEW,
-                        getPaddingLeft() - dp(40), cy);
+                        getPaddingLeft() - dp(32), cy);
             }
             // LE MARQUEUR DE PLI DE LA GOUTTIÈRE (le retour de
             // terrain : il vivait dans drawStructure, DANS la
@@ -5458,7 +5462,12 @@ public final class EditorView extends View {
         // joints par le filet vertical pointillé
         float baseline = lineBaseline(line);
         float mid = baseline + (fontMetrics.top + fontMetrics.bottom) / 2.0f;
-        float cx = getPaddingLeft() - dp(10);
+        // LA COLONNE DES PLIS RENTRE (le retour du terrain : le
+        // chevron vivait à -10, son carré de 12 dp DÉBARDAIT du
+        // panneau sur le filet et son ombre — le doigt y voyait des
+        // icônes coupées) : le centre à -16 garde tout le carré
+        // DANS le panneau, à deux dp du filet
+        float cx = getPaddingLeft() - dp(16);
         if (isFolded) {
             gutter.drawFoldAnchor(canvas, Gutter.FOLD_COLLAPSED, cx, mid);
             return;

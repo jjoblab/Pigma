@@ -22,10 +22,14 @@ import java.util.List;
  * de la base de liste ; son étage des correctifs y paie sa hauteur
  * et sa largeur.</p>
  *
- * <p>La carte ne prend jamais le focus ; le doigt sur une rangée la
- * referme (le message se lit), le reste de la carte consomme sans
- * agir ; hors d'elle le geste poursuit sa vie vers l'éditeur, qui y
- * range la carte (un nouvel appui la ferme).</p>
+ * <p>La carte ne prend jamais le focus ; le doigt qui tombe sur
+ * une rangée ou l'étage des correctifs S'ARME, le relâchement sans
+ * traîne la referme (le message se lit) ou joue le correctif armé
+ * (le retour du terrain : la carte se fermait au DOWN — sa liste
+ * défilante ne se défilait jamais) ; la traîne au-delà du seuil
+ * DÉFILE la fenêtre de rangées à la place. Hors d'elle le geste
+ * poursuit sa vie vers l'éditeur, qui y range la carte (un nouvel
+ * appui la ferme).</p>
  *
  * <p>La naissance y vit en POP (la leçon de la référence, étudiée
  * dans {@code docs/etude-codeassist.md} : sa popup d'erreur y
@@ -93,6 +97,16 @@ public final class DiagnosticCard extends ListCard {
 
     /** Le bas de l'étage des correctifs (le toucher y vise). */
     private float fixesBottom;
+
+    /** Le correctif ARMÉ au doigt (son indice dans les correctifs
+     * vivants, -1 : rien d'armé — le relâchement sans traîne le
+     * joue). */
+    private int armedFix = -1;
+
+    /** La carte a-t-elle pris le DOWN (le relâchement n'agit que
+     * sur le geste qui lui appartient — les cartes sœurs jouent au
+     * relâchement pareillement). */
+    private boolean armedTouch;
 
     /** La ligne ancrée (les touches s'y adressent). */
     private int line;
@@ -192,6 +206,8 @@ public final class DiagnosticCard extends ListCard {
         line = -1;
         topRow = 0;
         visibleRows = 0;
+        armedFix = -1;
+        armedTouch = false;
     }
 
     /**
@@ -219,10 +235,15 @@ public final class DiagnosticCard extends ListCard {
     }
 
     /**
-     * Le doigt tombé sur la carte lui appartient : la rangée visée la
-     * REFERME (le message se lit, le diagnostic ne s'exécute pas) ;
-     * le reste de la carte consomme sans agir. Hors de la carte :
-     * faux — le geste poursuit sa vie vers l'éditeur.
+     * Le doigt tombé sur la carte lui appartient : la rangée ou
+     * l'étage des correctifs S'ARME (le relâchement sans traîne y
+     * jouera — la rangée referme la carte, le correctif s'exécute
+     * et la referme) ; le reste de la carte s'arme pareillement (le
+     * relâchement referme, le message se lit) ; LA TRAÎNE au-delà
+     * du seuil défile la fenêtre à la place (le retour du terrain :
+     * la carte se fermait au DOWN, sa liste ne se défilait jamais).
+     * Hors de la carte : faux — le geste poursuit sa vie vers
+     * l'éditeur.
      *
      * @param x l'abscisse du doigt (px, coordonnées de la vue)
      * @param y l'ordonnée du doigt (px, coordonnées de la vue)
@@ -232,24 +253,49 @@ public final class DiagnosticCard extends ListCard {
         if (!isShown() || !contains(x, y)) {
             return false;
         }
-        // L'ÉTAGE DES CORRECTIFS D'ABORD : le doigt sur un correctif
-        // l'EXÉCUTE (la leçon de la référence : le correctif de sa
-        // popup s'applique au clic — « Import class » y insère
-        // l'import) et la carte se range ; le correctif en vol
-        // (l'action asynchrone) se referme pareillement
+        armedTouch = true;
+        // L'ÉTAGE DES CORRECTIFS s'arme au doigt (la leçon de la
+        // référence : le correctif de sa popup s'applique au clic —
+        // « Import class » y insère l'import) : le relâchement sans
+        // traîne l'exécutera et rangera la carte
+        armedFix = -1;
         if (!fixes().isEmpty() && y >= rowsBottomCached
                 && y < fixesBottom) {
             float at = rowsBottomCached + dp(3);
+            int index = 0;
             for (Fix fix : fixes()) {
                 if (y >= at && y < at + fixRowHeight()) {
-                    close();
-                    fix.action().run();
-                    return true;
+                    armedFix = index;
+                    break;
                 }
                 at += fixRowHeight();
+                index++;
             }
         }
+        return true;
+    }
+
+    /**
+     * Le relâchement du geste ARMÉ : le correctif armé s'EXÉCUTE et
+     * la carte se range, le geste armé sans correctif la referme
+     * (le message se lit) ; un relâchement qui ne lui appartient
+     * pas n'y touche pas.
+     *
+     * @return vrai quand la carte a pris son relâchement
+     */
+    public boolean onRelease() {
+        if (!armedTouch) {
+            return false;
+        }
+        armedTouch = false;
+        List<Fix> fixes = fixes();
+        Fix chosen = armedFix >= 0 && armedFix < fixes.size()
+                ? fixes.get(armedFix) : null;
+        armedFix = -1;
         close();
+        if (chosen != null) {
+            chosen.action().run();
+        }
         return true;
     }
 

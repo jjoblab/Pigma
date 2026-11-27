@@ -440,7 +440,9 @@ public final class RobolectricHarness {
         // TEXTE (le caret y va), pas sur la navigation minimap
         float rightX = editor.getWidth() - 10.0f;
         float belowMap = editor.getHeight() - 20.0f;
-        check("la minimap vit par défaut", editor.isMinimapEnabled());
+        check("la minimap ne vit plus par défaut (le retour du terrain)",
+                !editor.isMinimapEnabled());
+        editor.setMinimapEnabled(true);
         int caretBefore = editor.getCaretOffset();
         tap(rightX, belowMap);
         check("le tap sous la carte tombe sur le texte (B2)",

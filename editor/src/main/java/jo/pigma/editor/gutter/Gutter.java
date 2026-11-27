@@ -21,11 +21,10 @@ import jo.pigma.editor.popups.PopupStyle;
  *
  * <p>La gouttière porte son ÉCRAN à elle : le fond translucide du
  * thème (l'alpha porte la translucence — le texte s'y lit dessous)
- * et le filet de bord qui la sépare du corps, une petite ombre
- * portée au bord droit (l'élévation du panneau flottant — la
- * gouttière flotte au-dessus du texte, comme une carte). Le panneau
- * se peint AVANT les numéros, à la trame, sur toute la hauteur de
- * la fenêtre visible.</p>
+ * et le filet de bord qui la sépare du corps — RIEN DE PLUS (le
+ * retour du terrain : l'ombre d'élévation au bord droit mangeait la
+ * colonne des plis). Le panneau se peint AVANT les numéros, à la
+ * trame, sur toute la hauteur de la fenêtre visible.</p>
  *
  * <p>Au-delà de quatre chiffres le numéro se tronque honnêtement (les
  * trois derniers, précédés d'une ellipse) : la gouttière ne s'élargit
@@ -98,12 +97,6 @@ public final class Gutter {
     /** L'alpha du panneau de la gouttière (45 pour cent — discret). */
     private static final float PANEL_ALPHA = 0.45f;
 
-    /** La largeur de l'ombre d'élévation au bord droit (dp). */
-    private static final int SHADOW_WIDTH_DP = 4;
-
-    /** Les marches de l'ombre (le dégradé de l'élévation). */
-    private static final int SHADOW_STEPS = 2;
-
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private final Paint markerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -115,9 +108,6 @@ public final class Gutter {
 
     /** Le filet du bord droit du panneau. */
     private final Paint panelBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
-
-    /** L'ombre d'élévation, une marche par trait. */
-    private final Paint shadowPaint = new Paint();
 
     /** Le rectangle du panneau, réutilisé à la trame (aucune allocation). */
     private final RectF panelRect = new RectF();
@@ -151,7 +141,6 @@ public final class Gutter {
         panelBorder.setStyle(Paint.Style.STROKE);
         panelBorder.setStrokeWidth(1.0f * density);
         panelBorder.setColor(0x14000000);
-        shadowPaint.setStyle(Paint.Style.FILL);
         foldPaint.setStyle(Paint.Style.STROKE);
         foldPaint.setStrokeWidth(1.4f * density);
         foldPaint.setColor(0xFF9E9E9E);
@@ -315,10 +304,10 @@ public final class Gutter {
     }
 
     /**
-     * Dessine le panneau de la gouttière : le fond translucide, le
-     * filet du bord droit, et l'ombre d'élévation qui le détache du
-     * corps (la gouttière flotte au-dessus du texte — une carte à
-     * gauche de la fenêtre).
+     * Dessine le panneau de la gouttière : le fond translucide et le
+     * filet du bord droit — RIEN DE PLUS (le retour du terrain :
+     * l'ombre d'élévation qui naissait au bord recouvrait les icônes
+     * de pli, la gouttière n'a plus d'élévation).
      *
      * @param canvas le canevas de la trame
      * @param top    le bord haut de la fenêtre (px écran)
@@ -330,15 +319,6 @@ public final class Gutter {
         float left = 0.0f;
         panelRect.set(left, top, right, bottom);
         canvas.drawRect(panelRect, panelPaint);
-        // l'élévation : l'ombre se pose en marches décroissantes au
-        // bord droit (un dégradé honnête, sans canevas hors écran)
-        float step = dp(SHADOW_WIDTH_DP) / SHADOW_STEPS;
-        for (int at = 0; at < SHADOW_STEPS; at++) {
-            float edge = right + step * at;
-            int alpha = (int) (22.0f * (SHADOW_STEPS - at) / SHADOW_STEPS);
-            shadowPaint.setColor((alpha << 24) | 0x00000000);
-            canvas.drawRect(edge, top, edge + step, bottom, shadowPaint);
-        }
         // le filet du bord : la ligne qui sépare la gouttière du corps
         canvas.drawLine(right, top, right, bottom, panelBorder);
     }

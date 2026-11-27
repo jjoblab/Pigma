@@ -128,8 +128,10 @@ signes, plis, guides de blocs.
   doigt avec poignées et loupe, double-tap au mot, traîné-déposé,
   copier/couper/coller par la barre de sélection.
 - **La navigation** : gouttière (numéros, marqueurs de diagnostic,
-  points d'arrêt), minimap avec pastilles annuler/rétablir,
-  recherche/remplacement (feuille basse), aller-à la ligne.
+  points d'arrêt), minimap avec pastilles annuler/rétablir
+  (`setMinimapEnabled(true)` la pose — elle ne vit plus par défaut,
+  l'hôte seul la demande), recherche/remplacement (feuille basse),
+  aller-à la ligne.
 - **Le clavier** : connexion IME complète (composition, accents,
   claviers par événements), complétion qui survit à la frappe,
   signature des appels, documentation au survol.
