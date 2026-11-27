@@ -14,7 +14,7 @@ conventions communes vivent dans le `build.gradle.kts` racine — aucun
 | `:syntax` | JVM pur | moteur de coloration : contrat du lexeur (états, redémarrage), lexeurs générés par langage (JFlex, code versionné — Java, XML, JSON, Kotlin avec pile de contextes internée dans l'entier d'état), famille générique paramétrable, portées, thème à repli, document ligne par ligne (règle d'arrêt, révisions), fenêtre paresseuse (points de contrôle, tranches, plafonds), fil de fond annulable (clichés, application révision-vérifiée) | **présent** |
 | `:analysis` | JVM pur | analyseur tolérant (L2), annotateurs sémantiques (L3), symboles, index, diagnostics, complétion de base | **présent** |
 | `:ai` | JVM pur | couche d'intégration de l'IA : les types et les interfaces que L'HÔTE implémente (`AiBackend` — capacités, démarrage annulable ; `AiRequest` — le contexte préparé, budget en caractères ; `AiResult` — scellée au texte lu, au remplacement, à l'insertion) — Pigma n'y connaît ni fournisseur, ni modèle, ni réseau | **présent** |
-| `:editor` | bibliothèque Android | vue d'édition (Canvas), saisie/IME, sélection et poignées, loupe de précision, défilement, gouttière, pliage, recherche/remplacement, popups, odomètre de trame avec attribution, façade hôte (chargement, réouverture du même texte sans re-remplissage) | **présent** |
+| `:editor` | bibliothèque Android | vue d'édition (Canvas), saisie/IME, sélection et poignées, loupe de précision, défilement, gouttière, pliage, recherche/remplacement, popups, odomètre de trame avec attribution, façade hôte (chargement, réouverture du même texte sans re-remplissage), façades d'intégration (LspEditor — le serveur de langage ; AiAssistant — l'IA de l'hôte) | **présent** |
 | `:lsp` | optionnel | client LSP sur lsp4j (la seule dépendance extérieure du dépôt, `NOTICE.md` la consigne) : adaptateurs du domaine, liaison à corrélation de requêtes, synchronisation du document par delta (l'ombre de la dernière synchronisation), raccordements en processus et par processus | **présent** |
 | `:sample` | application | instrument de test du projet, jamais publiée | **présent** |
 
@@ -83,6 +83,9 @@ editor/src/main/java/jo/pigma/editor/
   accessibility/             (EditorAccessibility, PopupAccessibility —
                               le nœud éditable, les rangées virtuelles)
   lsp/                       (la façade LspEditor — la liaison au serveur)
+  ai/                        (la façade AiAssistant — l'IA de l'hôte
+                              dans la vue : les entrées, le vol
+                              annulable, les réponses vérifiées)
   internal/                  (layout, render, scroll, search, touch —
                               la géométrie extraite, testée en JVM)
 ```

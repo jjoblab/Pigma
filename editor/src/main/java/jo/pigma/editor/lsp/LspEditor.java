@@ -2237,7 +2237,9 @@ public final class LspEditor {
                                     action.title(),
                                     () -> view.applyTextEdits(action.edits())));
                         } else {
-                            fixes.add(new DiagnosticCard.Fix(action.title(),
+                            fixes.add(new DiagnosticCard.Fix(
+                                    view.popupStrings().fixTitle(
+                                            action.title()),
                                     () -> view.applyTextEdits(action.edits())));
                         }
                     }

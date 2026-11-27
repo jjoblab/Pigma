@@ -24,3 +24,9 @@ l'hôte choisit où partent les données et qui les paie.
 
 La pureté y vit d'un test ArchUnit (aucune dépendance à Android),
 le contrat d'un test JVM (immuable, nuls vidés, bornes vérifiées).
+
+La FAÇADE côté vue vit au module `:editor`
+(`jo.pigma.editor.ai.AiAssistant`) : elle branche le moteur de
+l'hôte à l'éditeur — les entrées à l'ampoule et à l'étage des
+correctifs, le vol annulable, les réponses vérifiées. Ce module
+demeure ce qu'il est : des types et des interfaces, rien d'Android.

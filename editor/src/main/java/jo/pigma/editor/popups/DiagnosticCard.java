@@ -335,12 +335,14 @@ public final class DiagnosticCard extends ListCard {
         // corps en cercle, le culot en deux barres
         BulbIcon.draw(canvas, fixPaint, ix, cy, side);
         // le titre du correctif RESTE DANS LE CADRE (le retour du
-        // terrain : « Corriger : … » y débordait) : la largeur
-        // disponible se mesure au pinceau du correctif, l'ellipsize
-        // coupe à l'excédent, jamais au-delà du mur
+        // terrain : il y débordait) : la largeur disponible se mesure
+        // au pinceau du correctif, l'ellipsize coupe à l'excédent,
+        // jamais au-delà du mur. L'étiquette vit ENTIÈRE au correctif
+        // — le correctif du serveur dit « Corriger : … », la rangée de
+        // l'assistant dit ce qu'elle fait
         float available = Math.max(0.0f, poseX + cardW - dp(14)
                 - (poseX + dp(14) + dp(ICON_DP) + dp(8)));
-        String title = ellipsizeHead("Corriger : " + fix.title(), fixTextPaint,
+        String title = ellipsizeHead(fix.title(), fixTextPaint,
                 available);
         canvas.drawText(title, poseX + dp(14) + dp(ICON_DP) + dp(8),
                 baseline, fixTextPaint);
@@ -496,7 +498,7 @@ public final class DiagnosticCard extends ListCard {
         // la carte trop étroite pour son propre correctif)
         for (Fix fix : fixes()) {
             widest = Math.max(widest,
-                    fixTextPaint.measureText("Corriger : " + fix.title()));
+                    fixTextPaint.measureText(fix.title()));
         }
         return widest + dp(ICON_DP) + dp(16) + 2 * dp(14);
     }

@@ -44,6 +44,19 @@ lsp.requestReferences();       // les usages (se surlignent en bleu)
 lsp.requestRename();           // la carte au caret, une unité d'annulation
 lsp.formatDocument();          // le formatage du serveur
 lsp.setNavigationListener((uri, places) -> { /* les places d'ailleurs */ });
+
+// optionnel — l'IA DE L'HÔTE, TROIS lignes (la façade câble tout :
+// les entrées « Expliquer », « Documenter », « Écrire le test » à
+// l'ampoule, « Expliquer l'erreur », « Corriger » à l'étage des
+// correctifs ; le contexte part PRÉPARÉ et FILTRÉ par les crochets
+// de l'hôte ; le vol se coupe au doigt — Pigma n'y connaît aucun
+// fournisseur, l'hôte implémente AiBackend)
+AiAssistant ai = new AiAssistant(editor, myBackend,
+        new ContextBuilder(
+                (name, language) -> !name.endsWith(".env"), // la politique
+                null));                                      // ou SON filtre
+ai.setDocument("Bonjour.java", "java");
+ai.setTestListener(test -> { /* l'hôte seul crée le fichier */ });
 ```
 
 Le clavier, le défilement, la sélection et ses poignées, la loupe,
@@ -61,6 +74,7 @@ démonstration, pas de l'intégration.
 | `popups/PopupStyle` | le style PORTÉ PAR L'HÔTE : fond translucide, encres, corps des textes, hauteur des rangées, bornes de largeur, rayon des coins |
 | `gutter/` | la gouttière : numéros, marqueurs de diagnostic, l'ampoule des intentions |
 | `lsp/LspEditor` | la façade du serveur de langage (l'étude de l'éditeur de référence — voir le README de `:lsp`) : le protocole de navigation, d'édition et de document (symboles, indices, plis du serveur, jetons sémantiques) |
+| `ai/AiAssistant` | la façade de l'IA DE L'HÔTE (voir le README de `:ai`) : les entrées à l'ampoule et à l'étage des correctifs, le vol ANNULABLE (la carte d'attente et son bouton), les réponses vérifiées (le texte qui se lit balisé, le remplacement et l'insertion par une unité d'annulation — un texte qui a bougé ne se pose pas) |
 | `input/` | le contrat d'entrée et la connexion IME (la frappe route vers le tampon) |
 | `folding/` | le modèle des plis et ses bornes (celles du lexer, celles du serveur de langage composées) |
 | `selection/` | l'état et le rendu de la sélection (poignées comprises) |

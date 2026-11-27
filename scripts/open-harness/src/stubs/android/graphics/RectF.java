@@ -47,6 +47,25 @@ public final class RectF {
     }
 
     /**
+     * Repose les bornes aux bornes d'un autre rectangle.
+     *
+     * @param other le rectangle source
+     */
+    public void set(RectF other) {
+        set(other.left, other.top, other.right, other.bottom);
+    }
+
+    /** Le rectangle est-il VIDE (bornes nulles ou inversées) ? */
+    public boolean isEmpty() {
+        return right <= left || bottom <= top;
+    }
+
+    /** Vide le rectangle (les bornes s'y annulent). */
+    public void setEmpty() {
+        set(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+
+    /**
      * Repose les bornes du rectangle.
      *
      * @param left   le bord gauche

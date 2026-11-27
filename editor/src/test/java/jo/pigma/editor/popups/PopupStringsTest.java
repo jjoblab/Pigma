@@ -43,6 +43,42 @@ public class PopupStringsTest {
                 strings.definitionEntry());
         assertEquals("le correctif", "Correctif : Couper les espaces",
                 strings.fixTitle("Couper les espaces"));
+        // les chaînes de l'assistant
+        assertEquals("le titre de l'assistant", "Assistant",
+                strings.assistant());
+        assertEquals("le corps de l'attente", "Réflexion…",
+                strings.aiThinking());
+        assertEquals("le bouton d'annulation", "Annuler",
+                strings.aiCancel());
+        assertEquals("l'entrée d'explication", "Expliquer",
+                strings.aiExplain());
+        assertEquals("l'entrée d'explication de l'erreur",
+                "Expliquer l'erreur", strings.aiExplainError());
+        assertEquals("l'entrée de correction",
+                "Corriger avec l'assistant", strings.aiFix());
+        assertEquals("l'entrée de documentation", "Documenter",
+                strings.aiDocument());
+        assertEquals("l'entrée du test", "Écrire le test",
+                strings.aiWriteTest());
+        // une phrase par famille de panne
+        assertEquals("la panne d'indisponibilité",
+                "L'assistant n'est pas disponible.",
+                strings.aiUnavailable());
+        assertEquals("la panne d'annulation",
+                "La demande fut annulée.", strings.aiCancelled());
+        assertEquals("la panne de délai",
+                "Le temps de réponse est écoulé.",
+                strings.aiTimeout());
+        assertEquals("la panne de refus",
+                "La demande fut refusée.", strings.aiRefused());
+        assertEquals("la panne interne",
+                "Panne interne de l'assistant.",
+                strings.aiInternal());
+        assertEquals("le texte changé",
+                "Le texte a changé depuis la demande — la réponse ne se pose pas.",
+                strings.aiStale());
+        assertEquals("la réponse muette",
+                "La réponse est vide.", strings.aiEmpty());
     }
 
     /** Le bâtisseur y remplace UNE valeur — le reste demeure. */
@@ -62,6 +98,58 @@ public class PopupStringsTest {
         // l'objet figé : les défauts ne bougent pas
         assertNotSame("un objet neuf à chaque défaut",
                 PopupStrings.defaults(), PopupStrings.defaults());
+    }
+
+    /** Le bâtisseur localise l'assistant comme le reste (l'hôte y
+     * pose sa langue — le moteur de l'hôte n'y traduit rien). */
+    @Test
+    public void theBuilderReplacesTheAssistantStrings() {
+        PopupStrings strings = PopupStrings.builder()
+                .assistant("Assistant AI")
+                .aiThinking("Thinking…")
+                .aiCancel("Cancel")
+                .aiExplain("Explain")
+                .aiExplainError("Explain the error")
+                .aiFix("Fix with the assistant")
+                .aiDocument("Document")
+                .aiWriteTest("Write the test")
+                .aiUnavailable("The assistant is unavailable.")
+                .aiCancelled("The request was cancelled.")
+                .aiTimeout("The response timed out.")
+                .aiRefused("The request was refused.")
+                .aiInternal("The assistant failed internally.")
+                .aiStale("The text changed since the request.")
+                .aiEmpty("The response is empty.")
+                .build();
+        assertEquals("le titre posé", "Assistant AI", strings.assistant());
+        assertEquals("l'attente posée", "Thinking…", strings.aiThinking());
+        assertEquals("l'annulation posée", "Cancel", strings.aiCancel());
+        assertEquals("l'explication posée", "Explain", strings.aiExplain());
+        assertEquals("l'erreur posée", "Explain the error",
+                strings.aiExplainError());
+        assertEquals("la correction posée", "Fix with the assistant",
+                strings.aiFix());
+        assertEquals("la documentation posée", "Document",
+                strings.aiDocument());
+        assertEquals("le test posé", "Write the test",
+                strings.aiWriteTest());
+        assertEquals("la panne posée", "The assistant is unavailable.",
+                strings.aiUnavailable());
+        assertEquals("l'annulation d'attente posée",
+                "The request was cancelled.", strings.aiCancelled());
+        assertEquals("le délai posé", "The response timed out.",
+                strings.aiTimeout());
+        assertEquals("le refus posé", "The request was refused.",
+                strings.aiRefused());
+        assertEquals("la panne interne posée",
+                "The assistant failed internally.", strings.aiInternal());
+        assertEquals("le texte changé posé",
+                "The text changed since the request.", strings.aiStale());
+        assertEquals("la réponse vide posée", "The response is empty.",
+                strings.aiEmpty());
+        // le reste demeure (le français courant)
+        assertEquals("les correctifs du serveur demeurent",
+                "Correctif : Couper", strings.fixTitle("Couper"));
     }
 
     /** Les compteurs se composent — le singulier vit aussi. */

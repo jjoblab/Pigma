@@ -39,6 +39,13 @@ dependencies {
     api(project(":core"))
     api(project(":syntax"))
     api(project(":analysis"))
+    // La couche d'intégration de l'IA y vit aussi : la façade
+    // editor/ai/AiAssistant câble le moteur de l'hôte à la vue à la
+    // place de l'hôte (le contrat que le module :ai définit — Pigma
+    // n'y connaît aucune intelligence artificielle). Le module
+    // demeure pur ; l'hôte qui n'en veut pas ne branche jamais la
+    // façade, rien ne se propose.
+    api(project(":ai"))
     // Le client du serveur de langage y vit aussi : la façade
     // editor/lsp/LspEditor câble le serveur à la vue à la place de
     // l'hôte (l'étude de l'éditeur de référence — son module

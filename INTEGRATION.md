@@ -144,6 +144,45 @@ proprement. Sans serveur, l'éditeur vit déjà : complétion par
 mots-clés et symboles du document, diagnostics d'appariement des
 signes, plis, guides de blocs.
 
+## 6. L'IA (facultatif, trois lignes — VOTRE moteur)
+
+Pigma ne connaît AUCUNE intelligence artificielle : ni fournisseur,
+ni modèle, ni clé, ni réseau. Il branche VOTRE moteur à l'éditeur —
+vous implémentez `AiBackend` (le module `:ai`, pur), la façade fait
+le reste :
+
+```java
+import jo.pigma.ai.AiBackend;
+import jo.pigma.ai.ContextBuilder;
+import jo.pigma.editor.ai.AiAssistant;
+
+AiAssistant ai = new AiAssistant(editor, myBackend,
+        new ContextBuilder(
+                (name, lang) -> !name.contains("secret"), // la POLITIQUE
+                null));                                    // ou VOTRE filtre
+ai.setDocument("doc.java", "java");
+ai.setTestListener(test -> { /* vous seul créez le fichier */ });
+```
+
+- **Ce que l'éditeur apporte** : les entrées à l'ampoule
+  (« Expliquer », « Documenter », « Écrire le test ») et à l'étage
+  des correctifs (« Expliquer l'erreur », « Corriger avec
+  l'assistant ») — uniquement les tâches que votre moteur déclare ;
+  le CONTEXTE PRÉPARÉ (préfixe/suffixe bornés au budget en
+  caractères, sélection, bloc englobant de la profondeur
+  d'accolades, diagnostics) ; le vol ANNULABLE au doigt ; les
+  réponses VÉRIFIÉES (le texte qui se lit arrive balisé, le
+  remplacement et l'insertion se posent par une unité
+  d'annulation — un texte qui a bougé depuis la demande ne se pose
+  pas) ; une phrase par famille de panne.
+- **Ce que vous gardez** : où partent les données, ce qui les paie,
+  vos secrets (la politique exclut vos documents AVANT que le
+  contexte ne se lise, le filtre masque ce qui resterait ;
+  `DefaultContextFilter`, le filet par défaut, ne remplace jamais
+  une politique sérieuse).
+- Les chaînes se localisent (`setPopupStrings` — les quinze
+  chaînes de l'assistant y vivent avec toutes les autres).
+
 ## Ce que vous avez déjà, sans rien brancher
 
 - **Coloration L1/L2/L3** : lexeurs JFlex (Java, XML, JSON, Kotlin,

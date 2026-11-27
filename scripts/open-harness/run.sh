@@ -57,6 +57,7 @@ find "$HERE/src/stubs" \
      "$ROOT/core/src/main/java" \
      "$ROOT/syntax/src/main/java" \
      "$ROOT/analysis/src/main/java" \
+     "$ROOT/ai/src/main/java" \
      "$ROOT/editor/src/main/java" \
      "$ROOT/lsp/src/main/java" \
      "$ROOT/sample/src/main/java" \

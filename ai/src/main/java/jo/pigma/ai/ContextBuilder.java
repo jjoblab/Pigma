@@ -136,6 +136,20 @@ public final class ContextBuilder {
     }
 
     /**
+     * Le document est-il autorisé par la POLITIQUE de l'hôte ? (La
+     * visibilité d'une action s'y éprouve AVANT de la proposer : une
+     * tâche non acceptée ou un document refusé ne paraissent pas.)
+     *
+     * @param documentName le nom du document
+     * @param languageId   le langage du document
+     * @return vrai quand la politique l'autorise (toujours sans
+     *         politique)
+     */
+    public boolean allowed(String documentName, String languageId) {
+        return policy == null || policy.isAllowed(documentName, languageId);
+    }
+
+    /**
      * PRÉPARE la demande (B1) : la politique s'éprouve d'abord (un
      * document refusé rend NUL — rien ne se construit, les extraits
      * ne se demandent pas) ; le contexte se construit (le préfixe et

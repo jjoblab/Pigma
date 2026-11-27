@@ -95,6 +95,16 @@ public final class InfoPopup {
     /** Le doigt a-t-il traîné au-delà du seuil (le tap ne se confond pas) ? */
     private boolean dragged;
 
+    /** L'étiquette du bouton ANNULER (null : aucun vol à annuler —
+     * le petit bouton ne vit que pendant l'attente d'une réponse
+     * en vol, l'assistant de l'hôte l'arme au départ et le range à
+     * l'issue). */
+    private String cancelLabel;
+
+    /** Le rectangle du bouton annuler (posé à la trame, le doigt y
+     * vise). */
+    private final RectF cancelRect = new RectF();
+
     private float density = 1.0f;
 
     /**
@@ -237,6 +247,50 @@ public final class InfoPopup {
         body = null;
         title = null;
         scrollY = 0.0f;
+        cancelLabel = null;
+    }
+
+    /**
+     * ARME le bouton ANNULER (B2) : la réponse en vol se laisse
+     * arrêter au doigt — le petit bouton vit au bas de la carte
+     * tant que l'étiquette pose, le tap dessus se lit à
+     * {@link #cancelHit(float, float)}.
+     *
+     * @param label l'étiquette du bouton (null : le bouton se range)
+     */
+    public void armCancel(String label) {
+        cancelLabel = label;
+    }
+
+    /**
+     * Le doigt est-il sur le bouton ANNULER armé ? (Le doigt qui
+     * vise la carte pendant l'attente : le bouton au bas.)
+     *
+     * @param x l'abscisse du doigt (px, coordonnées de la vue)
+     * @param y l'ordonnée du doigt (px, coordonnées de la vue)
+     * @return vrai quand le bouton vit et que le doigt y tombe
+     */
+    public boolean cancelHit(float x, float y) {
+        return cancelLabel != null && !cancelRect.isEmpty()
+                && cancelRect.contains(x, y);
+    }
+
+    /**
+     * Le bouton ANNULER vit-il ? (La carte s'annonce « annulable »
+     * tant que la réponse vole.)
+     */
+    public boolean cancelArmed() {
+        return cancelLabel != null;
+    }
+
+    /**
+     * La pose du bouton ANNULER (la dernière trame l'a posée — le
+     * harnais y vise le doigt ; vide quand le bouton ne vit pas).
+     *
+     * @return la pose du bouton, une copie
+     */
+    public RectF cancelRect() {
+        return new RectF(cancelRect);
     }
 
     /**
@@ -423,6 +477,30 @@ public final class InfoPopup {
                 boxWidth - 2 * padding);
         drawScrollbar(canvas, rows, contentHeight, boxHeight);
         canvas.restoreToCount(clip);
+        // LE BOUTON ANNULER (B2) : la réponse en vol se laisse
+        // arrêter — le petit bouton au bas de la carte, à l'encre
+        // d'action, pendant l'attente seule
+        if (cancelLabel != null) {
+            float pillHeight = 28.0f * density;
+            float pillWidth = Math.min(boxWidth - 2 * padding,
+                    bodyPaint.measureText(cancelLabel) + 24.0f * density);
+            float pillLeft = left + boxWidth - padding - pillWidth;
+            float pillTop = Math.max(top, top + boxHeight - pillHeight
+                    - 6.0f * density);
+            cancelRect.set(pillLeft, pillTop, pillLeft + pillWidth,
+                    pillTop + pillHeight);
+            background.setColor(style.accentArgb());
+            canvas.drawRoundRect(cancelRect, pillHeight / 2.0f,
+                    pillHeight / 2.0f, background);
+            bodyPaint.setColor(0xFFFFFFFF);
+            canvas.drawText(cancelLabel,
+                    cancelRect.centerX() - bodyPaint.measureText(cancelLabel)
+                            / 2.0f,
+                    cancelRect.centerY() + density * 2.5f, bodyPaint);
+            applyStyle();
+        } else {
+            cancelRect.setEmpty();
+        }
         canvas.restore();
         canvas.restore();
     }

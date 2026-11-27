@@ -17,6 +17,11 @@ import java.util.Locale;
  * moitié. Les compteurs s'y composent ({@link #targetsCount(int)},
  * {@link #resultsCount(int)}…) : le nombre porte, le nom suit — le
  * singulier y vit aussi (« 1 cible », « 2 cibles »).</p>
+ *
+ * <p>LES CHAÎNES DE L'ASSISTANT (B2) y vivent aussi : les entrées de
+ * l'IA de l'hôte (« Expliquer », « Corriger avec l'assistant »…),
+ * l'attente annulable, une phrase par famille de panne — la vue ne
+ * connaît aucune IA, elle y lit ses libellés comme toute carte.</p>
  */
 public final class PopupStrings {
 
@@ -143,6 +148,39 @@ public final class PopupStrings {
     /** Le préfixe « Correctif : » des correctifs du serveur. */
     private final String fixPrefix;
 
+    // LES CHAÎNES DE L'ASSISTANT (B2 — l'IA de l'hôte dans la vue)
+
+    /** Le titre de la carte de l'assistant (ses réponses s'y lisent). */
+    private final String assistant;
+    /** Le corps de l'ATTENTE (la réponse vole). */
+    private final String aiThinking;
+    /** L'étiquette du bouton ANNULER (la réponse en vol). */
+    private final String aiCancel;
+    /** L'entrée « Expliquer » (l'ampoule). */
+    private final String aiExplain;
+    /** L'entrée « Expliquer l'erreur » (l'étage des correctifs). */
+    private final String aiExplainError;
+    /** L'entrée « Corriger avec l'assistant » (l'étage des correctifs). */
+    private final String aiFix;
+    /** L'entrée « Documenter » (l'ampoule). */
+    private final String aiDocument;
+    /** L'entrée « Écrire le test » (l'ampoule). */
+    private final String aiWriteTest;
+    /** La phrase de la panne INDISPONIBLE. */
+    private final String aiUnavailable;
+    /** La phrase de la panne ANNULÉE. */
+    private final String aiCancelled;
+    /** La phrase de la panne DÉLAI. */
+    private final String aiTimeout;
+    /** La phrase de la panne REFUSÉE. */
+    private final String aiRefused;
+    /** La phrase de la panne INTERNE. */
+    private final String aiInternal;
+    /** La phrase du texte CHANGÉ depuis la demande (la réponse ne se pose pas). */
+    private final String aiStale;
+    /** La phrase de la réponse MUETTE (vide). */
+    private final String aiEmpty;
+
     private PopupStrings(Builder builder) {
         structure = builder.structure;
         problems = builder.problems;
@@ -198,6 +236,21 @@ public final class PopupStrings {
         formatEntry = builder.formatEntry;
         symbolsEntry = builder.symbolsEntry;
         fixPrefix = builder.fixPrefix;
+        assistant = builder.assistant;
+        aiThinking = builder.aiThinking;
+        aiCancel = builder.aiCancel;
+        aiExplain = builder.aiExplain;
+        aiExplainError = builder.aiExplainError;
+        aiFix = builder.aiFix;
+        aiDocument = builder.aiDocument;
+        aiWriteTest = builder.aiWriteTest;
+        aiUnavailable = builder.aiUnavailable;
+        aiCancelled = builder.aiCancelled;
+        aiTimeout = builder.aiTimeout;
+        aiRefused = builder.aiRefused;
+        aiInternal = builder.aiInternal;
+        aiStale = builder.aiStale;
+        aiEmpty = builder.aiEmpty;
     }
 
     /**
@@ -523,6 +576,84 @@ public final class PopupStrings {
         return fixPrefix + " " + (serverTitle == null ? "" : serverTitle);
     }
 
+    // LES CHAÎNES DE L'ASSISTANT (B2)
+
+    /** Le titre de la carte de l'assistant (ses réponses s'y lisent). */
+    public String assistant() {
+        return assistant;
+    }
+
+    /** Le corps de l'ATTENTE (la réponse vole). */
+    public String aiThinking() {
+        return aiThinking;
+    }
+
+    /** L'étiquette du bouton ANNULER (la réponse en vol). */
+    public String aiCancel() {
+        return aiCancel;
+    }
+
+    /** L'entrée « Expliquer » (l'ampoule). */
+    public String aiExplain() {
+        return aiExplain;
+    }
+
+    /** L'entrée « Expliquer l'erreur » (l'étage des correctifs). */
+    public String aiExplainError() {
+        return aiExplainError;
+    }
+
+    /** L'entrée « Corriger avec l'assistant » (l'étage des correctifs). */
+    public String aiFix() {
+        return aiFix;
+    }
+
+    /** L'entrée « Documenter » (l'ampoule). */
+    public String aiDocument() {
+        return aiDocument;
+    }
+
+    /** L'entrée « Écrire le test » (l'ampoule). */
+    public String aiWriteTest() {
+        return aiWriteTest;
+    }
+
+    /** La phrase de la panne INDISPONIBLE. */
+    public String aiUnavailable() {
+        return aiUnavailable;
+    }
+
+    /** La phrase de la panne ANNULÉE. */
+    public String aiCancelled() {
+        return aiCancelled;
+    }
+
+    /** La phrase de la panne DÉLAI. */
+    public String aiTimeout() {
+        return aiTimeout;
+    }
+
+    /** La phrase de la panne REFUSÉE. */
+    public String aiRefused() {
+        return aiRefused;
+    }
+
+    /** La phrase de la panne INTERNE. */
+    public String aiInternal() {
+        return aiInternal;
+    }
+
+    /** La phrase du texte CHANGÉ depuis la demande (la réponse ne
+     * se pose pas). */
+    public String aiStale() {
+        return aiStale;
+    }
+
+    /** La phrase de la réponse MUETTE (vide). */
+    public String aiEmpty() {
+        return aiEmpty;
+    }
+
     /**
      * Le bâtisseur des chaînes : chaque poseur y remplace UNE valeur,
      * {@link #build()} fige le tout.
@@ -583,6 +714,21 @@ public final class PopupStrings {
         private String formatEntry = "Formater le document";
         private String symbolsEntry = "Les symboles du document";
         private String fixPrefix = "Correctif :";
+        private String assistant = "Assistant";
+        private String aiThinking = "Réflexion…";
+        private String aiCancel = "Annuler";
+        private String aiExplain = "Expliquer";
+        private String aiExplainError = "Expliquer l'erreur";
+        private String aiFix = "Corriger avec l'assistant";
+        private String aiDocument = "Documenter";
+        private String aiWriteTest = "Écrire le test";
+        private String aiUnavailable = "L'assistant n'est pas disponible.";
+        private String aiCancelled = "La demande fut annulée.";
+        private String aiTimeout = "Le temps de réponse est écoulé.";
+        private String aiRefused = "La demande fut refusée.";
+        private String aiInternal = "Panne interne de l'assistant.";
+        private String aiStale = "Le texte a changé depuis la demande — la réponse ne se pose pas.";
+        private String aiEmpty = "La réponse est vide.";
 
         /** Un bâtisseur aux valeurs par défaut. */
         public Builder() {
@@ -909,6 +1055,96 @@ public final class PopupStrings {
         /** Pose le préfixe des correctifs du serveur. */
         public Builder fixPrefix(String value) {
             fixPrefix = value;
+            return this;
+        }
+
+        /** Pose le titre de la carte de l'assistant. */
+        public Builder assistant(String value) {
+            assistant = value;
+            return this;
+        }
+
+        /** Pose le corps de l'attente. */
+        public Builder aiThinking(String value) {
+            aiThinking = value;
+            return this;
+        }
+
+        /** Pose l'étiquette du bouton annuler. */
+        public Builder aiCancel(String value) {
+            aiCancel = value;
+            return this;
+        }
+
+        /** Pose l'entrée « Expliquer ». */
+        public Builder aiExplain(String value) {
+            aiExplain = value;
+            return this;
+        }
+
+        /** Pose l'entrée « Expliquer l'erreur ». */
+        public Builder aiExplainError(String value) {
+            aiExplainError = value;
+            return this;
+        }
+
+        /** Pose l'entrée « Corriger avec l'assistant ». */
+        public Builder aiFix(String value) {
+            aiFix = value;
+            return this;
+        }
+
+        /** Pose l'entrée « Documenter ». */
+        public Builder aiDocument(String value) {
+            aiDocument = value;
+            return this;
+        }
+
+        /** Pose l'entrée « Écrire le test ». */
+        public Builder aiWriteTest(String value) {
+            aiWriteTest = value;
+            return this;
+        }
+
+        /** Pose la phrase de la panne indisponible. */
+        public Builder aiUnavailable(String value) {
+            aiUnavailable = value;
+            return this;
+        }
+
+        /** Pose la phrase de la panne annulée. */
+        public Builder aiCancelled(String value) {
+            aiCancelled = value;
+            return this;
+        }
+
+        /** Pose la phrase de la panne délai. */
+        public Builder aiTimeout(String value) {
+            aiTimeout = value;
+            return this;
+        }
+
+        /** Pose la phrase de la panne refusée. */
+        public Builder aiRefused(String value) {
+            aiRefused = value;
+            return this;
+        }
+
+        /** Pose la phrase de la panne interne. */
+        public Builder aiInternal(String value) {
+            aiInternal = value;
+            return this;
+        }
+
+        /** Pose la phrase du texte changé. */
+        public Builder aiStale(String value) {
+            aiStale = value;
+            return this;
+        }
+
+        /** Pose la phrase de la réponse vide. */
+        public Builder aiEmpty(String value) {
+            aiEmpty = value;
             return this;
         }
 

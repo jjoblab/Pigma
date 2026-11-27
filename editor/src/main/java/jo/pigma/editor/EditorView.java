@@ -651,6 +651,16 @@ public final class EditorView extends View {
     /** Le fournisseur d'actions rapides du serveur de langage (la façade y pose les fonctions du protocole). */
     private QuickActionProvider serverQuickActionProvider;
 
+    /** Le fournisseur de l'assistant de l'hôte (la façade de l'IA y
+     * pose ses entrées — l'ampoule et l'étage des correctifs les
+     * portent APRÈS celles du serveur). */
+    private AssistantProvider assistantProvider;
+
+    /** L'action d'annulation de la popup d'info armée (le vol de
+     * l'assistant s'y coupe au doigt — le tap sur le bouton
+     * ANNULER de la carte d'attente l'exécute). */
+    private Runnable infoCancelAction;
+
     /** Les actions rapides vivantes de la ligne du curseur (l'ampoule en vit). */
     private List<QuickActionCard.Entry> quickActions = List.of();
 
@@ -1618,6 +1628,100 @@ public final class EditorView extends View {
     }
 
     /**
+     * Le fournisseur de L'ASSISTANT de l'hôte (B2) : la vue ne
+     * connaît AUCUNE intelligence artificielle — elle connaît un
+     * fournisseur d'entrées comme les autres (l'ampoule y porte
+     * les siennes APRÈS celles du serveur, l'étage des correctifs
+     * de la carte de diagnostic les y rallonge). La façade de
+     * l'assistant ({@code AiAssistant}) y implémente le contrat :
+     * elle décide seule ce qui se propose (les tâches que le
+     * moteur de l'hôte accepte, la politique de ses documents), la
+     * vue n'y teste rien.
+     *
+     * <p>Les rangées de l'étage des correctifs reçoivent la plage
+     * du premier diagnostic LOCAL de la ligne quand elle se connaît
+     * (-1 sinon — le correctif de l'assistant exige une plage
+     * vraie, l'explication vit du message seul).</p>
+     */
+    public interface AssistantProvider {
+
+        /**
+         * Les entrées de l'ampoule à cette ligne (les tâches qui se
+         * proposent au doigt).
+         *
+         * @param line   l'indice de la ligne
+         * @param column la colonne du curseur sur la ligne
+         * @return les entrées, jamais null (vide : aucune ne se
+         *         propose)
+         */
+        List<QuickActionCard.Entry> quickActionsAt(int line, int column);
+
+        /**
+         * Les rangées de l'assistant à l'étage des correctifs du
+         * diagnostic d'une ligne.
+         *
+         * @param line    l'indice de la ligne
+         * @param message le message du premier diagnostic, vide
+         *                s'il n'y en a pas
+         * @param start   le début de la plage du premier diagnostic
+         *                local (-1 : inconnue)
+         * @param end     la fin de la plage du premier diagnostic
+         *                local (-1 : inconnue)
+         * @return les rangées, jamais null (vide : aucune ne se
+         *         propose)
+         */
+        List<DiagnosticCard.Fix> diagnosticFixesAt(int line,
+                String message, int start, int end);
+    }
+
+    /**
+     * Branche le fournisseur de l'assistant (null le range : les
+     * entrées de l'IA disparaissent de l'ampoule et de l'étage des
+     * correctifs).
+     *
+     * @param provider le fournisseur, ou null
+     */
+    public void setAssistantProvider(AssistantProvider provider) {
+        assistantProvider = provider;
+        quickActionsRevision = -1;
+        invalidate();
+    }
+
+    /**
+     * Branche l'action d'annulation de la popup d'info : le TAP sur
+     * le bouton ANNULER armé ({@link #armInfoCancel}) l'exécute — la
+     * réponse en vol se laisse arrêter au doigt. Le bouton ne vit
+     * que le temps du vol : l'assistant l'arme au départ et le
+     * range à l'issue.
+     *
+     * @param action l'action d'annulation, null pour la ranger
+     */
+    public void setInfoCancelAction(Runnable action) {
+        infoCancelAction = action;
+    }
+
+    /**
+     * ARME le bouton ANNULER de la popup d'info : le petit bouton
+     * vit au bas de la carte tant que la réponse vole (le tap s'y
+     * lit à l'action posée par {@link #setInfoCancelAction}).
+     *
+     * @param label l'étiquette du bouton, null pour le ranger
+     */
+    public void armInfoCancel(String label) {
+        infoPopup.armCancel(label);
+        // L'ATTENTE PREND LA SCÈNE : les cartes de la frappe (la
+        // complétion, la signature) vivent AU CARET — la carte
+        // d'attente s'y pose par-dessus, elles lui cèdent la place
+        // (elles n'y re-naissent pas : updateSuggestions et
+        // updateSignature les tiennent vides tant que le vol vit)
+        if (label != null) {
+            completionCard.set(List.of(), "");
+            signatureCard.set(List.of(), 0, 0);
+        }
+        invalidate();
+    }
+
+    /**
      * Le fournisseur de diagnostics de l'hôte — les erreurs et les
      * avertissements d'une ligne, à la sévérité près.
      */
@@ -1673,6 +1777,11 @@ public final class EditorView extends View {
      */
     public List<DiagnosticCard.Entry> diagnosticsOfLine(int line) {
         List<DiagnosticCard.Entry> found = new ArrayList<>();
+        // la plage du premier diagnostic LOCAL (l'étage de
+        // l'assistant la reçoit : son correctif exige une plage
+        // vraie, -1 quand la ligne ne la connaît pas)
+        int firstStart = -1;
+        int firstEnd = -1;
         if (diagnosticProvider != null) {
             List<DiagnosticCard.Entry> hosted = diagnosticProvider.diagnosticsAt(line);
             if (hosted != null) {
@@ -1685,6 +1794,10 @@ public final class EditorView extends View {
             for (DiagnosticsDocument.Diagnostic local
                     : diagnostics.betweenLines(line, line)) {
                 if (local.start() >= lineStart && local.start() < lineEnd) {
+                    if (firstStart < 0) {
+                        firstStart = local.start();
+                        firstEnd = local.end();
+                    }
                     found.add(new DiagnosticCard.Entry(
                             DiagnosticCard.SEVERITY_ERROR, local.message(),
                             localFixesOf(local, lineStart, lineEnd)));
@@ -1697,7 +1810,11 @@ public final class EditorView extends View {
         // CHAQUE diagnostic de la ligne — le premier diagnostic les
         // porte (l'étage se dessine sous ses messages, le tap
         // l'exécute) ; la réponse asynchrone du serveur rouvre la
-        // carte ouverte (le cache du fournisseur vit dans la façade)
+        // carte ouverte (le cache du fournisseur vit dans la façade).
+        // Le préfixe du correctif se lit AUX CHAÎNES POSÉES (le
+        // serveur étiquette à fixTitle — l'hôte qui localise son
+        // préfixe n'y casse pas le décodage)
+        String fixPrefix = popupStrings.fixTitle("");
         if (!found.isEmpty() && serverQuickActionProvider != null) {
             List<QuickActionCard.Entry> served =
                     serverQuickActionProvider.quickActionsAt(line, 0);
@@ -1705,9 +1822,9 @@ public final class EditorView extends View {
                 List<DiagnosticCard.Fix> fixes = new ArrayList<>();
                 for (QuickActionCard.Entry action : served) {
                     if (action.label() != null
-                            && action.label().startsWith("Correctif : ")) {
+                            && action.label().startsWith(fixPrefix)) {
                         fixes.add(new DiagnosticCard.Fix(
-                                action.label().substring("Correctif : ".length()),
+                                action.label().substring(fixPrefix.length()),
                                 action.action()));
                     }
                 }
@@ -1716,6 +1833,25 @@ public final class EditorView extends View {
                             found.get(0).severity(),
                             found.get(0).message(), fixes));
                 }
+            }
+        }
+        // LES RANGÉES DE L'ASSISTANT (B2) : elles RALLONGENT l'étage
+        // du premier diagnostic (elles ne remplacent jamais les
+        // correctifs du serveur ni les locaux — la rangée de
+        // l'assistant dit ce qu'elle fait : « Expliquer l'erreur »,
+        // « Corriger avec l'assistant »)
+        if (!found.isEmpty() && assistantProvider != null) {
+            List<DiagnosticCard.Fix> hosted = assistantProvider.diagnosticFixesAt(
+                    line, found.get(0).message() == null
+                            ? "" : found.get(0).message(),
+                    firstStart, firstEnd);
+            if (hosted != null && !hosted.isEmpty()) {
+                List<DiagnosticCard.Fix> fixes = new ArrayList<>(
+                        found.get(0).fixes());
+                fixes.addAll(hosted);
+                found.set(0, new DiagnosticCard.Entry(
+                        found.get(0).severity(),
+                        found.get(0).message(), fixes));
             }
         }
         return found;
@@ -1760,7 +1896,8 @@ public final class EditorView extends View {
                 String sign = message.substring(open + 1, close).trim();
                 if (sign.length() == 1) {
                     fixes.add(new DiagnosticCard.Fix(
-                            "Supprimer \u00AB " + sign + " \u00BB",
+                            popupStrings.fixTitle(
+                                    "Supprimer \u00AB " + sign + " \u00BB"),
                             () -> {
                                 applyEdit(local.start(), local.end(), "");
                                 releaseAnalysisThrottle();
@@ -1780,7 +1917,8 @@ public final class EditorView extends View {
             if (closer != 0) {
                 int insertAt = Math.min(local.end(), buffer.length());
                 fixes.add(new DiagnosticCard.Fix(
-                        "Insérer \u00AB " + closer + " \u00BB",
+                        popupStrings.fixTitle(
+                                "Insérer \u00AB " + closer + " \u00BB"),
                         () -> {
                             applyEdit(insertAt, insertAt,
                                     String.valueOf(closer));
@@ -1857,6 +1995,20 @@ public final class EditorView extends View {
                     serverQuickActionProvider.quickActionsAt(line, column);
             if (served != null) {
                 actions.addAll(served);
+            }
+        }
+        // LES ENTRÉES DE L'ASSISTANT (B2) se lisent EN DERNIER : les
+        // intentions de l'éditeur, celles de l'hôte, les fonctions du
+        // serveur — l'IA de l'hôte clôt la liste (elle ne se propose
+        // que ce qu'elle sait servir : la façade décide, la vue y
+        // ajoute ce qui se présente)
+        if (assistantProvider != null) {
+            int caretOffset = Math.min(selection.caret(), buffer.length());
+            int column = caretOffset - buffer.getLineStart(line);
+            List<QuickActionCard.Entry> assisted =
+                    assistantProvider.quickActionsAt(line, column);
+            if (assisted != null) {
+                actions.addAll(assisted);
             }
         }
         return actions;
@@ -3584,8 +3736,17 @@ public final class EditorView extends View {
         return signatureCard;
     }
 
-    /** Masque la popup d'info. */
+    /**
+     * Masque la popup d'info. La carte d'attente ARMÉE (une réponse
+     * en vol) emporte son vol : fermer la question, c'est l'abandonner
+     * — l'action d'annulation posée par {@link #setInfoCancelAction}
+     * s'y exécute (le bouton ANNULER et la croix y valent le même
+     * geste).
+     */
     public void dismissInfoPopup() {
+        if (infoPopup.cancelArmed() && infoCancelAction != null) {
+            infoCancelAction.run();
+        }
         if (infoPopup.text() != null) {
             popups.dismiss(infoPopup);
             invalidate();
@@ -3626,6 +3787,27 @@ public final class EditorView extends View {
      */
     public android.graphics.RectF infoPopupBox() {
         return infoPopup.box();
+    }
+
+    /**
+     * La pose du bouton ANNULER de la popup d'info (la dernière trame
+     * l'a posée — le harnais y vise le doigt ; vide quand le bouton
+     * ne vit pas).
+     *
+     * @return la pose du bouton, une copie
+     */
+    public android.graphics.RectF infoPopupCancelRect() {
+        return infoPopup.cancelRect();
+    }
+
+    /**
+     * Le bouton ANNULER est-il armé ? (Une réponse en vol — le
+     * harnais le vérifie.)
+     *
+     * @return vrai quand le bouton vit
+     */
+    public boolean isInfoCancelArmed() {
+        return infoPopup.cancelArmed();
     }
 
     /**
@@ -4328,6 +4510,18 @@ public final class EditorView extends View {
                     // de fermeture n'a jamais été un geste mort : le
                     // comportement d'origine demeure au pixel près)
                     if (infoPopup.onUp()) {
+                        invalidate();
+                        break;
+                    }
+                    // LE BOUTON ANNULER (B2) : le tap sur la pastille
+                    // armée coupe le VOL (la réponse en vol se laisse
+                    // arrêter au doigt) — le geste se consomme là :
+                    // la popup vit, le curseur ne bouge pas, l'issue
+                    // dira sa phrase à la place du corps d'attente
+                    if (infoPopup.cancelHit(event.getX(), event.getY())
+                            && infoCancelAction != null) {
+                        infoCancelAction.run();
+                        downOnInfo = false;
                         invalidate();
                         break;
                     }
@@ -6510,6 +6704,15 @@ public final class EditorView extends View {
             suggestionWordStart = -1;
             return;
         }
+        // UNE RÉPONSE EN VOL : la carte d'attente de l'assistant tient
+        // la place au caret — la complétion n'y re-naît pas dessus
+        // (le retour du terrain : la bande ouverte vivait SOUS la
+        // carte d'attente et mangeait son doigt)
+        if (infoPopup.cancelArmed()) {
+            completionCard.set(List.of(), "");
+            suggestionWordStart = -1;
+            return;
+        }
         // UNE BARRE À CHAMP VIT ? — la complétion se range et n'y
         // RE-NAÎT PAS (le retour du terrain : « pendant que je tape dans
         // le popup recherche, le popup complétion intercepte aussi ce
@@ -6767,6 +6970,12 @@ public final class EditorView extends View {
         // tant qu'une sélection vit, la carte de signature y cède (la
         // frappe la ramène — elle remplace la sélection)
         if (selectionBarAlive()) {
+            signatureCard.set(List.of(), 0, 0);
+            return;
+        }
+        // une réponse en vol tient la place pareillement (la carte
+        // d'attente de l'assistant vit au caret)
+        if (infoPopup.cancelArmed()) {
             signatureCard.set(List.of(), 0, 0);
             return;
         }
@@ -9085,7 +9294,19 @@ public final class EditorView extends View {
         return backgroundFill.awaitIdle(timeoutMillis);
     }
 
-    private void applyEdit(int start, int end, CharSequence text) {
+    /**
+     * Pose UNE édition directe (B2 : le chemin de pose de
+     * l'assistant — une réponse qui se pose vaut UNE unité
+     * d'annulation) : la plage se remplace par le texte, la version
+     * d'historique s'y enregistre, le curseur se pose à la fin du
+     * texte posé, la sélection se réduit. L'hôte qui programme ses
+     * propres remplacements y passe aussi.
+     *
+     * @param start le début de la plage remplacée
+     * @param end   la fin de la plage remplacée
+     * @param text  le texte posé, jamais null
+     */
+    public void applyEdit(int start, int end, CharSequence text) {
         // LA VERSION D'HISTORIQUE (B7) : le texte d'avant se garde,
         // la plage porte la région OCCUPÉE APRÈS le geste (le texte
         // posé y vit) — la restauration remettra la plage exacte à son
