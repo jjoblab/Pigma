@@ -399,6 +399,10 @@ public final class LspEditor {
     /** Le registre partagé (null : la voie directe d'un éditeur seul). */
     private LspWorkspace workspace;
 
+    /** La définition du serveur du registre (le changement de document
+     * y rattache le document neuf — la voie directe n'en a pas besoin). */
+    private LspWorkspace.ServerDefinition definition;
+
     /** L'écouteur du document au registre (le détachement le retire). */
     private LspWorkspace.DocumentListener workspaceListener;
 
@@ -488,6 +492,7 @@ public final class LspEditor {
             disconnect();
         }
         this.workspace = registry;
+        this.definition = definition;
         this.uri = uri;
         this.languageId = languageId;
         resetProviders();
@@ -826,6 +831,88 @@ public final class LspEditor {
                 stoppingExecutor.shutdown();
             }
         });
+        view.post(view::invalidate);
+    }
+
+    /**
+     * Change le document ouvert côté serveur (le passage d'onglet) :
+     * l'onglet qui s'en va se FERME ({@code didClose} à la voie
+     * directe, détachement au registre — le dernier d'un langage y
+     * ferme son serveur), celui qui arrive s'OUVRE au TEXTE COURANT
+     * de la vue et au langage donné — le serveur ne voit jamais le
+     * contenu d'un onglet sous l'URI d'un autre. Les réponses en vol
+     * de l'ancien document se périment (la génération du document
+     * avance : aucune carte ne s'ouvrira d'une réponse tardive), ses
+     * vues se rangent (surlignages, plis, jetons, indices — les
+     * positions ne valent plus) et la pompe du document neuf repart.
+     *
+     * <p>La vue doit déjà porter le texte du document qui arrive :
+     * l'hôte RESTAURE l'état du nouvel onglet AVANT d'appeler (le
+     * {@code didOpen} y emporte le texte restauré). Sans liaison
+     * vivante ou vers le même document : rien ne se passe.</p>
+     *
+     * @param newUri        l'URI du document qui arrive
+     * @param newLanguageId le langage du document qui arrive
+     */
+    public void switchDocument(String newUri, String newLanguageId) {
+        if (session == null || newUri == null || newLanguageId == null
+                || (newUri.equals(uri) && newLanguageId.equals(languageId))) {
+            return;
+        }
+        // la pompe de l'ancien document s'arrête : son envoi différé ne
+        // doit pas partir sous l'URI neuve
+        view.removeCallbacks(documentSync);
+        view.removeCallbacks(highlightSync);
+        // les réponses en vol de l'ancien se périment, ses vues se
+        // rangent (les positions ne valent plus)
+        documentViewsGeneration.incrementAndGet();
+        signatureGeneration.incrementAndGet();
+        highlightGeneration.incrementAndGet();
+        view.setServerHighlights(List.of());
+        view.setInlayHints(List.of());
+        view.setServerFoldRegions(List.of());
+        view.setServerSemantics(List.of());
+        resetProviders();
+        String leavingUri = uri;
+        String leavingLanguage = languageId;
+        if (workspace != null && definition != null) {
+            // LA VOIE DU REGISTRE : l'onglet qui s'en va se détache
+            // (son document s'y ferme), celui qui arrive s'y attache
+            // (un serveur du langage y vit déjà ou y monte)
+            LspWorkspace.DocumentListener listener = workspaceListener;
+            if (listener != null && leavingUri != null
+                    && leavingLanguage != null) {
+                workspace.detach(leavingLanguage, leavingUri, listener);
+            }
+            uri = newUri;
+            languageId = newLanguageId;
+            LspSession shared = workspace.attach(languageId, definition, uri,
+                    view.getBuffer().toString(), listener);
+            if (shared != null) {
+                session = shared;
+                capabilities = shared.capabilities();
+                documentOpened = true;
+            }
+        } else if (documentOpened
+                && connectionStatus == ConnectionStatus.CONNECTED) {
+            // LA VOIE DIRECTE : l'onglet qui s'en va se FERME, celui
+            // qui arrive s'OUVRE au texte courant de la vue
+            if (leavingUri != null) {
+                session.didClose(leavingUri);
+            }
+            uri = newUri;
+            languageId = newLanguageId;
+            session.didOpen(uri, view.getBuffer().toString(), languageId);
+        } else {
+            // la liaison ne porte aucun document ouvert : le changement
+            // se réduit au rebasage (le didOpen suivra à la connexion)
+            uri = newUri;
+            languageId = newLanguageId;
+        }
+        // la pompe du document neuf repart : les symboles, les indices,
+        // les plis, les jetons sémantiques décrivent le document d'après
+        refreshDocumentViews();
+        scheduleHighlightSync();
         view.post(view::invalidate);
     }
 

@@ -104,6 +104,11 @@ public final class MainActivity extends Activity {
             // édition à défaire : l'histoire repart vide)
             editorView.setLanguage(languageOf(TAB_LABELS[tab]), text);
             editorView.getUndoStack().clear();
+            // l'onglet restauré redevient le courant (l'état des
+            // autres onglets repart vide — la rotation ne les portait
+            // pas, le passage suivant les rouvrira propres)
+            currentTab = TAB_LABELS[tab];
+            editorView.setHostDocument(uriOf(TAB_LABELS[tab]));
             currentScenario = TAB_LABELS[tab] + " (démo)";
             CrashJournal.setSection(currentScenario);
             loggedFirstColoration = false;
@@ -164,6 +169,59 @@ public final class MainActivity extends Activity {
 
     /** Le document de la démo Java (l'URI stable du protocole). */
     private static final String DOC_URI = "file:///demo.java";
+
+    /**
+     * L'URI du document d'un onglet (le protocole y route : chaque
+     * onglet est son document, le serveur ne voit jamais le contenu
+     * d'un onglet sous l'URI d'un autre).
+     *
+     * @param name le nom de l'onglet
+     * @return l'URI du document de l'onglet
+     */
+    private static String uriOf(String name) {
+        return "file:///demo." + switch (name) {
+            case "XML" -> "xml";
+            case "JSON" -> "json";
+            case "Kotlin" -> "kt";
+            case "Lua" -> "lua";
+            case "SQL" -> "sql";
+            default -> "java";
+        };
+    }
+
+    /**
+     * L'identifiant de langage au protocole d'un onglet (le didOpen
+     * l'emporte — le serveur y sait quel langage il lit).
+     *
+     * @param name le nom de l'onglet
+     * @return l'identifiant du langage
+     */
+    private static String languageIdOf(String name) {
+        return switch (name) {
+            case "XML" -> "xml";
+            case "JSON" -> "json";
+            case "Kotlin" -> "kotlin";
+            case "Lua" -> "lua";
+            case "SQL" -> "sql";
+            default -> "java";
+        };
+    }
+
+    /**
+     * L'état de chaque onglet (le passage d'onglet y sauvegarde
+     * celui qui s'en va et y rend celui qui arrive : l'annulation,
+     * la position, les plis et la sélection survivent au voyage).
+     */
+    private final java.util.Map<String, EditorView.DocumentState> tabStates =
+            new java.util.HashMap<>();
+
+    /** L'onglet ouvert (null : aucun — les hors normes y passent). */
+    private String currentTab;
+
+    /** Le langage du serveur branché (null : aucun serveur) — la
+     * liaison ne parle que le langage de son document, l'onglet d'un
+     * autre langage la débranche. */
+    private String lspLanguage;
 
     private final List<String> scenarioLog = new ArrayList<>();
     private String currentScenario = "Java (démo)";
@@ -265,6 +323,10 @@ public final class MainActivity extends Activity {
         // (l'hôte y vit : le registre et la mémoire sont à lui)
         editorView.openDocument(Languages.JAVA, DemoTexts.JAVA,
                 "Java (démo)", () -> openDocument("Java"));
+        // le premier onglet vit : son document porte son URI (les
+        // passages suivants y sauvegarderont son état)
+        currentTab = "Java";
+        editorView.setHostDocument(uriOf("Java"));
         // le style des popups : l'hôte pose le sien — fond translucide
         // un peu plus léger, coins plus ronds, largeur accrue (l'API
         // de la bibliothèque, tout y se règle)
@@ -417,16 +479,55 @@ public final class MainActivity extends Activity {
     }
 
     /**
-     * Ouvre le document de démonstration d'un langage.
+     * Ouvre le document de démonstration d'un langage — le document
+     * D'ONGLET : l'état de l'onglet qu'on quitte se garde, celui de
+     * l'onglet qu'on ouvre se rend (l'annulation, la position, les
+     * plis, la sélection survivent au voyage) ; le serveur de
+     * langage suit — la liaison du langage de l'onglet y change de
+     * document (didClose, didOpen au texte restauré), la liaison
+     * d'un autre langage se débranche (le serveur de démonstration
+     * ne voit que des documents Java : aucun autre onglet ne lui
+     * parle).
      *
      * @param name le nom du langage (Java, XML, JSON, Kotlin, Lua, SQL)
      */
     private void openDocument(String name) {
-        // UN SEUL TRAIT à l'éditeur : le langage, le texte, les
-        // EXTRAITS du langage, l'enregistrement AUX RÉCENTS —
-        // l'hôte n'inscrit plus que ses SURCHARGES propres
-        editorView.openDocument(languageOf(name), textOf(name),
-                name + " (démo)", () -> openDocument(name));
+        // L'ÉTAT DE L'ONGLET QUI S'EN VA se garde — au PASSAGE d'un
+        // autre onglet seulement : la réouverture du MÊME onglet (les
+        // récents, le retour du harnais) rouvre le document vivant,
+        // l'instantané sauvegardé y serait périmé (l'écran a vécu
+        // depuis son départ)
+        boolean passing = currentTab != null && !currentTab.equals(name);
+        if (passing) {
+            tabStates.put(currentTab, editorView.saveState());
+        }
+        EditorView.DocumentState state = passing ? tabStates.get(name) : null;
+        if (state != null) {
+            // l'onglet REVIENT : son état se rend (le didOpen du
+            // serveur y emportera le texte restauré)
+            editorView.restoreState(state);
+        } else {
+            // UN SEUL TRAIT à l'éditeur : le langage, le texte, les
+            // EXTRAITS du langage, l'enregistrement AUX RÉCENTS —
+            // l'hôte n'inscrit plus que ses SURCHARGES propres (le
+            // même document rouvre son état cuit — le trait de la vue)
+            editorView.openDocument(languageOf(name), textOf(name),
+                    name + " (démo)", () -> openDocument(name));
+            editorView.setHostDocument(uriOf(name));
+        }
+        // LE SERVEUR SUIT L'ONGLET : la liaison ne parle que le
+        // langage de son document — même langage, le document change
+        // de côté protocole ; autre langage, la liaison se débranche
+        // (aucune requête ne part pour un document qu'elle ne connaît
+        // pas)
+        if (lsp.hasConnection() && lspLanguage != null) {
+            if (lspLanguage.equals(languageIdOf(name))) {
+                lsp.switchDocument(uriOf(name), languageIdOf(name));
+            } else {
+                detachLsp();
+            }
+        }
+        currentTab = name;
         currentScenario = name + " (démo)";
         CrashJournal.setSection(currentScenario);
         loggedFirstColoration = false;
@@ -692,6 +793,10 @@ public final class MainActivity extends Activity {
         button.setText(label);
         button.setOnClickListener(view -> {
             editorView.setLanguage(language, text);
+            // le document ouvert n'est plus celui d'un onglet : l'état
+            // des onglets y demeure, le prochain passage ne
+            // sauvegardera pas le hors normes sous un nom d'onglet
+            currentTab = null;
             currentScenario = "Gros".equals(label) ? "gros fichier Java"
                     : "50k l.".equals(label) ? "fichier 52 000 lignes"
                     : label + " (démo)";
@@ -723,6 +828,7 @@ public final class MainActivity extends Activity {
             String key = HUGE_CYCLE[hugeCycleAt % HUGE_CYCLE.length];
             hugeCycleAt++;
             editorView.setLanguage(languageOf(key), DemoTexts.hugeFile(key));
+            currentTab = null;
             currentScenario = "fichier 52 000 lignes (" + key + ")";
             CrashJournal.setSection("fichier 52 000 lignes (" + key + ")");
             loggedFirstColoration = false;
@@ -921,6 +1027,7 @@ public final class MainActivity extends Activity {
                     Toast.LENGTH_SHORT).show();
             return;
         }
+        lspLanguage = "java";
         lspLabel = "serveur de démo";
         CrashJournal.setSection("LSP démo (branché)");
         lspButton.setText("LSP ✔");
@@ -994,6 +1101,7 @@ public final class MainActivity extends Activity {
         // montre, la coloration suit (le lexeur Lua généré)
         editorView.setLanguage(Languages.LUA, DemoTexts.LUA);
         editorView.getUndoStack().clear();
+        currentTab = null;
         currentScenario = "Lua (démo)";
         CrashJournal.setSection("LSP Lua (branchement)");
         loggedFirstColoration = false;
@@ -1005,6 +1113,7 @@ public final class MainActivity extends Activity {
         // que son bouton et son toast
         try {
             lsp.connectEmmyLua(this, DemoTexts.LUA);
+            lspLanguage = "lua";
         } catch (java.io.IOException noServer) {
             Toast.makeText(this, "le serveur Lua ne part pas : "
                     + noServer.getMessage(), Toast.LENGTH_LONG).show();
@@ -1026,6 +1135,7 @@ public final class MainActivity extends Activity {
      */
     private void detachLsp() {
         lsp.disconnect();
+        lspLanguage = null;
         lspLabel = null;
         CrashJournal.setSection(currentScenario);
         lspButton.setText("LSP");
