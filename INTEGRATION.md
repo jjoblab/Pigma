@@ -77,6 +77,30 @@ tranches annulables (un fichier de 52 000 lignes ouvre en ~12 ms,
 le fond finit sans bloquer l'interface). Lire le texte :
 `editor.getBuffer().toString()`.
 
+### Plusieurs documents, un éditeur (A3)
+
+Un hôte à onglets partage UNE vue entre plusieurs documents :
+l'état de l'onglet qu'on quitte se sauvegarde, celui de l'onglet
+qu'on ouvre se rend — l'annulation, la position, les plis et la
+sélection survivent au voyage (le changement de document y range
+les popups, comme à toute ouverture) :
+
+```java
+// l'onglet A rend la main : son état se garde PAR ONGLET
+EditorView.DocumentState stateA = editor.saveState();
+// l'onglet B s'ouvre (son état se rend au retour)
+editor.restoreState(stateB);
+
+// l'identité du document côté hôte (un URI, une clé) vit avec
+// l'état : editor.setHostDocument(uri) la pose, saveState() la
+// transporte, restoreState(...) la rend (editor.hostDocument() la lit)
+```
+
+`setLanguage(...)` demeure le CHARGEMENT intégral d'un fichier (tout
+se remet à zéro) ; `restoreState(...)` est le RETOUR à un document
+déjà ouvert. Un curseur rendu DANS une région repliée l'ouvre (le
+curseur ne vit jamais caché).
+
 ## 4. Le thème
 
 ```java

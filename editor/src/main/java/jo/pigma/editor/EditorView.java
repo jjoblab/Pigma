@@ -73,6 +73,7 @@ import android.graphics.Typeface;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.TreeSet;
 
 import jo.pigma.analysis.DiagnosticsDocument;
@@ -391,6 +392,12 @@ public final class EditorView extends View {
      * aussi). Positif quand le texte défile à gauche.
      */
     private float scrollX;
+
+    /** L'identité du document courant côté hôte (A3) : un objet OPAQUE
+     * que l'hôte pose (un URI, une clé de base) — la vue ne
+     * l'interprète jamais, l'état de document le transporte et le
+     * rend au retour d'onglet. */
+    private Object hostDocument;
 
     /** Le balayeur aux bords (le composant du découpage — R1 : le
      * traîné tenu au bord y fait glisser la vue, échéance après
@@ -1357,6 +1364,17 @@ public final class EditorView extends View {
      */
     public int caretLine() {
         return buffer.lineOfOffset(Math.min(selection.caret(), buffer.length()));
+    }
+
+    /**
+     * Le défilement vertical courant (px) — l'hôte y lit la fenêtre
+     * de lecture (une barre d'état, sa propre carte du document) ;
+     * l'état de document (A3) le transporte.
+     *
+     * @return le défilement, positif quand le texte descend
+     */
+    public float scrollY() {
+        return scrollY;
     }
 
     /**
@@ -2376,6 +2394,143 @@ public final class EditorView extends View {
         clampCaret();
         ensureCaretVisible();
         invalidate();
+    }
+
+    /**
+     * Sauvegarde l'état du document OUVERT (A3) : le texte et son
+     * langage, le curseur et la sélection, le défilement, les plis
+     * repliés, l'historique d'annulation et l'identité de l'hôte —
+     * l'hôte à onglets le garde PAR ONGLET et le rend à
+     * {@link #restoreState(DocumentState)} au retour : l'aller-retour
+     * A → B → A rend à A sa position, ses plis et son annulation.
+     *
+     * @return l'état, jamais {@code null}
+     */
+    public DocumentState saveState() {
+        return new DocumentState(language, buffer.toString(),
+                Math.min(selection.caret(), buffer.length()),
+                selection.anchor(),
+                scrollX, scrollY,
+                List.copyOf(folds.foldedHeaders()),
+                undoStack.exportHistory(),
+                hostDocument);
+    }
+
+    /**
+     * Rouvre le document d'un état sauvegardé (A3) : ÉCHANGE le
+     * document courant SANS perdre l'état de celui qu'on quitte —
+     * l'hôte appelle {@link #saveState()} AVANT de changer d'onglet.
+     * Le curseur, la sélection, le défilement, les plis et
+     * L'ANNULATION du document rendu reviennent ; l'identité de l'hôte
+     * revient avec ({@link #hostDocument()}). Le changement de
+     * contexte y joue comme à toute ouverture (les popups se rangent,
+     * la pastille du diagnostic meurt).
+     *
+     * <p>La différence avec {@link #setLanguage(LanguageSyntax, String)}
+     * — qui demeure pour le CHARGEMENT intégral d'un fichier (tout se
+     * remet à zéro : c'est un fichier neuf) — : {@code restoreState}
+     * est le RETOUR à un document déjà ouvert par l'hôte, son état
+     * survit au voyage.</p>
+     *
+     * <p>Un invariant demeure : un curseur rendu DANS une région
+     * repliée l'ouvre (le curseur ne vit jamais caché — la politique
+     * de la vue prime sur l'état rendu).</p>
+     *
+     * @param state l'état à rouvrir, null : rien ne se passe
+     */
+    public void restoreState(DocumentState state) {
+        if (state == null) {
+            return;
+        }
+        // les deux chemins de la vue : le même texte réouvre son
+        // état cuit, l'autre texte part au remplacement intégral —
+        // les deux y perdent le contexte (popups, pastille)
+        setLanguage(state.language(), state.text());
+        hostDocument = state.hostDocument();
+        // L'ANNULATION rendue : ses unités parlent des offsets du
+        // texte rendu (la pile fut vidée au changement — l'historique
+        // transporté la regarnit)
+        undoStack.importHistory(state.history());
+        // LES PLIS rendus : les bornes se relisent au document rouvert
+        // (un en-tête sans ouvrant s'ignore à la reconstruction)
+        for (int header : state.foldedLines()) {
+            if (header >= 0 && header < buffer.getLineCount()) {
+                folds.fold(header);
+            }
+        }
+        rebuildFoldLayout();
+        // LE CURSEUR ET LA SÉLECTION rendus, PUIS le défilement (le
+        // curseur ne doit pas ramener la fenêtre : la position
+        // sauvegardée est la vérité du voyage)
+        if (state.anchor() >= 0 && state.anchor() != state.caret()) {
+            setSelection(state.anchor(), state.caret());
+        } else {
+            selection.setAnchor(-1);
+            selection.setCaret(Math.max(0,
+                    Math.min(state.caret(), buffer.length())));
+        }
+        scrollX = Math.max(0.0f, state.scrollX());
+        scrollY = Math.max(0.0f, state.scrollY());
+        clampCaret();
+        invalidate();
+    }
+
+    /**
+     * L'identité du document courant côté hôte (A3) : ce que
+     * {@link #setHostDocument(Object)} a posé ou ce que
+     * {@link #restoreState(DocumentState)} a rendu — null si l'hôte
+     * n'en pose pas.
+     *
+     * @return l'identité de l'hôte, possiblement null
+     */
+    public Object hostDocument() {
+        return hostDocument;
+    }
+
+    /**
+     * Pose l'identité du document courant côté hôte (A3) : un objet
+     * opaque (un URI, une clé de base) — la vue ne l'interprète
+     * jamais, {@link #saveState()} le transporte et
+     * {@link #restoreState(DocumentState)} le rend.
+     *
+     * @param identity l'identité de l'hôte, null permise
+     */
+    public void setHostDocument(Object identity) {
+        hostDocument = identity;
+    }
+
+    /**
+     * L'état d'un document ouvert (A3) : ce qu'un hôte à onglets
+     * sauvegarde d'un onglet avant d'en ouvrir un autre. Immuable —
+     * l'aller-retour {@link #saveState()}/{@link #restoreState(DocumentState)}
+     * le porte tel quel.
+     *
+     * @param language     le langage du document, jamais {@code null}
+     * @param text         le texte du document (vide si nul)
+     * @param caret        l'offset du curseur
+     * @param anchor       l'ancre de la sélection (-1 : aucune)
+     * @param scrollX      le défilement horizontal (px)
+     * @param scrollY      le défilement vertical (px)
+     * @param foldedLines  les en-têtes repliés, triés (vide si nuls)
+     * @param history      l'historique d'annulation (vide si nul)
+     * @param hostDocument l'identité du document côté hôte, opaque
+     *                     pour la vue (null permise)
+     */
+    public record DocumentState(LanguageSyntax language, String text,
+            int caret, int anchor, float scrollX, float scrollY,
+            List<Integer> foldedLines, UndoStack.History history,
+            Object hostDocument) {
+
+        /** La forme canonique : les nuls se vident, le langage se
+         * exige. */
+        public DocumentState {
+            Objects.requireNonNull(language, "language");
+            text = text == null ? "" : text;
+            foldedLines = foldedLines == null
+                    ? List.of() : List.copyOf(foldedLines);
+            history = history == null
+                    ? new UndoStack.History() : history;
+        }
     }
 
     /**

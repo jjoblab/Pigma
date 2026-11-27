@@ -81,6 +81,16 @@ public final class FoldModel {
     }
 
     /**
+     * Les en-têtes repliés, triés (A3 : l'état de document les
+     * transporte — l'aller-retour d'un onglet y retrouve ses plis).
+     *
+     * @return les en-têtes triés, jamais {@code null}, non modifiable
+     */
+    public java.util.SortedSet<Integer> foldedHeaders() {
+        return java.util.Collections.unmodifiableSortedSet(folded);
+    }
+
+    /**
      * Décale les en-têtes suivant l'édition (les lignes après le point
      * d'édition bougent du delta de lignes) ; un en-tête hors bornes
      * se perd — un pli dont l'en-tête n'ouvre plus rien se dissout à

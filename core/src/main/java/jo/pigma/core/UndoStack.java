@@ -166,7 +166,90 @@ public final class UndoStack {
         trim(redoUnits);
     }
 
+    /**
+     * L'historique de la pile, transportable : les unités à annuler et
+     * à rétablir, chacune ses éditions dans l'ordre d'application —
+     * l'aller-retour d'un état de document (l'hôte à onglets) y porte
+     * l'annulation d'un document à l'autre.
+     *
+     * @return l'historique, jamais {@code null} (vide : rien à annuler)
+     */
+    public History exportHistory() {
+        return new History(copyUnits(undoUnits), copyUnits(redoUnits));
+    }
+
+    /**
+     * Remplace l'historique de la pile par un historique transporté :
+     * les unités à annuler et à rétablir reprennent leur ordre de
+     * pile, la capacité demeure la sienne (les unités au-delà
+     * s'oublient). L'historique null vide la pile.
+     *
+     * @param history l'historique importé, null pour tout oublier
+     * @throws IllegalStateException une transaction est ouverte
+     */
+    public void importHistory(History history) {
+        if (openTransaction != null) {
+            throw new IllegalStateException("a transaction is open");
+        }
+        undoUnits.clear();
+        redoUnits.clear();
+        if (history == null) {
+            return;
+        }
+        for (List<UndoEdit> edits : history.undoable()) {
+            undoUnits.addLast(unitOf(edits));
+        }
+        for (List<UndoEdit> edits : history.redoable()) {
+            redoUnits.addLast(unitOf(edits));
+        }
+        trim(undoUnits);
+        trim(redoUnits);
+    }
+
+    /** Une édition d'unité transportable : le début de la plage, le
+     * texte ôté, le texte posé. */
+    public record UndoEdit(int start, String removedText,
+            String insertedText) {
+    }
+
+    /** L'historique transportable d'une pile : les unités annulables
+     * et rétablissables dans leur ORDRE DE PILE (chaque liste va de
+     * la plus ancienne à la plus récente unité). */
+    public record History(List<List<UndoEdit>> undoable,
+            List<List<UndoEdit>> redoable) {
+
+        /** L'historique vide (aucune unité nulle part). */
+        public History() {
+            this(List.of(), List.of());
+        }
+    }
+
     // ------------------------------------------------------------ interne
+
+    /** Les unités d'une pile, copiées en liste transportable (de la
+     * plus ancienne à la plus récente). */
+    private List<List<UndoEdit>> copyUnits(Deque<UndoUnit> units) {
+        List<List<UndoEdit>> copy = new ArrayList<>(units.size());
+        for (UndoUnit unit : units) {
+            List<UndoEdit> edits = new ArrayList<>(unit.entries().size());
+            for (UndoUnit.Entry entry : unit.entries()) {
+                edits.add(new UndoEdit(entry.start(),
+                        entry.removedText(), entry.insertedText()));
+            }
+            copy.add(List.copyOf(edits));
+        }
+        return List.copyOf(copy);
+    }
+
+    /** L'unité d'une liste d'éditions transportées. */
+    private UndoUnit unitOf(List<UndoEdit> edits) {
+        List<UndoUnit.Entry> entries = new ArrayList<>(edits.size());
+        for (UndoEdit edit : edits) {
+            entries.add(new UndoUnit.Entry(edit.start(),
+                    edit.removedText(), edit.insertedText()));
+        }
+        return new UndoUnit(entries);
+    }
 
     /**
      * Rejoue une unité dans le sens voulu et décrit chaque changement

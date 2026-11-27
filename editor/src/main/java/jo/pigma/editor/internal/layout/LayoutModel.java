@@ -258,6 +258,14 @@ public final class LayoutModel {
      * @return le défilement corrigé, borné à {@link #maxScrollY()}
      */
     public float revealLine(int line, float scrollY) {
+        if (metrics.viewHeight <= 0.0f) {
+            // la vue n'est pas disposée (hauteur nulle, l'ouverture
+            // d'un document y précède le premier layout) : RIEN ne se
+            // révèle — le défilement demeure, le premier layout y
+            // passera (l'avant y forgeait un défilement absurde : la
+            // ligne zéro « sortait » d'une fenêtre de hauteur nulle)
+            return scrollY;
+        }
         float top = lineTop(line) - scrollY;
         float bottom = top + rowsOf(line) * metrics.lineHeight;
         float fixed = scrollY;
