@@ -14,6 +14,33 @@ la feuille de mesures.*
 
 ## 1. La dépendance (une seule)
 
+**La voie publiée** (JitPack construit le dépôt sur demande — le tag
+`v1.0.0` vit, aucune compilation locale) :
+
+`settings.gradle.kts` :
+
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven(url = "https://jitpack.io")
+    }
+}
+```
+
+`build.gradle.kts` de l'application hôte :
+
+```kotlin
+dependencies {
+    // TOUT y vit : le tampon, la coloration, l'annotateur et le
+    // client LSP sont exposés en api par la bibliothèque
+    implementation("com.github.jjoblab.Pigma:editor:1.0.0")
+}
+```
+
+**La voie des sources** (un clone du dépôt à côté du vôtre) :
+
 `settings.gradle.kts` :
 
 ```kotlin

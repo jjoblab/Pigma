@@ -120,6 +120,13 @@ l'ampoule.
 
 ## Journal des mises à jour
 
+- 2026-11-27 — LA PREMIÈRE VERSION PUBLIÉE : `v1.0.0` sur JitPack
+  (`com.github.jjoblab.Pigma:editor:1.0.0` — le build y est OK, les
+  six modules bibliothèques y vivent avec leurs sources ; jitpack.yml
+  porte le JDK 17 et la publication seule, la preuve des tests demeure
+  au dépôt) ; INTEGRATION.md documente la voie publiée à côté de la
+  voie des sources.
+
 - 2026-11-27 — chantier 111 fermé : le DÉBORDEMENT AU TRAIT — chaque
   option du popup « … » de la barre de sélection porte SA NATURE
   (vingt-cinq glyphes au peintre partagé ActionGlyphs, six natures
