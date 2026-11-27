@@ -69,15 +69,21 @@ pour `:editor` :
 ```
 editor/src/main/java/jo/pigma/editor/
   EditorView.java            (API publique)
-  Editor.java                (façade hôte)
-  render/                    (dessin, métriques, cache de lignes)
-  input/                     (clavier, IME, gestes)
-  selection/                 (curseurs, sélection, multi-curseurs)
-  gutter/                    (numéros, marqueurs)
-  folding/                   (plis)
-  popups/                    (complétion, infobulles, menus)
-  accessibility/
-  internal/                  (le reste)
+  EditorThemes.java          (les six thèmes de l'hôte)
+  render/                    (dessin : Painter, SeverityIcon — les glyphes au trait)
+  input/                     (clavier, IME — le pont EditorInputConnection)
+  selection/                 (curseurs, sélection — la loupe, les poignées)
+  gutter/                    (numéros, marqueurs — la minimap et sa barre)
+  folding/                   (plis — FoldModel, StructureGuides, WrapModel)
+  popups/                    (les vingt-neuf cartes — CardBase/ListCard,
+                              PopupHost, SearchBar, complétion, signature,
+                              diagnostic, actions rapides, structure,
+                              problèmes, import, récents, aperçus, extraits…)
+  accessibility/             (EditorAccessibility, PopupAccessibility —
+                              le nœud éditable, les rangées virtuelles)
+  lsp/                       (la façade LspEditor — la liaison au serveur)
+  internal/                  (layout, render, scroll, search, touch —
+                              la géométrie extraite, testée en JVM)
 ```
 
 Les décisions sont consignées une par une dans `docs/decisions/`.

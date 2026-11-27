@@ -17,6 +17,10 @@ n'a qu'une poignée de lignes :
 
 ```java
 EditorView editor = new EditorView(context);
+// le document d'UN TRAIT : langage, texte, extraits standard, récents
+editor.openDocument(Languages.JAVA, "class Bonjour { }",
+        "Bonjour.java", null);
+// ou l'original nu :
 editor.setLanguage(Languages.JAVA, "class Bonjour { }");
 
 // optionnel — le style des popups (tout se règle : le fond
@@ -53,7 +57,7 @@ démonstration, pas de l'intégration.
 | --- | --- |
 | `EditorView` | la vue : rendu, gestes, clavier, curseur — le pilier |
 | `EditorThemes` | les thèmes (clair, sombre) et leurs fonds |
-| `popups/` | les cartes dessinées dans la vue : recherche, aller-à, complétion, signature, info, sélection, débordement, historique, diagnostic, actions rapides, renommage |
+| `popups/` | les vingt-neuf cartes dessinées dans la vue, le `PopupHost` (l'exclusion mutuelle, la fermeture de contexte — un seul état « popup active ») : recherche/remplacement, aller-à (ligne, symbole, fichier), complétion (candidats entiers, panneau de documentation), signature (surcharges), info/survol Markdown défilant, sélection, débordement, historique, diagnostic (correctifs), actions rapides, renommage (aperçu), usages, choix de cibles, problèmes, presse-papiers, structure (filtre), import, définition en aperçu, récents, entourer, extraits, sélecteur de couleur — `CardBase`/`ListCard` portent la pose, le style, le défilement à la traîne, le flot |
 | `popups/PopupStyle` | le style PORTÉ PAR L'HÔTE : fond translucide, encres, corps des textes, hauteur des rangées, bornes de largeur, rayon des coins |
 | `gutter/` | la gouttière : numéros, marqueurs de diagnostic, l'ampoule des intentions |
 | `lsp/LspEditor` | la façade du serveur de langage (l'étude de l'éditeur de référence — voir le README de `:lsp`) : le protocole de navigation, d'édition et de document (symboles, indices, plis du serveur, jetons sémantiques) |

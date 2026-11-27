@@ -91,7 +91,17 @@ popups manquantes `M*` — la table suit son §9.
 
 | 95 | L'INTÉGRATION FACILE (le retour du terrain : « trop de méthodes dans le sample qui devraient être dans l'éditeur — l'intégration doit être facile ») : `openDocument` d'UN TRAIT (langage + texte + extraits standard + récents), `connectEmmyLua` d'UN TRAIT (espace de travail + document + processus + liaison — `lastEmmyLuaError` pour le toast) ; MainActivity 1329 → 1250 lignes, le mode d'emploi porte les deux traits | — | **fait** | `docs/chantiers/95.md` | `6213b8c` |
 
+| 96 | LA PAPIERASSE RATTRAPE LE CODE (« va pour D16, D19/D20 » — et « les READMEs doivent refléter réellement le code, le mode d'utilisation md aussi ») : D16 réglé (ARCHITECTURE.md porte l'arbre RÉEL du module :access —accessibilité, les vingt-neuf cartes, lsp, internal), D19/D20 réglé (la coquille MEMORRY_ANCHOR_INTERVAL meurt, l'historique mort du 95 part avec son code), les README reflètent le code (editor/README : la rangée popups/ complète + openDocument ; INTEGRATION.md : les deux traits du 95) | D16, D19/D20 | **fait** | `docs/chantiers/96.md` | `4efe625` |
+
 ## Journal des mises à jour
+
+- 2026-11-27 — chantier 96 fermé : la paperasse rattrape le code —
+  D16 (l'arbre du module :editor dans ARCHITECTURE.md porte les
+  packages réels, accessibility/ compris), D19/D20 (la coquille
+  MEMORRY_ANCHOR_INTERVAL corrigée au commentaire), editor/README
+  porte la rangée popups/ entière (vingt-neuf cartes, le PopupHost)
+  et l'extrait openDocument, INTEGRATION.md porte les deux traits du
+  95 ; les README relus ne portaient rien de faux.
 
 - 2026-11-27 — chantier 95 fermé : l'intégration facile —
   `EditorView.openDocument` (le langage, le texte, les extraits

@@ -4505,7 +4505,7 @@ public final class EditorView extends View {
         long frameBegin = System.nanoTime();
         lastFrameEngineNanos = 0L;
         // l'ancre de mémoire libre se relit à une trame sur
-        // MEMORRY_ANCHOR_INTERVAL (le rapport a montré deux lectures
+        // l'intervalle MEMORY_ANCHOR_INTERVAL (le rapport a montré deux lectures
         // de l'environnement à CHAQUE image pour la pire trame —
         // l'échantillon suffit au relevé, la trame ordinaire n'en
         // paie plus aucune)
