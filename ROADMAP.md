@@ -89,7 +89,18 @@ popups manquantes `M*` — la table suit son §9.
   `MEMORRY_ANCHOR_INTERVAL` et l'historique dans les commentaires se
   corrigent en passant).
 
+| 95 | L'INTÉGRATION FACILE (le retour du terrain : « trop de méthodes dans le sample qui devraient être dans l'éditeur — l'intégration doit être facile ») : `openDocument` d'UN TRAIT (langage + texte + extraits standard + récents), `connectEmmyLua` d'UN TRAIT (espace de travail + document + processus + liaison — `lastEmmyLuaError` pour le toast) ; MainActivity 1329 → 1250 lignes, le mode d'emploi porte les deux traits | — | **fait** | `docs/chantiers/95.md` | `6213b8c` |
+
 ## Journal des mises à jour
+
+- 2026-11-27 — chantier 95 fermé : l'intégration facile —
+  `EditorView.openDocument` (le langage, le texte, les extraits
+  standard du langage, le document aux récents, d'un seul appel) et
+  `LspEditor.connectEmmyLua` (l'espace de travail, le document, le
+  processus, la liaison, d'un seul appel — la stderr parlante rendue
+  par `lastEmmyLuaError`) ; l'écran de démo ne garde que ce qui
+  revient à l'hôte ; INTEGRATION.md reflète les deux traits ; le
+  stub du vieux harnais gagne `getCacheDir`/`getApplicationInfo`.
 
 - 2026-11-27 — chantier 94 fermé : le retour de terrain du plan des
   popups — huit défauts signalés, trois causes racines (le
