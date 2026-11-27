@@ -774,6 +774,49 @@ public final class AiAssistantIT {
     }
 
     /**
+     * B7 — L'ANNONCE DÉDIÉE : la carte de l'assistant s'ouvre à SA
+     * voix (« Assistant ouvert » — le lecteur d'écran sait QUI
+     * parle), la documentation garde la sienne ; et LA CIBLE du
+     * bouton ANNULER respire à 48 dp (la pastille dessinée à 28 —
+     * le doigt vise plus large, borné à la boîte).
+     */
+    @Test
+    public void theAssistantSpeaksItsOwnAnnouncement() {
+        editor.setLanguage(Languages.JAVA, "class A {\n}\n");
+        settle();
+        backend.capabilities = new AiCapabilities(
+                java.util.Set.of(AiTask.EXPLAIN), false);
+        // LA VOIX DE L'ASSISTANT : l'attente s'annonce à lui
+        QuickActionCard.Entry explain = labelOf(
+                editor.quickActionsOfLine(0), "Expliquer");
+        assertNotNull("l'explication se propose", explain);
+        explain.action().run();
+        idle();
+        assertEquals("l'attente s'annonce à la voix de l'assistant",
+                "Assistant ouvert", editor.lastAnnouncedPopupLabel());
+        editor.dismissInfoPopup();
+        idle();
+        // LA VOIX DE LA DOCUMENTATION demeure la sienne
+        editor.showInfoPopup("mot", "le corps de la documentation", 0, 0);
+        idle();
+        assertEquals("la documentation garde sa voix",
+                "Documentation ouverte", editor.lastAnnouncedPopupLabel());
+        editor.dismissInfoPopup();
+        idle();
+        // LA CIBLE ≥ 48 dp : le doigt 10 dp AU-DESSUS de la pastille
+        // dessinée coupe le vol pareillement
+        explain.action().run();
+        idle();
+        frame();
+        RectF pill = editor.infoPopupCancelRect();
+        assertFalse("le bouton se pose à la trame", pill.isEmpty());
+        tap(pill.centerX(), pill.top - 10.0f);
+        assertTrue("la cible élargie coupe le vol", backend.cancelled);
+        assertEquals("la phrase d'annulation remplace l'attente",
+                "La demande fut annulée.", editor.infoPopupText());
+    }
+
+    /**
      * La panne dit SA phrase (une par famille — le détail du moteur
      * ne se montre pas) ; la réponse muette dit la sienne.
      */

@@ -271,8 +271,19 @@ public final class InfoPopup {
      * @return vrai quand le bouton vit et que le doigt y tombe
      */
     public boolean cancelHit(float x, float y) {
-        return cancelLabel != null && !cancelRect.isEmpty()
-                && cancelRect.contains(x, y);
+        if (cancelLabel == null || cancelRect.isEmpty()) {
+            return false;
+        }
+        // LA CIBLE ≥ 48 dp (B7 — les cartes d'IA au doigt à l'aise) :
+        // la pastille dessinée respire à 28 dp, le DOIGT vise plus
+        // large — la cible s'étend autour d'elle, BORNÉE À LA BOÎTE
+        // (le doigt hors de la popup appartient au texte)
+        float grow = 10.0f * density;
+        float left = Math.max(closingBox.left, cancelRect.left - grow);
+        float right = Math.min(closingBox.right, cancelRect.right + grow);
+        float top = Math.max(closingBox.top, cancelRect.top - grow);
+        float bottom = Math.min(closingBox.bottom, cancelRect.bottom + grow);
+        return x >= left && x <= right && y >= top && y <= bottom;
     }
 
     /**

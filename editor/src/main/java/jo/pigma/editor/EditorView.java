@@ -3514,9 +3514,25 @@ public final class EditorView extends View {
                 this::dismissDiagnosticBadge,
                 () -> diagnosticBadgeLine >= 0
                         && System.nanoTime() <= diagnosticBadgeUntilNanos);
-        popups.setAnnouncer(card -> announceForAccessibility(
-                announcedPopupLabel(card)));
+        popups.setAnnouncer(card -> {
+            String label = announcedPopupLabel(card);
+            lastAnnouncedPopupLabel = label;
+            announceForAccessibility(label);
+        });
     }
+
+    /**
+     * La dernière annonce d'ouverture (le harnais la lit — vide :
+     * aucune depuis la naissance).
+     *
+     * @return le libellé annoncé, vide quand rien ne s'ouvrit
+     */
+    public String lastAnnouncedPopupLabel() {
+        return lastAnnouncedPopupLabel;
+    }
+
+    /** La dernière annonce d'ouverture (le harnais la lit). */
+    private String lastAnnouncedPopupLabel = "";
 
     /**
      * Le libellé annoncé à l'ouverture d'une carte (l'annonce de la
@@ -3525,7 +3541,8 @@ public final class EditorView extends View {
      */
     private String announcedPopupLabel(Object card) {
         if (card == infoPopup) {
-            return "Documentation ouverte";
+            return assistantAnnounced ? popupStrings.aiAnnounced()
+                    : "Documentation ouverte";
         }
         if (card == usageCard) {
             return "Liste des usages ouverte";
@@ -3637,6 +3654,7 @@ public final class EditorView extends View {
      * @param column la colonne d'ancrage
      */
     public void showInfoPopup(String text, int line, int column) {
+        assistantAnnounced = false;
         infoPopup.show(null, text, line, column);
         // L'EXCLUSION MUTUELLE : la popup qui ouvre devient LA carte
         // flottante active — toute autre carte flottante ou à champ
@@ -3657,6 +3675,7 @@ public final class EditorView extends View {
      * @param column la colonne d'ancrage
      */
     public void showInfoPopup(String title, String body, int line, int column) {
+        assistantAnnounced = false;
         infoPopup.show(title, body, line, column);
         // L'EXCLUSION MUTUELLE : la popup qui ouvre devient LA carte
         // flottante active
@@ -3677,9 +3696,30 @@ public final class EditorView extends View {
      */
     public void showInfoPopup(String title, String body, boolean markdown,
             int line, int column) {
+        assistantAnnounced = false;
         infoPopup.show(title, body, markdown, line, column);
         // L'EXCLUSION MUTUELLE : la popup qui ouvre devient LA carte
         // flottante active
+        popups.shown(infoPopup);
+        invalidate();
+    }
+
+    /**
+     * LA POPUP DE L'ASSISTANT (B7 — sa propre voix) : la carte
+     * d'attente et ses phrases s'ouvrent au TITRE de l'assistant —
+     * l'annonce qui part au service qui parle dit L'ASSISTANT (pas
+     * la documentation : le lecteur d'écran sait QUI parle).
+     *
+     * @param body     le corps (l'attente, une phrase de panne)
+     * @param markdown le corps est-il balisé ?
+     * @param line     la ligne d'ancrage
+     * @param column   la colonne d'ancrage
+     */
+    public void showAssistantPopup(String body, boolean markdown,
+            int line, int column) {
+        assistantAnnounced = true;
+        infoPopup.show(popupStrings.assistant(), body, markdown,
+                line, column);
         popups.shown(infoPopup);
         invalidate();
     }
@@ -8917,6 +8957,10 @@ public final class EditorView extends View {
     public boolean isGhostTextEnabled() {
         return ghostEnabled;
     }
+
+    /** Le drapeau de l'annonce de l'assistant (sa popup porte SA
+     * voix — la documentation garde la sienne). */
+    private boolean assistantAnnounced;
 
     /**
      * La temporisation du fantôme (le plan B4 la veut entre 300 et

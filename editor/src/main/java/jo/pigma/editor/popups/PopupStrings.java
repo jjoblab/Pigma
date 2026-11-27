@@ -208,6 +208,9 @@ public final class PopupStrings {
     private final String aiNewErrors;
     /** L'annonce de la suggestion disponible (le fantôme au caret). */
     private final String aiGhostReady;
+    /** L'annonce d'ouverture de la carte de l'assistant (sa propre
+     * voix — pas celle de la documentation). */
+    private final String aiAnnounced;
 
     private PopupStrings(Builder builder) {
         structure = builder.structure;
@@ -291,6 +294,7 @@ public final class PopupStrings {
         aiDiffRetry = builder.aiDiffRetry;
         aiNewErrors = builder.aiNewErrors;
         aiGhostReady = builder.aiGhostReady;
+        aiAnnounced = builder.aiAnnounced;
     }
 
     /**
@@ -756,6 +760,12 @@ public final class PopupStrings {
         return aiGhostReady;
     }
 
+    /** L'annonce d'ouverture de la carte de l'assistant (sa propre
+     * voix — pas celle de la documentation). */
+    public String aiAnnounced() {
+        return aiAnnounced;
+    }
+
     /**
      * Le bâtisseur des chaînes : chaque poseur y remplace UNE valeur,
      * {@link #build()} fige le tout.
@@ -843,6 +853,7 @@ public final class PopupStrings {
         private String aiDiffRetry = "Réessayer";
         private String aiNewErrors = "De nouvelles erreurs sont nées de la modification — vérifie la zone.";
         private String aiGhostReady = "Suggestion disponible";
+        private String aiAnnounced = "Assistant ouvert";
 
         /** Un bâtisseur aux valeurs par défaut. */
         public Builder() {
@@ -1331,6 +1342,12 @@ public final class PopupStrings {
         /** Pose l'annonce de la suggestion disponible. */
         public Builder aiGhostReady(String value) {
             aiGhostReady = value;
+            return this;
+        }
+
+        /** Pose l'annonce d'ouverture de l'assistant. */
+        public Builder aiAnnounced(String value) {
+            aiAnnounced = value;
             return this;
         }
 

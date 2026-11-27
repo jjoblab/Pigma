@@ -450,8 +450,8 @@ public final class AiAssistant implements EditorView.AssistantProvider,
             // le crochet de l'hôte a refusé (le filtre d'ordinaire —
             // la politique venait d'être éprouvée) : la phrase le
             // dit, rien ne part
-            view.showInfoPopup(strings.assistant(),
-                    strings.aiRefused(), anchorLine, anchorColumn);
+            view.showAssistantPopup(strings.aiRefused(), false,
+                    anchorLine, anchorColumn);
             return;
         }
         // la question se garde : la NOUVELLE ESSAIE la repose
@@ -462,7 +462,7 @@ public final class AiAssistant implements EditorView.AssistantProvider,
         Flight listener = new Flight(flight, task, instruction,
                 buffer.getRevision(), anchorLine, anchorColumn);
         flying = backend.start(request, listener);
-        view.showInfoPopup(strings.assistant(), strings.aiThinking(),
+        view.showAssistantPopup(strings.aiThinking(), false,
                 anchorLine, anchorColumn);
         view.armInfoCancel(strings.aiCancel());
     }
@@ -606,7 +606,7 @@ public final class AiAssistant implements EditorView.AssistantProvider,
         PopupStrings strings = view.popupStrings();
         TextBuffer buffer = view.getBuffer();
         if (buffer.getRevision() != pending.revision()) {
-            view.showInfoPopup(strings.assistant(), strings.aiStale(),
+            view.showAssistantPopup(strings.aiStale(), false,
                     pending.anchorLine(), pending.anchorColumn());
             return;
         }
@@ -850,8 +850,8 @@ public final class AiAssistant implements EditorView.AssistantProvider,
         for (String fingerprint : after) {
             if (!check.before().contains(fingerprint)) {
                 PopupStrings strings = view.popupStrings();
-                view.showInfoPopup(strings.assistant(),
-                        strings.aiNewErrors(), check.fromLine(), 0);
+                view.showAssistantPopup(strings.aiNewErrors(), false,
+                        check.fromLine(), 0);
                 return;
             }
         }

@@ -293,9 +293,10 @@ public final class AiEditBar implements KeyboardCard {
         }
         float pad = dp(PAD_DP);
         float rowHeight = dp(style.rowHeightDp());
-        float glyphW = dp(style.rowHeightDp() - 2);
-        if (y < poseY + pad + rowHeight
-                && x >= poseX + cardW - dp(2) - glyphW) {
+        if (y <= poseY + Math.max(pad + rowHeight, dp(48))
+                && x >= poseX + cardW - dp(48)) {
+            // LA CROIX — la cible ≥ 48 dp (B7 : les cartes d'IA au
+            // doigt à l'aise, le glyphe dessiné respire moins)
             close();
             return true;
         }
