@@ -48,6 +48,13 @@ public abstract class CardBase {
     protected boolean shown;
 
     /**
+     * LE FLOT de pose (le retour du terrain : la carte qui suit son
+     * ancre ne SAUTE plus à sa pose nouvelle — elle y GLISSE, le
+     * glissement court amorti de {@link PopupFloat}).
+     */
+    protected final PopupFloat flot = new PopupFloat();
+
+    /**
      * Une carte neuve, à la densité de l'écran.
      *
      * @param density la densité (le dp en pixels)
@@ -72,6 +79,8 @@ public abstract class CardBase {
 
     /** Ramasse les restes de la fermeture (les listes, l'ancre). */
     protected void onClosed() {
+        // le flot se range aussi (la prochaine naissance pose d'un trait)
+        flot.reset();
     }
 
     /**
@@ -248,5 +257,47 @@ public abstract class CardBase {
     /** Le dp de l'écran (px). */
     protected float dp(float value) {
         return value * density;
+    }
+
+    /**
+     * La pose vient d'être posée (la FIN de {@code place()} de la carte
+     * l'appelle) : le flot s'y nourrit — la pose IDENTIQUE ne déclenche
+     * rien (la carte qui redessine au même endroit ne tremble pas), la
+     * pose changée y fait naître un glissement DEPUIS la pose courante.
+     */
+    protected void poseSettled() {
+        flot.poseTo(poseX, poseY);
+    }
+
+    /** Le décalage horizontal du flot (px — nul au repos ; la vue y
+     * translate le dessin de la carte). */
+    public float floatOffsetX() {
+        return flot.offsetX();
+    }
+
+    /** Le décalage vertical du flot (px — nul au repos ; la vue y
+     * translate le dessin de la carte). */
+    public float floatOffsetY() {
+        return flot.offsetY();
+    }
+
+    /** Le flot vit-il (la vue y réclame la trame suivante). */
+    public boolean floating() {
+        return flot.isRunning();
+    }
+
+    /**
+     * Le doigt TRAÎNE dans la carte (au-delà du seuil de glisse) : la
+     * fenêtre de rangées suit la traîne — LE DÉFILEMENT DES LISTES
+     * (le retour du terrain : « même celui avec Scroll je ne peux
+     * scroller » — la barre se dessinait, le doigt ne la servait pas).
+     * La base ne défile pas (les cartes sans liste y consomment).
+     *
+     * @param dy le delta du doigt depuis la trame d'avant (px, positif
+     *           vers le bas)
+     * @return vrai quand la fenêtre a bougé
+     */
+    public boolean dragRows(float dy) {
+        return false;
     }
 }

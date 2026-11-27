@@ -340,6 +340,9 @@ public final class ImportBubbleCard extends CardBase implements VirtualRows {
         poseX = Math.max(margin,
                 Math.min(metrics.paddingLeft(),
                         metrics.viewWidth() - cardW - margin));
+        // LA POSE POSÉE : le flot s'y nourrit (la carte glisse à sa pose
+        // nouvelle au lieu d'y sauter — le retour du terrain)
+        poseSettled();
     }
 
     /**

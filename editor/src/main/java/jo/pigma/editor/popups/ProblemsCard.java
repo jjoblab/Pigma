@@ -375,6 +375,9 @@ public final class ProblemsCard extends ListCard {
         placeY(anchorTop, anchorBottom, margin, dp(GAP_DP), cardH,
                 metrics.viewHeight());
         placeX(margin, metrics);
+        // LA POSE POSÉE : le flot s'y nourrit (la carte glisse à sa pose
+        // nouvelle au lieu d'y sauter — le retour du terrain)
+        poseSettled();
     }
 
     /** La largeur qu'il faut pour le plus large message, respiré. */

@@ -45,6 +45,12 @@ public final class GotoBar implements KeyboardCard {
     /** Le style posé par l'hôte : fond translucide, tailles, largeur, forme. */
     private PopupStyle style = PopupStyle.defaults();
 
+    /**
+     * LE FLOT de pose (le retour du terrain : la barre qui suit le
+     * caret ne SAUTE plus à sa pose nouvelle — elle y GLISSE).
+     */
+    private final PopupFloat flot = new PopupFloat();
+
     /** Les chaînes posées par l'hôte (l'invite localisée — la source unique). */
     private PopupStrings strings = PopupStrings.defaults();
 
@@ -56,6 +62,9 @@ public final class GotoBar implements KeyboardCard {
     private final Paint hintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint smallPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint glyphPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** L'encre d'accent (le curseur du champ qui clignote). */
+    private final Paint accentPaint = new Paint();
 
     /**
      * Une carte neuve, ses pinceaux propres au style par défaut.
@@ -96,6 +105,7 @@ public final class GotoBar implements KeyboardCard {
 
     /** Reconfigure les pinceaux au style courant. */
     private void applyStyle() {
+        accentPaint.setColor(style.accentArgb());
         cardPaint.setColor(style.backgroundArgb());
         borderPaint.setColor(style.borderArgb());
         borderPaint.setStyle(Paint.Style.STROKE);
@@ -134,6 +144,7 @@ public final class GotoBar implements KeyboardCard {
         shown = false;
         digits.setLength(0);
         fieldTapped = false;
+        flot.reset();
     }
 
     /** La carte vit-elle ? */
@@ -177,6 +188,9 @@ public final class GotoBar implements KeyboardCard {
                 : Math.max(margin, ancreY - gap - cardH);
         poseX = Math.max(margin,
                 Math.min(ancreX, metrics.viewWidth() - cardW - margin));
+        // LA POSE POSÉE : le flot s'y nourrit (la barre glisse à sa pose
+        // nouvelle au lieu d'y sauter — le retour du terrain)
+        flot.poseTo(poseX, poseY);
     }
 
     /**
@@ -213,6 +227,15 @@ public final class GotoBar implements KeyboardCard {
         // le retour grisonne dessous
         canvas.drawText(feedback, poseX + dp(10),
                 rowTop + rowHeight + dp(16), smallPaint);
+        // LE CURSEUR QUI CLIGNOTE au bout des chiffres tapés (le retour du
+        // terrain : « de même pour le popup aller à la ligne ») — la
+        // frappe déléguée s'y voit VIVANTE, l'encre d'accent
+        String shownDigits = digits.toString();
+        float digitsX = poseX + dp(10) + inviteWidth + dp(4);
+        FieldCaret.draw(canvas,
+                digitsX + textPaint.measureText(shownDigits) + dp(3),
+                rowTop + rowHeight * 0.22f,
+                rowTop + rowHeight * 0.82f, dp(2), accentPaint);
     }
 
     /**
@@ -328,6 +351,21 @@ public final class GotoBar implements KeyboardCard {
     /** L'ordonnée du caret d'ancrage (le harnais la lit). */
     public float ancreY() {
         return ancreY;
+    }
+
+    /** Le décalage horizontal du flot de pose (px — nul au repos). */
+    public float floatOffsetX() {
+        return flot.offsetX();
+    }
+
+    /** Le décalage vertical du flot de pose (px — nul au repos). */
+    public float floatOffsetY() {
+        return flot.offsetY();
+    }
+
+    /** Le flot de pose vit-il (la vue y réclame la trame suivante). */
+    public boolean floating() {
+        return flot.isRunning();
     }
 
     /** L'abscisse du caret d'ancrage (le harnais la lit). */

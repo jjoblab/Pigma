@@ -252,10 +252,23 @@ public final class FoldRenderingIT {
         assertTrue("le placeholder vit sur l'ouvrant ("
                 + placeholderInk + " pixels)", placeholderInk >= 3);
         // RIEN NE VIT AU-DELÀ DE LA COUPE : la suite de l'en-tête (la
-        // note et l'ouvrant d'origine) ne se dessine plus
-        int beyondInk = textInk(foldLine, 28, 45);
-        assertTrue("rien ne vit au-delà de la coupe (" + beyondInk
-                + " pixels)", beyondInk == 0);
+        // note et l'ouvrant d'origine) ne se dessine plus. LE
+        // PLACEHOLDER EN PUCE (le retour du terrain : il était trop
+        // petit) vit sur l'ouvrant et s'étend de par-delà — la coupe
+        // se vérifie AU BORD DE LA PUCE : son encre est CONTIGUË
+        // (la puce se lit d'un tenant depuis l'ouvrant), le premier
+        // silence qui suit est la coupe — rien d'autre ne peint plus
+        // loin (la note, l'ouvrant d'origine)
+        int chipEnd = 22;
+        while (chipEnd < 45 && textInk(foldLine, chipEnd, chipEnd + 1) > 0) {
+            chipEnd++;
+        }
+        assertTrue("la puce vit sur l'ouvrant et s'étend (au moins 3 colonnes)",
+                chipEnd >= 25);
+        int beyondInk = textInk(foldLine, chipEnd, 45);
+        assertTrue("rien ne vit au-delà de la puce (" + beyondInk
+                + " pixels, la puce porte jusqu'à la colonne " + chipEnd
+                + ")", beyondInk == 0);
         // le retour au texte original : le pli se rend, l'annulation
         // retire la note (le scénario repart propre)
         tap(gutterX, y);

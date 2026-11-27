@@ -30,6 +30,11 @@ public abstract class ListCard extends CardBase implements VirtualRows {
     /** La première rangée de la fenêtre (le défilement de la carte). */
     protected int topRow;
 
+    /** La première rangée visible de la fenêtre (le harnais la lit). */
+    public int topRow() {
+        return topRow;
+    }
+
     /** Le nombre de rangées visibles à la pose courante. */
     protected int visibleRows;
 
@@ -166,8 +171,42 @@ public abstract class ListCard extends CardBase implements VirtualRows {
     /** La hauteur d'une rangée (px). */
     protected abstract float rowHeight();
 
+    /** Le reste du défilement à la rangée près (les traînées partielles s'y accumulent). */
+    private float dragRemainder;
+
     /**
-     * La barre de défilement au bord droit : la fenêtre montre-t-elle
+     * Le doigt TRAÎNE dans la carte : la fenêtre de rangées suit (px
+     * par px — le reste sous une rangée s'accumule, les rangées
+     * entières seules y passent, bornées aux murs de la liste).
+     *
+     * @param dy le delta du doigt depuis la trame d'avant (px, positif
+     *           vers le bas)
+     * @return vrai quand la fenêtre a bougé
+     */
+    @Override
+    public boolean dragRows(float dy) {
+        if (!isShown() || visibleRows <= 0) {
+            return false;
+        }
+        dragRemainder += dy;
+        float rowH = rowHeight();
+        if (rowH <= 0.0f) {
+            dragRemainder = 0.0f;
+            return false;
+        }
+        int rows = (int) (dragRemainder / rowH);
+        if (rows == 0) {
+            return false;
+        }
+        int floor = Math.max(0, rowCount() - visibleRows);
+        int target = Math.max(0, Math.min(floor, topRow - rows));
+        boolean moved = target != topRow;
+        topRow = target;
+        dragRemainder -= rows * rowH;
+        return moved;
+    }
+
+    /** La barre de défilement au bord droit : la fenêtre montre-t-elle
      * moins que la liste ? Le pouce se pose au prorata des rangées
      * visibles, jamais plus petit que 24 dp (le doigt y vit).
      *

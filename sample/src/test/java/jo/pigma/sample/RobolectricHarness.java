@@ -545,12 +545,13 @@ public final class RobolectricHarness {
         frame();
         check("la carte de complétion vit au mot",
                 editor.completionCard().isShown());
-        check("aucun candidat surbrillé d'office",
-                editor.completionCard().highlighted() < 0);
+        check("le candidat courant se montre dès la naissance — son fond de sélection ; la naissance ne vaut pas un CHOIX (B6)",
+                editor.completionCard().highlighted() == 0
+                        && !editor.completionCard().chosen());
         int before = editor.getBuffer().length();
         connection.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,
                 KeyEvent.KEYCODE_ENTER));
-        check("l'Entrée traverse la carte sans choix : le saut vit",
+        check("l'Entrée traverse la carte sans choix : le saut vit (B6 tenu)",
                 editor.getBuffer().length() == before + 1
                         && editor.getBuffer().toString()
                                 .startsWith(original.substring(0, caret + 4)
@@ -565,7 +566,7 @@ public final class RobolectricHarness {
         if (editor.completionCard().isShown()) {
             editor.completionCard().onArrow(1);
             check("la flèche pose un choix explicite",
-                    editor.completionCard().highlighted() >= 0);
+                    editor.completionCard().chosen());
             String word = original.substring(caret, caret + 4);
             connection.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,
                     KeyEvent.KEYCODE_ENTER));

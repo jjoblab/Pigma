@@ -278,6 +278,25 @@ public final class EditorView extends View {
     /** Le doigt est-il tombé sur une carte ouverte ? — le geste entier lui revient. */
     private boolean downOnCard;
 
+    /**
+     * Le doigt a-t-il TRAÎNÉ au-delà du seuil sur la carte ? — le geste
+     * n'est plus un tap : la rangée armée au DOWN ne se JOUE pas au
+     * relâchement (le défaut du terrain : « quand j'appuie sur les
+     * options, c'est dismiss direct » — le tir qui visait le
+     * défilement jouait sa rangée, la carte se rangeait, rien ne
+     * défilait), la traîne DÉFILE la liste à la place.
+     */
+    private boolean cardDragged;
+
+    /** L'ordonnée de la trame d'avant (le delta du défilement à la traîne). */
+    private float cardLastY;
+
+    /** L'abscisse de l'appui sur la carte (le seuil de traîne s'y mesure). */
+    private float cardDownX;
+
+    /** L'ordonnée de l'appui sur la carte (le seuil de traîne s'y mesure). */
+    private float cardDownY;
+
     /** Le doigt est-il tombé sur la popup d'info ? — le défilement du corps lui revient. */
     private boolean downOnInfo;
 
@@ -3764,6 +3783,13 @@ public final class EditorView extends View {
                         || (touchedRename && renameBar.keyboardWanted())) {
                     openKeyboard();
                 }
+                // le geste naît PROPRE : le tap n'a pas encore traîné
+                // (la traîne y naîtra au MOVE au-delà du seuil — l'appui
+                // s'y retient, le touch du texte n'y vit pas)
+                cardDragged = false;
+                cardLastY = event.getY();
+                cardDownX = event.getX();
+                cardDownY = event.getY();
                 return true;
             }
         } else if (downOnCard) {
@@ -3771,56 +3797,77 @@ public final class EditorView extends View {
             // doigt (le champ et la bande du sélecteur de couleur y
             // vivent — la teinte change à CHAQUE cran), l'UP y clôt
             // (la rangée armée des usages s'y joue, la cellule de
-            // palette s'applique)
+            // palette s'applique) — SAUF la traîne au-delà du seuil : le
+            // geste dévienu TIR ne joue plus sa rangée au relâchement
+            // (le défaut du terrain : le tir qui visait le défilement
+            // jouait sa rangée — « c'est dismiss direct »), il DÉFILE
+            // la liste à la place (px par px, borné aux murs)
             if (colorPickerCard != null && colorPickerCard.isShown()) {
                 colorPickerCard.onTouchArea(event.getX(), event.getY(),
                         event.getActionMasked());
             }
+            if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                if (!cardDragged
+                        && (Math.abs(event.getX() - cardDownX) > touchSlop()
+                        || Math.abs(event.getY() - cardDownY) > touchSlop())) {
+                    cardDragged = true;
+                }
+                if (cardDragged) {
+                    float dy = event.getY() - cardLastY;
+                    if (cardListScrolled(dy)) {
+                        invalidate();
+                    }
+                }
+                cardLastY = event.getY();
+            }
             if (event.getActionMasked() == MotionEvent.ACTION_UP
                     || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
-                if (usageCard != null) {
-                    usageCard.onRelease();
-                }
-                if (targetCard != null) {
-                    targetCard.onRelease();
-                }
-                if (problemsCard != null) {
-                    problemsCard.onRelease();
-                }
-                if (structureCard != null) {
-                    structureCard.onRelease();
-                }
-                if (importBubbleCard != null) {
-                    importBubbleCard.onRelease();
-                }
-                if (previewCard != null) {
-                    previewCard.onRelease();
-                }
-                if (gotoCard != null) {
-                    gotoCard.onRelease();
-                }
-                if (recentCard != null) {
-                    recentCard.onRelease();
-                }
-                if (renamePreviewCard != null) {
-                    renamePreviewCard.onRelease();
-                }
-                if (surroundCard != null) {
-                    surroundCard.onRelease();
-                }
-                if (snippetCard != null) {
-                    snippetCard.onRelease();
-                }
-                if (clipboardCard != null && clipboardCard.onRelease()) {
-                    // la copie choisie se COLLE au caret (l'historique du presse-papiers — le
-                    // collage d'avant renaît au doigt)
-                    String paste = clipboardCard.pendingPaste();
-                    clipboardCard.takePendingPaste();
-                    pendingEditLabel = "collage (historique)";
-                    int caret = Math.min(selection.caret(), buffer.length());
-                    applyEdit(caret, caret, paste == null ? "" : paste);
+                if (!cardDragged) {
+                    if (usageCard != null) {
+                        usageCard.onRelease();
+                    }
+                    if (targetCard != null) {
+                        targetCard.onRelease();
+                    }
+                    if (problemsCard != null) {
+                        problemsCard.onRelease();
+                    }
+                    if (structureCard != null) {
+                        structureCard.onRelease();
+                    }
+                    if (importBubbleCard != null) {
+                        importBubbleCard.onRelease();
+                    }
+                    if (previewCard != null) {
+                        previewCard.onRelease();
+                    }
+                    if (gotoCard != null) {
+                        gotoCard.onRelease();
+                    }
+                    if (recentCard != null) {
+                        recentCard.onRelease();
+                    }
+                    if (renamePreviewCard != null) {
+                        renamePreviewCard.onRelease();
+                    }
+                    if (surroundCard != null) {
+                        surroundCard.onRelease();
+                    }
+                    if (snippetCard != null) {
+                        snippetCard.onRelease();
+                    }
+                    if (clipboardCard != null && clipboardCard.onRelease()) {
+                        // la copie choisie se COLLE au caret (l'historique du presse-papiers — le
+                        // collage d'avant renaît au doigt)
+                        String paste = clipboardCard.pendingPaste();
+                        clipboardCard.takePendingPaste();
+                        pendingEditLabel = "collage (historique)";
+                        int caret = Math.min(selection.caret(), buffer.length());
+                        applyEdit(caret, caret, paste == null ? "" : paste);
+                    }
                 }
                 downOnCard = false;
+                cardDragged = false;
             }
             return true;
         }
@@ -4215,6 +4262,88 @@ public final class EditorView extends View {
     }
 
     /**
+     * LES POPUPS ANIMENT-ELLES ? — le flot d'une carte vers sa pose
+     * neuve (le retour du terrain : « une animation plus fluide »), ou
+     * le clignotement d'un champ délégué (une barre à champ vit : son
+     * curseur clignote). La vue y réclame la trame suivante (le
+     * clignote et le flot se portent par les trames, jamais de fil
+     * d'horloge — la leçon du paquetage).
+     */
+    private boolean popupsAnimating() {
+        return (usageCard != null && usageCard.isShown() && usageCard.floating())
+                || (targetCard != null && targetCard.isShown() && targetCard.floating())
+                || (problemsCard != null && problemsCard.isShown() && problemsCard.floating())
+                || (clipboardCard != null && clipboardCard.isShown() && clipboardCard.floating())
+                || (structureCard != null && structureCard.isShown() && structureCard.floating())
+                || (importBubbleCard != null && importBubbleCard.isShown() && importBubbleCard.floating())
+                || (previewCard != null && previewCard.isShown() && previewCard.floating())
+                || (gotoCard != null && gotoCard.isShown() && gotoCard.floating())
+                || (recentCard != null && recentCard.isShown() && recentCard.floating())
+                || (renamePreviewCard != null && renamePreviewCard.isShown() && renamePreviewCard.floating())
+                || (surroundCard != null && surroundCard.isShown() && surroundCard.floating())
+                || (snippetCard != null && snippetCard.isShown() && snippetCard.floating())
+                || (completionCard != null && completionCard.isShown() && completionCard.floating())
+                || (searchBar != null && searchBar.isShown())
+                || (gotoBar != null && gotoBar.isShown())
+                || (renameBar != null && renameBar.isShown());
+    }
+
+    /**
+     * La traîne du doigt sur la carte DÉFILE la première liste vivante
+     * (le retour du terrain : « même celui avec Scroll je ne peux
+     * scroller ») : une seule carte flottante vit à la fois (l'exclusion
+     * mutuelle du gestionnaire), la complétion y vit seule aussi — la
+     * carte vivante prend la traîne, les autres y dorment.
+     *
+     * @param dy le delta du doigt depuis la trame d'avant (px, positif
+     *           vers le bas)
+     * @return vrai quand une fenêtre de rangées a bougé
+     */
+    private boolean cardListScrolled(float dy) {
+        boolean moved = false;
+        if (usageCard != null && usageCard.isShown()) {
+            moved |= usageCard.dragRows(dy);
+        }
+        if (targetCard != null && targetCard.isShown()) {
+            moved |= targetCard.dragRows(dy);
+        }
+        if (problemsCard != null && problemsCard.isShown()) {
+            moved |= problemsCard.dragRows(dy);
+        }
+        if (structureCard != null && structureCard.isShown()) {
+            moved |= structureCard.dragRows(dy);
+        }
+        if (importBubbleCard != null && importBubbleCard.isShown()) {
+            moved |= importBubbleCard.dragRows(dy);
+        }
+        if (previewCard != null && previewCard.isShown()) {
+            moved |= previewCard.dragRows(dy);
+        }
+        if (gotoCard != null && gotoCard.isShown()) {
+            moved |= gotoCard.dragRows(dy);
+        }
+        if (recentCard != null && recentCard.isShown()) {
+            moved |= recentCard.dragRows(dy);
+        }
+        if (renamePreviewCard != null && renamePreviewCard.isShown()) {
+            moved |= renamePreviewCard.dragRows(dy);
+        }
+        if (surroundCard != null && surroundCard.isShown()) {
+            moved |= surroundCard.dragRows(dy);
+        }
+        if (snippetCard != null && snippetCard.isShown()) {
+            moved |= snippetCard.dragRows(dy);
+        }
+        if (clipboardCard != null && clipboardCard.isShown()) {
+            moved |= clipboardCard.dragRows(dy);
+        }
+        if (completionCard != null && completionCard.isShown()) {
+            moved |= completionCard.dragRows(dy);
+        }
+        return moved;
+    }
+
+    /**
      * L'offset le plus proche d'un point de vue : la ligne par la
      * position défilée, la colonne par la largeur de caractère (la
      * colonne se borne à la ligne — un doigt sous la dernière ligne
@@ -4462,16 +4591,34 @@ public final class EditorView extends View {
         // caret, le clavier délégué (la pose se recalcule ici : le
         // caret les suit, le harnais la lit)
         if (searchBar != null && searchBar.isShown()) {
+            // AU FLOT : la barre glisse à sa pose nouvelle au lieu d'y
+            // sauter (le retour du terrain — « l'animation des popups
+            // recherche et aller a la ligne n'est pas fluide »)
+            int flotSave = canvas.save();
+            canvas.translate(searchBar.floatOffsetX(), searchBar.floatOffsetY());
             searchBar.draw(canvas, popupMetrics());
+            canvas.restore();
         }
         if (gotoBar != null && gotoBar.isShown()) {
+            // AU FLOT : la barre glisse à sa pose nouvelle au lieu d'y
+            // sauter (le retour du terrain — « l'animation des popups
+            // recherche et aller a la ligne n'est pas fluide »)
+            int flotSave = canvas.save();
+            canvas.translate(gotoBar.floatOffsetX(), gotoBar.floatOffsetY());
             gotoBar.draw(canvas, popupMetrics());
+            canvas.restore();
         }
         // la carte de renommage, par-dessus tout elle aussi : posée au
         // caret, le clavier délégué — la pose se recalcule ici, le
         // caret la suit (le harnais la lit)
         if (renameBar != null && renameBar.isShown()) {
+            // AU FLOT : la barre glisse à sa pose nouvelle au lieu d'y
+            // sauter (le retour du terrain — « l'animation des popups
+            // recherche et aller a la ligne n'est pas fluide »)
+            int flotSave = canvas.save();
+            canvas.translate(renameBar.floatOffsetX(), renameBar.floatOffsetY());
             renameBar.draw(canvas, popupMetrics());
+            canvas.restore();
         }
         // la carte des usages, par-dessus tout : posée au caret, la
         // rangée choisie y navigue (le harnais la lit)
@@ -4480,8 +4627,13 @@ public final class EditorView extends View {
                     Math.min(selection.caret(), buffer.length()));
             float caretTop = getPaddingTop()
                     + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            // AU FLOT : la carte glisse à sa pose nouvelle au lieu
+            // d'y sauter (le retour du terrain)
+            int flotSave = canvas.save();
+            canvas.translate(usageCard.floatOffsetX(), usageCard.floatOffsetY());
             usageCard.draw(canvas, caretTop, caretTop + lineHeight,
                     popupMetrics());
+            canvas.restore();
         }
         // les QUATRE nouvelles (le choix de cibles/la liste des problèmes/l'historique du presse-papiers/la structure du fichier du rapport) : posées au
         // caret pareillement — le choix de cibles, la liste des
@@ -4492,32 +4644,53 @@ public final class EditorView extends View {
                     Math.min(selection.caret(), buffer.length()));
             float caretTop = getPaddingTop()
                     + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            // AU FLOT : la carte glisse à sa pose nouvelle au lieu
+            // d'y sauter (le retour du terrain)
+            int flotSave = canvas.save();
+            canvas.translate(targetCard.floatOffsetX(), targetCard.floatOffsetY());
             targetCard.draw(canvas, caretTop, caretTop + lineHeight,
                     popupMetrics());
+            canvas.restore();
         }
         if (problemsCard != null && problemsCard.isShown()) {
             int caretLineIndex = buffer.lineOfOffset(
                     Math.min(selection.caret(), buffer.length()));
             float caretTop = getPaddingTop()
                     + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            // AU FLOT : la carte glisse à sa pose nouvelle au lieu
+            // d'y sauter (le retour du terrain)
+            int flotSave = canvas.save();
+            canvas.translate(problemsCard.floatOffsetX(), problemsCard.floatOffsetY());
             problemsCard.draw(canvas, caretTop, caretTop + lineHeight,
                     popupMetrics());
+            canvas.restore();
         }
         if (clipboardCard != null && clipboardCard.isShown()) {
             int caretLineIndex = buffer.lineOfOffset(
                     Math.min(selection.caret(), buffer.length()));
             float caretTop = getPaddingTop()
                     + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            // AU FLOT : la carte glisse à sa pose nouvelle au lieu
+            // d'y sauter (le retour du terrain)
+            int flotSave = canvas.save();
+            canvas.translate(clipboardCard.floatOffsetX(), clipboardCard.floatOffsetY());
             clipboardCard.draw(canvas, caretTop, caretTop + lineHeight,
                     popupMetrics());
+            canvas.restore();
         }
         if (structureCard != null && structureCard.isShown()) {
             int caretLineIndex = buffer.lineOfOffset(
                     Math.min(selection.caret(), buffer.length()));
             float caretTop = getPaddingTop()
                     + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            // AU FLOT : la carte glisse à sa pose nouvelle au lieu
+            // d'y sauter (le retour du terrain)
+            int flotSave = canvas.save();
+            canvas.translate(structureCard.floatOffsetX(),
+                    structureCard.floatOffsetY());
             structureCard.draw(canvas, caretTop, caretTop + lineHeight,
                     caretLineIndex, popupMetrics());
+            canvas.restore();
         }
         // LES SEPT NOUVELLES du plan des popups,
         // posées au caret pareillement : la bulle de l'import (AU-DESSUS
@@ -4529,56 +4702,98 @@ public final class EditorView extends View {
                     Math.min(selection.caret(), buffer.length()));
             float caretTop = getPaddingTop()
                     + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            // AU FLOT : la carte glisse à sa pose nouvelle au lieu
+            // d'y sauter (le retour du terrain)
+            int flotSave = canvas.save();
+            canvas.translate(importBubbleCard.floatOffsetX(), importBubbleCard.floatOffsetY());
             importBubbleCard.draw(canvas, caretTop, caretTop + lineHeight,
                     popupMetrics());
+            canvas.restore();
         }
         if (previewCard != null && previewCard.isShown()) {
             int caretLineIndex = buffer.lineOfOffset(
                     Math.min(selection.caret(), buffer.length()));
             float caretTop = getPaddingTop()
                     + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            // AU FLOT : la carte glisse à sa pose nouvelle au lieu
+            // d'y sauter (le retour du terrain)
+            int flotSave = canvas.save();
+            canvas.translate(previewCard.floatOffsetX(), previewCard.floatOffsetY());
             previewCard.draw(canvas, caretTop, caretTop + lineHeight,
                     popupMetrics());
+            canvas.restore();
         }
         if (gotoCard != null && gotoCard.isShown()) {
             int caretLineIndex = buffer.lineOfOffset(
                     Math.min(selection.caret(), buffer.length()));
             float caretTop = getPaddingTop()
                     + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            // AU FLOT : la carte glisse à sa pose nouvelle au lieu
+            // d'y sauter (le retour du terrain)
+            int flotSave = canvas.save();
+            canvas.translate(gotoCard.floatOffsetX(), gotoCard.floatOffsetY());
             gotoCard.draw(canvas, caretTop, caretTop + lineHeight,
                     popupMetrics());
+            canvas.restore();
         }
         if (recentCard != null && recentCard.isShown()) {
             int caretLineIndex = buffer.lineOfOffset(
                     Math.min(selection.caret(), buffer.length()));
             float caretTop = getPaddingTop()
                     + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            // AU FLOT : la carte glisse à sa pose nouvelle au lieu
+            // d'y sauter (le retour du terrain)
+            int flotSave = canvas.save();
+            canvas.translate(recentCard.floatOffsetX(), recentCard.floatOffsetY());
             recentCard.draw(canvas, caretTop, caretTop + lineHeight,
                     popupMetrics());
+            canvas.restore();
         }
         if (renamePreviewCard != null && renamePreviewCard.isShown()) {
             int caretLineIndex = buffer.lineOfOffset(
                     Math.min(selection.caret(), buffer.length()));
             float caretTop = getPaddingTop()
                     + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            // AU FLOT : la carte glisse à sa pose nouvelle au lieu
+            // d'y sauter (le retour du terrain)
+            int flotSave = canvas.save();
+            canvas.translate(renamePreviewCard.floatOffsetX(), renamePreviewCard.floatOffsetY());
             renamePreviewCard.draw(canvas, caretTop, caretTop + lineHeight,
                     popupMetrics());
+            canvas.restore();
         }
         if (surroundCard != null && surroundCard.isShown()) {
             int caretLineIndex = buffer.lineOfOffset(
                     Math.min(selection.caret(), buffer.length()));
             float caretTop = getPaddingTop()
                     + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            // AU FLOT : la carte glisse à sa pose nouvelle au lieu
+            // d'y sauter (le retour du terrain)
+            int flotSave = canvas.save();
+            canvas.translate(surroundCard.floatOffsetX(), surroundCard.floatOffsetY());
             surroundCard.draw(canvas, caretTop, caretTop + lineHeight,
                     popupMetrics());
+            canvas.restore();
         }
         if (snippetCard != null && snippetCard.isShown()) {
             int caretLineIndex = buffer.lineOfOffset(
                     Math.min(selection.caret(), buffer.length()));
             float caretTop = getPaddingTop()
                     + visibleIndexOf(caretLineIndex) * lineHeight - scrollY;
+            // AU FLOT : la carte glisse à sa pose nouvelle au lieu
+            // d'y sauter (le retour du terrain)
+            int flotSave = canvas.save();
+            canvas.translate(snippetCard.floatOffsetX(), snippetCard.floatOffsetY());
             snippetCard.draw(canvas, caretTop, caretTop + lineHeight,
                     popupMetrics());
+            canvas.restore();
+        }
+        // LE FLOT DES CARTES ET LE CLIGNOTEMENT DES CHAMPS : la trame
+        // suivante se réclame tant qu'une carte glisse à sa pose neuve
+        // ou qu'une barre à champ vit (son curseur clignote — la trame
+        // porte le clignote, à la leçon des animations du paquetage)
+        if (popupsAnimating()) {
+            invalidate();
         }
         // le sélecteur de couleur, par-dessus tout : posé au littéral
         // #RRGGBB du caret, la teinte y vit sous le doigt
@@ -6023,6 +6238,18 @@ public final class EditorView extends View {
      */
     private void updateSuggestions() {
         if (touch.isHandleDragging() || touch.isTextDragging()) {
+            completionCard.set(List.of(), "");
+            suggestionWordStart = -1;
+            return;
+        }
+        // UNE BARRE À CHAMP VIT ? — la complétion se range et n'y
+        // RE-NAÎT PAS (le retour du terrain : « pendant que je tape dans
+        // le popup recherche, le popup complétion intercepte aussi ce
+        // j'écris ») : la frappe va au CHAMP délégué, le tampon ne
+        // bouge pas, mais la carte qui re-naîtrait couvrirait la barre
+        // et prendrait le doigt — le clavier délégué lui interdit la
+        // re-naissance tant que la barre vit
+        if (openCard() != null) {
             completionCard.set(List.of(), "");
             suggestionWordStart = -1;
             return;

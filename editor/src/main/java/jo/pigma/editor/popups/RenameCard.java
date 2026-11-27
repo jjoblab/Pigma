@@ -53,6 +53,12 @@ public final class RenameCard implements KeyboardCard {
     /** Le style posé par l'hôte : fond translucide, tailles, largeur, forme. */
     private PopupStyle style = PopupStyle.defaults();
 
+    /**
+     * LE FLOT de pose (le retour du terrain : la barre qui suit le
+     * caret ne SAUTE plus à sa pose nouvelle — elle y GLISSE).
+     */
+    private final PopupFloat flot = new PopupFloat();
+
     private EditorView editor;
 
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -61,6 +67,9 @@ public final class RenameCard implements KeyboardCard {
     private final Paint hintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint smallPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint glyphPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** L'encre d'accent (le curseur du champ qui clignote). */
+    private final Paint accentPaint = new Paint();
 
     /**
      * Le porteur du renommage : la validation lui porte le nom neuf
@@ -109,6 +118,7 @@ public final class RenameCard implements KeyboardCard {
 
     /** Reconfigure les pinceaux au style courant. */
     private void applyStyle() {
+        accentPaint.setColor(style.accentArgb());
         cardPaint.setColor(style.backgroundArgb());
         borderPaint.setColor(style.borderArgb());
         borderPaint.setStyle(Paint.Style.STROKE);
@@ -156,6 +166,7 @@ public final class RenameCard implements KeyboardCard {
         shown = false;
         name.setLength(0);
         fieldTapped = false;
+        flot.reset();
     }
 
     /** La carte vit-elle ? */
@@ -196,6 +207,9 @@ public final class RenameCard implements KeyboardCard {
                 : Math.max(margin, ancreY - gap - cardH);
         poseX = Math.max(margin,
                 Math.min(ancreX, metrics.viewWidth() - cardW - margin));
+        // LA POSE POSÉE : le flot s'y nourrit (la barre glisse à sa pose
+        // nouvelle au lieu d'y sauter — le retour du terrain)
+        flot.poseTo(poseX, poseY);
     }
 
     /**
@@ -224,6 +238,14 @@ public final class RenameCard implements KeyboardCard {
         canvas.drawText(name.length() == 0 ? "nom neuf" : name.toString(),
                 poseX + dp(10) + inviteWidth + dp(4), baseline,
                 name.length() == 0 ? hintPaint : textPaint);
+        // LE CURSEUR QUI CLIGNOTE au bout du nom tapé (le retour du
+        // terrain) — la frappe déléguée s'y voit VIVANTE, l'encre d'accent
+        String shownName = name.toString();
+        FieldCaret.draw(canvas,
+                poseX + dp(10) + inviteWidth + dp(4)
+                        + textPaint.measureText(shownName) + dp(3),
+                rowTop + rowHeight * 0.22f,
+                rowTop + rowHeight * 0.82f, dp(2), accentPaint);
         float glyphW = dp(style.rowHeightDp() - 2);
         float cy = rowTop + rowHeight / 2;
         float crossCx = poseX + cardW - dp(2) - glyphW / 2;
@@ -366,6 +388,21 @@ public final class RenameCard implements KeyboardCard {
     /** L'ordonnée posée (le harnais la lit). */
     public float poseY() {
         return poseY;
+    }
+
+    /** Le décalage horizontal du flot de pose (px — nul au repos). */
+    public float floatOffsetX() {
+        return flot.offsetX();
+    }
+
+    /** Le décalage vertical du flot de pose (px — nul au repos). */
+    public float floatOffsetY() {
+        return flot.offsetY();
+    }
+
+    /** Le flot de pose vit-il (la vue y réclame la trame suivante). */
+    public boolean floating() {
+        return flot.isRunning();
     }
 
     /** La largeur de la carte (le harnais la lit). */

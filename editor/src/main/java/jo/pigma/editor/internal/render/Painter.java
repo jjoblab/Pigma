@@ -83,6 +83,12 @@ public final class Painter {
      */
     public void applyTextSize(float textPx) {
         textPaint.setTextSize(textPx);
+        // le placeholder suit le corps (le retour du terrain : il ne
+        // se posait JAMAIS — la puce du pli vivait à la taille par
+        // DÉFAUT du pinceau, minuscule à côté du texte)
+        placeholderPaint.setTextSize(textPx);
+        placeholderPaint.setTypeface(Typeface.MONOSPACE);
+        placeholderPaint.setFakeBoldText(true);
     }
 
     /**
@@ -288,8 +294,11 @@ public final class Painter {
 
     /**
      * Le placeholder du pli replié (la nature du pli se lit à son
-     * ouvrant — « {…} » pour un bloc, « //... » pour un commentaire)
-     * à l'encre atténuée du texte du thème.
+     * ouvrant — « {…} » pour un bloc, « //... » pour un commentaire) :
+     * LE TEXTE AU PLEIN dans une PUCE lisible (le retour du terrain :
+     * le « {…} » nu se lisait trop petit — sa puce vivait à la taille
+     * par défaut du pinceau), la puce teintée du thème et liserée,
+     * coiffée d'un quart de la hauteur des glyphes.
      *
      * @param canvas      le canevas (déjà translaté : AUCUN scrollX ici)
      * @param placeholder le texte du placeholder
@@ -298,9 +307,20 @@ public final class Painter {
      */
     public void drawFoldPlaceholder(Canvas canvas, String placeholder,
             float x, float baseline) {
-        placeholderPaint.setColor((defaultColor & 0x00FFFFFF)
-                | 0x88000000);
-        canvas.drawText(placeholder, x, baseline, placeholderPaint);
+        float pad = dp(4);
+        float textW = placeholderPaint.measureText(placeholder);
+        float top = baseline + ascent * 0.95f - dp(1);
+        float bottom = baseline + descent * 0.5f + dp(1);
+        colorChipPaint.setColor((defaultColor & 0x00FFFFFF) | 0x22000000);
+        canvas.drawRoundRect(x, top, x + textW + 2 * pad, bottom,
+                dp(6), dp(6), colorChipPaint);
+        colorChipBorderPaint.setColor((defaultColor & 0x00FFFFFF) | 0x88000000);
+        colorChipBorderPaint.setStrokeWidth(Math.max(1.0f, dp(1)));
+        colorChipBorderPaint.setStyle(Paint.Style.STROKE);
+        canvas.drawRoundRect(x, top, x + textW + 2 * pad, bottom,
+                dp(6), dp(6), colorChipBorderPaint);
+        placeholderPaint.setColor(defaultColor | 0xFF000000);
+        canvas.drawText(placeholder, x + pad, baseline, placeholderPaint);
     }
 
     /**

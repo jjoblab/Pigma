@@ -65,6 +65,12 @@ public final class SearchBar implements KeyboardCard {
     /** Le style posé par l'hôte : fond translucide, tailles, largeur, forme. */
     private PopupStyle style = PopupStyle.defaults();
 
+    /**
+     * LE FLOT de pose (le retour du terrain : la barre qui suit le
+     * caret ne SAUTE plus à sa pose nouvelle — elle y GLISSE).
+     */
+    private final PopupFloat flot = new PopupFloat();
+
     private final Runnable searchSync = this::runIncrementalSearch;
 
     private EditorView editor;
@@ -151,6 +157,7 @@ public final class SearchBar implements KeyboardCard {
         replaceShown = false;
         activeReplacement = false;
         fieldTapped = false;
+        flot.reset();
         if (editor != null) {
             editor.removeCallbacks(searchSync);
         }
@@ -199,6 +206,9 @@ public final class SearchBar implements KeyboardCard {
                 : Math.max(margin, ancreY - gap - cardH);
         poseX = Math.max(margin,
                 Math.min(ancreX, metrics.viewWidth() - cardW - margin));
+        // LA POSE POSÉE : le flot s'y nourrit (la barre glisse à sa pose
+        // nouvelle au lieu d'y sauter — le retour du terrain)
+        flot.poseTo(poseX, poseY);
     }
 
     /**
@@ -430,6 +440,21 @@ public final class SearchBar implements KeyboardCard {
         return ancreY;
     }
 
+    /** Le décalage horizontal du flot de pose (px — nul au repos). */
+    public float floatOffsetX() {
+        return flot.offsetX();
+    }
+
+    /** Le décalage vertical du flot de pose (px — nul au repos). */
+    public float floatOffsetY() {
+        return flot.offsetY();
+    }
+
+    /** Le flot de pose vit-il (la vue y réclame la trame suivante). */
+    public boolean floating() {
+        return flot.isRunning();
+    }
+
     /** L'abscisse du caret d'ancrage (le harnais la lit). */
     public float ancreX() {
         return ancreX;
@@ -512,6 +537,14 @@ public final class SearchBar implements KeyboardCard {
         if (!activeReplacement) {
             canvas.drawRect(textX, rowTop + rowHeight - dp(3),
                     counterX - dp(8), rowTop + rowHeight, activePaint);
+            // LE CURSEUR QUI CLIGNOTE au bout du texte tapé (le retour du
+            // terrain : « le champ ne montre aucun signe d'avoir le
+            // focus, d'habitude avec le curseur qui clignote ») — la
+            // frappe déléguée s'y voit VIVANTE, l'encre d'accent
+            FieldCaret.draw(canvas,
+                    textX + textPaint.measureText(label) + dp(3),
+                    rowTop + rowHeight * 0.22f,
+                    rowTop + rowHeight * 0.82f, dp(2), activePaint);
         }
     }
 
@@ -534,6 +567,11 @@ public final class SearchBar implements KeyboardCard {
         if (activeReplacement) {
             canvas.drawRect(textX, rowTop + rowHeight - dp(3),
                     actionsX - dp(8), rowTop + rowHeight, activePaint);
+            // LE CURSEUR QUI CLIGNOTE au bout du remplacement tapé
+            FieldCaret.draw(canvas,
+                    textX + textPaint.measureText(label) + dp(3),
+                    rowTop + rowHeight * 0.22f,
+                    rowTop + rowHeight * 0.82f, dp(2), activePaint);
         }
     }
 

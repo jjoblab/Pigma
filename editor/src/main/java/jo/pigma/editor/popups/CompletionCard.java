@@ -143,8 +143,15 @@ public final class CompletionCard {
     /** Le préfixe tapé — ses caractères passent à l'accent dans les noms. */
     private String prefix = "";
 
-    /** L'index du candidat courant, -1 si la carte est vide. */
+    /** Le candidat courant VISIBLE (-1 : la carte est vide) — le fond de sélection le porte. */
     private int highlighted = -1;
+
+    /**
+     * Le candidat courant est-il CHOISI (la flèche ou le doigt — pas
+     * la naissance) ? B6 : l'Entrée ne valide qu'un choix explicite,
+     * le saut de ligne demandé ne meurt plus dans la carte.
+     */
+    private boolean chosen;
 
     /** La première rangée de la fenêtre (le défilement la garde sur le courant). */
     private int topRow;
@@ -249,7 +256,7 @@ public final class CompletionCard {
         detailPaint.setTextSize(style.secondarySizeSp() * density);
         footerPaint.setColor(style.secondaryArgb());
         footerPaint.setTextSize((style.secondarySizeSp() - 2.0f) * density);
-        selectionPaint.setColor((style.accentArgb() & 0x00FFFFFF) | 0x1F000000);
+        selectionPaint.setColor((style.accentArgb() & 0x00FFFFFF) | 0x33000000);
         accentBarPaint.setColor(style.accentArgb());
         scrollbarPaint.setColor((style.borderArgb() & 0x00FFFFFF) | 0x66000000);
         strikePaint.setColor(style.hintArgb());
@@ -305,21 +312,32 @@ public final class CompletionCard {
             if (wasEmpty && !fresh.isEmpty()) {
                 belowSide = 0;
             }
-            // AUCUNE SURBRILLANCE À LA NAISSANCE (le bug d'usage B6 :
-            // le premier candidat se surlignait d'office et l'Entrée
-            // le validait — le saut de ligne demandé mourait dans la
-            // carte) : la surbrillance ne vient que d'un CHOIX EXPLICITE
-            // (flèche déléguée, doigt sur la rangée) ; seule la carte
-            // vivante retient son candidat choisi à travers la
-            // re-filtration (le « kept » ci-dessus)
+            // LE CANDIDAT COURANT SE MONTRE DÈS LA NAISSANCE (le retour
+            // du terrain : « la complétion n'a plus le fond de sélection
+            // pour la suggestion dans la liste ») — le PREMIER rang
+            // porte le fond à la naissance, la carte vivante RETIENT
+            // son candidat à travers la re-filtration (le « kept »
+            // ci-dessus). La validation demeure à B6 : le CHOIX
+            // EXPLICITE seul (flèche, doigt) arme l'Entrée — la
+            // surbrillance de naissance ne vaut pas un choix
             highlighted = -1;
+            boolean keptChosen = false;
             if (kept != null) {
                 for (int at = 0; at < entries.size(); at++) {
                     if (entries.get(at).name().equals(kept)) {
                         highlighted = at;
+                        // le CHOISI d'avant seul survit (le candidat
+                        // courant de NAISSANCE n'est pas un choix — B6
+                        // demeure : l'Entrée ne valide qu'un choix
+                        // explicite, à travers la re-filtration)
+                        keptChosen = chosen;
                         break;
                     }
                 }
+            }
+            chosen = keptChosen;
+            if (highlighted < 0 && !entries.isEmpty()) {
+                highlighted = 0;
             }
             keepCurrentVisible();
         }
@@ -414,6 +432,11 @@ public final class CompletionCard {
         return highlighted;
     }
 
+    /** Le candidat courant est-il CHOISI (B6 : l'Entrée n'agit qu'alors). */
+    public boolean chosen() {
+        return chosen;
+    }
+
     /** La première rangée de la fenêtre courante. */
     public int topRow() {
         return topRow;
@@ -422,6 +445,27 @@ public final class CompletionCard {
     /** Le nombre de rangées montrées. */
     public int shownRows() {
         return shownRows;
+    }
+
+    /**
+     * LE FLOT de pose (le retour du terrain : la carte qui suit le
+     * caret ne SAUTE plus à sa pose nouvelle — elle y GLISSE).
+     */
+    private final PopupFloat flot = new PopupFloat();
+
+    /** Le décalage horizontal du flot de pose (px — nul au repos). */
+    public float floatOffsetX() {
+        return flot.offsetX();
+    }
+
+    /** Le décalage vertical du flot de pose (px — nul au repos). */
+    public float floatOffsetY() {
+        return flot.offsetY();
+    }
+
+    /** Le flot de pose vit-il (la vue y réclame la trame suivante). */
+    public boolean floating() {
+        return flot.isRunning();
     }
 
     /**
@@ -439,6 +483,7 @@ public final class CompletionCard {
         int target = highlighted < 0 ? 0
                 : Math.min(entries.size() - 1, Math.max(0, highlighted + step));
         highlighted = target;
+        chosen = true;
         keepCurrentVisible();
         return true;
     }
@@ -452,11 +497,45 @@ public final class CompletionCard {
      * @return vrai quand la carte a pris la validation
      */
     public boolean onEnter() {
-        if (highlighted < 0 || highlighted >= entries.size()) {
+        if (!chosen || highlighted < 0 || highlighted >= entries.size()) {
             return false;
         }
         insert(entries.get(highlighted));
         return true;
+    }
+
+    /** Le reste du défilement à la rangée près (les traînées partielles s'y accumulent). */
+    private float dragRemainder;
+
+    /**
+     * Le doigt TRAÎNE dans la carte : la fenêtre de candidats suit la
+     * traîne (px par px — le reste sous une rangée s'accumule) ; la
+     * carte ne prend jamais le focus, le défilement y vit au doigt.
+     *
+     * @param dy le delta du doigt depuis la trame d'avant (px, positif
+     *           vers le bas)
+     * @return vrai quand la fenêtre a bougé
+     */
+    public boolean dragRows(float dy) {
+        if (!isShown()) {
+            return false;
+        }
+        dragRemainder += dy;
+        float rowH = rowHeight();
+        if (rowH <= 0.0f) {
+            dragRemainder = 0.0f;
+            return false;
+        }
+        int rows = (int) (dragRemainder / rowH);
+        if (rows == 0) {
+            return false;
+        }
+        int floor = Math.max(0, entries.size() - shownRows);
+        int target = Math.max(0, Math.min(floor, topRow - rows));
+        boolean moved = target != topRow;
+        topRow = target;
+        dragRemainder -= rows * rowH;
+        return moved;
     }
 
     /**
@@ -543,6 +622,10 @@ public final class CompletionCard {
         // le fondu et la glisse de la transition : l'alpha porte la
         // carte entière, la glisse la fait naître au caret
         canvas.translate(0.0f, animation.shiftPx(density));
+        // LE FLOT de pose : la carte glisse à sa pose nouvelle au lieu
+        // d'y sauter (le retour du terrain — « une animation plus
+        // fluide »)
+        canvas.translate(flot.offsetX(), flot.offsetY());
         int alpha = (int) (animation.alphaFactor() * 255.0f);
         canvas.saveLayerAlpha(poseX - dp(2), poseY - dp(2),
                 poseX + cardW + dp(2), poseY + cardH + dp(2),
@@ -786,6 +869,9 @@ public final class CompletionCard {
         poseX = Math.max(margin,
                 Math.min(metrics.caretX(), metrics.viewWidth() - cardW - margin));
         clampWindow();
+        // LA POSE POSÉE : le flot s'y nourrit (la carte glisse à sa pose
+        // nouvelle au lieu d'y sauter — le retour du terrain)
+        flot.poseTo(poseX, poseY);
     }
 
     /**

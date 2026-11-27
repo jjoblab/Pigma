@@ -72,6 +72,7 @@ popups manquantes `M*` — la table suit son §9.
 | 91 | Popups, l'étape 4 — les P1 manquantes : le CHOIX DE CIBLES (plusieurs définitions), la STRUCTURE DU FICHIER (l'arbre des symboles, le filtre à la frappe), la LISTE DES PROBLÈMES (parcourir les erreurs), l'HISTORIQUE DU PRESSE-PAPIERS ; la suggestion d'IMPORT (M14) part à l'étape suivante (le serveur de démo Lua n'en rend aucun correctif — l'éprouver y serait mensonge) | M1, M2, M13, M20, D-P3, R-D | **fait** | `docs/chantiers/91.md` | `d046c97` |
 | 92 | Popups, l'étape 5 — les P2 ET LA SUGGESTION D'IMPORT (M14, la bulle « Importer x.y.Z ? » — les correctifs du serveur s'y surfacent) : la définition en APERÇU, l'aller au symbole/fichier, les fichiers récents, l'APERÇU du renommage, l'entourer de, les extraits | M3–M5, M14, M15, M18, M21 | **fait** | `docs/chantiers/92.md` | `cbae5dc` |
 | 93 | Popups, l'étape 6 : l'ACCESSIBILITÉ des cartes (annonce à l'ouverture — la source unique du gestionnaire —, rangées en NŒUDS VIRTUEUX, cible ≥ 48 dp) et les chaînes LOCALISÉES (PopupStrings posé par l'hôte — la source unique, les quatorze cartes migrées) | D-P8, D-P9 | **fait** | `docs/chantiers/93.md` | `382a3d5` |
+| 94 | LE RETOUR DE TERRAIN des popups : le placeholder du pli en PUCE lisible (sa taille ne se posait JAMAIS — cause racine), le FOND de sélection de la complétion (0x33 + le candidat courant dès la naissance — B6 tenu par le drapeau `chosen`), LE GESTE DES CARTES (le tir au-delà du seuil ne joue plus sa rangée — reproduit au harnais avant correctif — et la traîne DÉFILE les listes), LE CURSEUR QUI CLIGNOTE aux champs (recherche, remplacer, aller-à, renommage), LA COMPLÉTION se range devant une barre à champ (et ne re-naît pas à la trame), LE FLOT de pose (140 ms d'ease-out — barres, douze cartes, complétion) ; LA REVUE ENTIÈRE des popups contre le rapport y vit | — | **fait** | `docs/chantiers/94.md` | à pousser |
 
 
 ## Déjà couvert avant cette feuille (constaté au code, au 2026-11-26)
@@ -89,6 +90,18 @@ popups manquantes `M*` — la table suit son §9.
   corrigent en passant).
 
 ## Journal des mises à jour
+
+- 2026-11-27 — chantier 94 fermé : le retour de terrain du plan des
+  popups — huit défauts signalés, trois causes racines (le
+  placeholder sans taille, le tir qui jouait sa rangée — reproduit
+  au harnais AVANT correctif (`PopupTouchIT`), la complétion qui
+  couvrait les barres), le geste des cartes refondu (désarmement au
+  seuil, DÉFILEMENT à la traîne — le doigt sert enfin les barres de
+  défilement dessinées), le curseur des champs clignote
+  (`FieldCaret`), le flot de pose glisse (`PopupFloat` — JVM pur
+  éprouvé), la revue entière des popups contre le rapport y est
+  consignée (D-P7 et M7 n'étaient au plan d'aucune étape — à la
+  feuille prochaine).
 
 - 2026-11-27 — chantier 93 fermé : la sixième étape du plan des
   popups, la dernière — D-P8 réglé (PopupStrings : la source unique

@@ -23,8 +23,15 @@ import java.util.function.Consumer;
  * <p>L'EXCLUSION MUTUELLE : une carte FLOTTANTE à la fois (flottante
  * ou à champ — l'ouverture de l'une range TOUTES les autres,
  * {@link #shown(Object)}). La complétion et l'aide aux paramètres
- * cohabitent avec la frappe : aucune exclusion ne les touche. La
- * famille de la sélection vit sa vie d'ancre.</p>
+ * COHABITENT avec la frappe — SAUF devant une barre à CHAMP : la
+ * barre qui ouvre (recherche, aller-à, renommage) prend le clavier,
+ * la complétion qui demeure au-dessus d'elle intercepte le doigt et
+ * la frappe (le retour du terrain : « pendant que je tape dans la
+ * recherche, la complétion intercepte aussi ce que j'écris ») — une
+ * barre à champ range AUSSI la famille de la frappe ; une carte
+ * flottante la laisse (la bulle d'import vit PENDANT la frappe, à
+ * côté de la complétion). La famille de la sélection vit sa vie
+ * d'ancre.</p>
  *
  * <p>LA FERMETURE DE CONTEXTE : {@link #contextLost()} range TOUT —
  * le changement de document, la rotation, la perte de focus ; la
@@ -109,7 +116,8 @@ public final class PopupHost {
             return;
         }
         if (found.role() == Role.TYPING || found.role() == Role.SELECTION) {
-            // la carte de la frappe COHABITE, la carte de la sélection
+            // la carte de la frappe COHABITE (complétion et signature
+            // y vivent ensemble à la frappe), la carte de la sélection
             // vit de son ancre — aucune exclusion ne les touche
             return;
         }
@@ -117,7 +125,8 @@ public final class PopupHost {
             if (other.card() == card) {
                 continue;
             }
-            if (other.role() == Role.FLOATING || other.role() == Role.KEYBOARD) {
+            if (other.role() == Role.FLOATING || other.role() == Role.KEYBOARD
+                    || (other.role() == Role.TYPING && found.role() == Role.KEYBOARD)) {
                 if (other.alive().getAsBoolean()) {
                     other.closer().run();
                 }

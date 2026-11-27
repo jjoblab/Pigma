@@ -334,6 +334,9 @@ public final class PreviewCard extends CardBase {
         placeY(anchorTop, anchorBottom, margin, dp(GAP_DP), cardH,
                 metrics.viewHeight());
         placeX(margin, metrics);
+        // LA POSE POSÉE : le flot s'y nourrit (la carte glisse à sa pose
+        // nouvelle au lieu d'y sauter — le retour du terrain)
+        poseSettled();
     }
 
     /**

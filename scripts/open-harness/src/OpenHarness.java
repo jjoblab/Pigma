@@ -1488,20 +1488,20 @@ public final class OpenHarness {
         check("les candidats poursuivent le préfixe",
                 !card.words().isEmpty()
                         && card.words().get(0).startsWith("ta"));
-        check("aucun candidat surbrillé d'office (B6)",
-                card.highlighted() < 0);
+        check("le candidat courant se montre dès la naissance — son fond (le retour du terrain : le fond de sélection) ; la naissance ne vaut pas un CHOIX (B6)",
+                card.highlighted() == 0 && !card.chosen());
         int caretLine = editor.getBuffer().getLineCount() - 1;
         check("la carte se pose au caret — dessous ou dessus, dans les murs",
                 (card.poseY() >= lineTop(caretLine) + LINE_HEIGHT
                         || card.poseY() + card.height() <= lineTop(caretLine))
                         && card.poseX() >= 0
                         && card.poseX() + card.width() <= editor.getWidth());
-        // la flèche déléguée pose LE premier choix explicite (B6) —
+        // la flèche déléguée pose LE premier choix EXPLICITE (B6) —
         // sur un candidat unique comme sur une liste
         pressKey(KeyEvent.KEYCODE_DPAD_DOWN);
         frame();
-        check("la flèche pose le premier choix (B6)",
-                card.highlighted() == 0);
+        check("la flèche pose le premier choix explicite (B6)",
+                card.chosen());
         // la validation déléguée insère : le préfixe se remplace par
         // le candidat entier
         String candidate = card.words().get(card.highlighted());
@@ -1545,10 +1545,9 @@ public final class OpenHarness {
         check("la carte re-filtrée garde sa fenêtre de rangées",
                 card.shownRows() >= Math.min(rowsShown, 2));
         pressKey(KeyEvent.KEYCODE_DPAD_DOWN);
-        pressKey(KeyEvent.KEYCODE_DPAD_DOWN);
         frame();
-        check("deux flèches depuis rien posent le deuxième candidat (B6)",
-                card.highlighted() == 1);
+        check("la flèche depuis le courant de naissance pose le deuxième candidat (B6)",
+                card.highlighted() == 1 && card.chosen());
         pressKey(KeyEvent.KEYCODE_DPAD_UP);
         frame();
         check("la flèche haut remonte au premier", card.highlighted() == 0);
