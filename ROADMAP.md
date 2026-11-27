@@ -93,7 +93,111 @@ popups manquantes `M*` — la table suit son §9.
 
 | 96 | LA PAPIERASSE RATTRAPE LE CODE (« va pour D16, D19/D20 » — et « les READMEs doivent refléter réellement le code, le mode d'utilisation md aussi ») : D16 réglé (ARCHITECTURE.md porte l'arbre RÉEL du module éditeur — l'accessibilité, les vingt-neuf cartes, lsp, internal), D19/D20 réglé (la coquille MEMORRY_ANCHOR_INTERVAL meurt, l'historique mort du 95 part avec son code), les README reflètent le code (editor/README : la rangée popups/ complète + openDocument ; INTEGRATION.md : les deux traits du 95) | D16, D19/D20 | **fait** | `docs/chantiers/96.md` | `09171be` |
 
+Le plan des chantiers 97 à 110 suit le prompt du propriétaire
+(`PROMPT-PIGMA-BUG-ET-IA`, 2026-11-27 — le bug des onglets puis la
+couche d'intégration de l'IA) ; ses causes s'y notent `A*` (le bug
+des onglets), ses étapes `B*` (la couche IA — Pigma ne connaît
+AUCUNE intelligence artificielle : l'hôte implémente, paie et
+décide). Le 97 est le retour de terrain du propriétaire sur la
+gouttière et la minimap ; le 110 son retour sur les icônes de
+l'ampoule.
+
+| 97 | LE RETOUR DE TERRAIN de la gouttière et de la minimap : la gouttière MAIGRIT et perd son ombre (l'élévation cachait les icônes de pli), la minimap se tait PAR DÉFAUT (l'hôte seul la demande), la carte de diagnostic DÉFILE au doigt (le défaut du terrain : « je n'arrive pas à scroller ») | — | **fait** | `docs/chantiers/97.md` | `627c2b3` |
+| 98 | A1 — LA PASTILLE meurt au changement de contexte : elle s'inscrit au gestionnaire (rôle ANCRE — nulle seconde liste de fermeture ne naît), `setLanguage`/`reopenSameDocument`/l'édition qui déplace la ligne la rangent ; le tap dans le nouvel onglet n'ouvre plus la carte d'un diagnostic d'avant | A1 | **fait** | `docs/chantiers/98.md` | `fc8bbd2` |
+| 99 | A3 — L'ÉTAT PAR DOCUMENT : `DocumentState` (texte, curseur et sélection, défilement, plis, pile d'annulation, identité) avec `saveState`/`restoreState` qui ÉCHANGENT les documents sans rien perdre ; `setLanguage` garde son comportement (compatibilité), les deux chemins rangent le contexte | A3 | **fait** | `docs/chantiers/99.md` | `f40173e` |
+| 100 | A2 — LE SAMPLE : un document PAR ONGLET (son URI, son langage, son état) ; le changement d'onglet sauvegarde/restaure et change le document côté LSP (`switchDocument`) ; le serveur de démonstration ne voit que des documents Java | A2 | **fait** | `docs/chantiers/100.md` | `124624c` |
+| 101 | A4 — LES RÉPONSES TARDIVES se jettent : l'inventaire de chaque `view.post` qui ouvre une carte, la génération de document les garde (la réponse d'un ancien document n'ouvre RIEN) | A4 | **fait** | `docs/chantiers/101.md` | `b79ca59` |
+| 102 | B0 — LE MODULE `:ai`, PUR : le contrat de l'hôte (`AiBackend`, `AiRequest` immuable, `AiResult` scellé — une DONNÉE jamais une instruction, `AiError` par famille), le test de pureté, aucun nom de fournisseur ni de modèle | B0 | **fait** | `docs/chantiers/102.md` | `69c2c16` |
+| 103 | B1 — LA PRÉPARATION DU CONTEXTE : `ContextBuilder` (préfixe/suffixe bornés au budget en caractères, sélection, bloc englobant, diagnostics, `otherDocuments` par callback de l'hôte), les crochets TOUJOURS appliqués (`AiPolicy` exclut avant de proposer, `ContextFilter` modifie ou refuse), le filet `DefaultContextFilter` documenté comme un filet | B1 | **fait** | `docs/chantiers/103.md` | `c25a472` |
+| 104 | B2 — L'ASSISTANT ENTRE DANS LA VUE : la façade `AiAssistant` (l'ampoule porte Expliquer/Documenter/Écrire le test aux capacités déclarées, l'étage des correctifs porte Expliquer l'erreur/Corriger), le vol ANNULABLE (l'attente et son bouton, la fermeture et l'édition l'abandonnent, la réponse du vol tué se jette), les réponses VÉRIFIÉES (la révision du tampon s'éprouve avant la pose, UNE unité d'annulation), le bloc englobant se calcule (`StructureDocument.scopeAt`), les quinze chaînes à `PopupStrings` | B2 | **fait** | `docs/chantiers/104.md` | `d4d8237` |
+| 105 | B3 — LA MODIFICATION PAR INSTRUCTION : la pastille « Modifier avec l'IA… » à la barre de sélection (aux capacités, à la politique, à la sélection), la barre d'instruction `AiEditBar` (famille KeyboardCard — l'instruction voyage avec la sélection), L'APERÇU des trois verdicts `AiDiffCard` (Accepter pose en UNE unité après vérification, Rejeter jette, Réessayer repose la question, le contenu non fiable se borne), les ERREURS NÉES se signalent (la passe d'analyse close les compare — `setAnalysisListener` naît), la correction du 104 migre à l'aperçu (le critère : toute modification passe par un aperçu) | B3 | **fait** | `docs/chantiers/105.md` | `5fea497` |
+| 106 | B4 — LE TEXTE FANTÔME : la machine pure `GhostTextState` (l'attente, le vol, l'affichage — la frappe reprend tout, la réponse périmée se jette, l'acceptation PARTIELLE mot à mot), le calque au caret (jamais écrit au tampon avant l'acceptation, les masques obligatoires éprouvés à chaque trame : complétion, composition IME, sélection, pli, document, éditeur figé), TAB pose tout, les balayages décident (le mot, tout, le rejet), l'annonce « Suggestion disponible », DÉSACTIVÉE par défaut | B4 | **fait** | `docs/chantiers/106.md` | `a300f0e` |
+| 107 | B5 — LES TÂCHES OPTIONNELLES : le commentaire de documentation se pose AU-DESSUS DE LA DÉCLARATION (la structure dit le point de pose — `declarationLineAt`, la plus interne gagne), l'insertion vit l'aperçu du 105 ; le test écrit se rend À L'HÔTE (`setTestListener`) et se lit à la popup — Pigma n'en crée jamais le fichier | B5 | **fait** | `docs/chantiers/107.md` | `a3e0d28` |
+| 108 | B6 — L'« IA DE DÉMONSTRATION » DU SAMPLE : `FakeAiBackend` déterministe (les réponses parlent de la demande, le flux par morceaux à la file du thread principal, aucun réseau, la poignée retire les morceaux non joués), les états joués (normale, indisponible, délai, refus, muette, démesurée), l'INTERRUPTEUR au drawer (éteinte par défaut — aucune action d'IA ne se propose sans lui), le manifeste demeure sans permission | B6 | **fait** | `docs/chantiers/108.md` | `d2a34fa` |
+| 109 | B7 — LA VOIX ET LA CIBLE : l'annonce DÉDIÉE de l'assistant (« Assistant ouvert » — `showAssistantPopup`, la documentation garde sa voix), la cible du bouton ANNULER respire à 48 dp (bornée à la boîte), la croix de la barre d'instruction pareil, les trois verdicts y vivaient déjà ; ce qui vivait se consigne (les réponses sont des données, les vingt-neuf chaînes, aucune journalisation, aucun réseau) | B7 | **fait** | `docs/chantiers/109.md` | `3c22aea` |
+| 110 | LE RETOUR DE TERRAIN DES ICÔNES : « les options du popup de l'ampoule ont toutes la même icône » — chaque action porte SA NATURE, dix-neuf glyphes AU TRAIT à la grille 24 (la façon de SeverityIcon) : l'éditeur (le commentaire //, les casses, le double, la poubelle), l'entourage, les extraits, l'hôte (le calendrier, la loupe), le serveur (la flèche à la barre, l'œil, les guillemets, le crayon, l'alignement, l'arbre), l'assistant (la bulle, la feuille, la coche) ; l'éclair d'action demeure le défaut | — | **fait** | `docs/chantiers/110.md` | `c38b934` |
+
 ## Journal des mises à jour
+
+- 2026-11-27 — LA FEUILLE RATTRAPE LES CHANTIERS 97 à 110 : la table
+  porte les quatorze rangées (le bug des onglets A1–A4, la couche IA
+  B0–B7, les deux retours de terrain du propriétaire — la gouttière
+  et les icônes de l'ampoule) ; l'historique des commits de la
+  période fut réattribué à `jjoblab <olson12jb@gmail.com>` et poussé
+  (force) — la règle de conduite y retrouve son compte. LA MISSION
+  DU PROMPT « BUG D'ONGLETS, PUIS COUCHE D'INTÉGRATION DE L'IA » SE
+  REFERME : la partie A (le bug des onglets) et la partie B (la
+  couche IA — B0 à B7) sont faites, hors périmètre demeure
+  l'explicitement exclu (tout client réseau, chat contextuel, mode
+  agent, arbre syntaxique avancé).
+
+- 2026-11-27 — chantier 110 fermé : le retour de terrain des icônes
+  — chaque option de l'ampoule porte SA NATURE au trait (dix-neuf
+  glyphes à la grille 24, la façon de SeverityIcon) : l'éditeur,
+  l'entourage, les extraits, l'hôte, le serveur et l'assistant s'y
+  lisent d'un coup d'œil ; l'éclair d'action demeure le défaut des
+  entrées qui ne disent rien (preuve aux pixels : natures distinctes
+  peignent distinct, QuickIconIT au mode graphique natif).
+
+- 2026-11-27 — chantier 109 fermé : B7 — la voix de l'assistant
+  (« Assistant ouvert » — sa popup porte SON annonce, la
+  documentation garde la sienne) et la cible à 48 dp (le bouton
+  ANNULER de l'attente respire, borné à la boîte ; la croix de la
+  barre d'instruction pareil) ; les réponses demeurent des DONNÉES,
+  les vingt-neuf chaînes localisées, aucune journalisation, aucun
+  réseau.
+
+- 2026-11-27 — chantier 108 fermé : B6 — l'« IA de démonstration »
+  du sample (FakeAiBackend déterministe, le flux par morceaux à la
+  file du thread principal, aucun réseau) et son INTERRUPTEUR au
+  drawer — éteinte par défaut, aucune action d'IA ne se propose sans
+  lui ; les états joués (indisponible, délai, refus, muette,
+  démesurée) éprouvent les phrases de panne au doigt.
+
+- 2026-11-27 — chantier 107 fermé : B5 — le commentaire de
+  documentation se pose AU-DESSUS DE LA DÉCLARATION (la structure
+  dit le point de pose, le moteur rend le texte) et vit l'aperçu du
+  105 ; le test écrit se rend À L'HÔTE et se lit à la popup — Pigma
+  n'en crée jamais le fichier.
+
+- 2026-11-27 — chantier 106 fermé : B4 — le TEXTE FANTÔME : la
+  machine pure GhostTextState (JVM, l'horloge injectée), le calque
+  au caret (jamais écrit au tampon avant l'acceptation, les masques
+  obligatoires à chaque trame), TAB pose tout, les balayages posent
+  le mot ou tout ou rejettent, l'annonce « Suggestion disponible » —
+  désactivée par défaut, l'hôte seul l'arme.
+
+- 2026-11-27 — chantier 105 fermé : B3 — la modification par
+  instruction (la pastille à la barre de sélection, la barre
+  d'instruction, la sélection et l'instruction voyagent) et L'APERÇU
+  des trois verdicts (Accepter / Rejeter / Réessayer — l'acceptation
+  seule pose, UNE unité d'annulation, le contenu non fiable se
+  borne) ; les ERREURS NÉES se signalent à la passe d'analyse close
+  ; la correction du 104 migre à l'aperçu (le critère du rapport :
+  toute modification passe par un aperçu).
+
+- 2026-11-27 — chantiers 98 à 101 fermés : LE BUG DES ONGLETS (partie
+  A du prompt) — la pastille du diagnostic meurt au changement de
+  contexte (A1, inscrite au gestionnaire), l'état PAR DOCUMENT vit
+  (A3 — DocumentState, l'annulation et les plis survivent au
+  voyage), le sample porte un document PAR ONGLET (A2 — le serveur
+  ne voit jamais le contenu d'un onglet sous l'URI d'un autre), les
+  réponses tardives d'un ancien document SE JETTENT (A4 — la
+  génération de document les garde).
+
+- 2026-11-27 — chantiers 102 à 104 fermés : LA COUCHE IA (B0 à B2 du
+  prompt) — le module :ai PUR (le contrat de l'hôte, une DONNÉE
+  jamais une instruction, aucun nom de fournisseur), la préparation
+  du contexte et ses crochets TOUJOURS appliqués (la politique
+  exclut avant de proposer), la façade AiAssistant (l'ampoule et
+  l'étage des correctifs aux capacités déclarées, le vol annulable,
+  les réponses vérifiées, le bloc englobant de la profondeur
+  d'accolades).
+
+- 2026-11-27 — chantier 97 fermé : le retour de terrain de la
+  gouttière — la gouttière MAIGRIT sans ombre (les icônes de pli se
+  lisent), la minimap se tait PAR DÉFAUT (l'hôte seul la demande),
+  la carte de diagnostic DÉFILE au doigt.
 
 - 2026-11-27 — chantier 96 fermé : la paperasse rattrape le code —
   D16 (l'arbre du module :editor dans ARCHITECTURE.md porte les
