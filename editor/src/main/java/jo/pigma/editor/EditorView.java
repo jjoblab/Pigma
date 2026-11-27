@@ -399,6 +399,13 @@ public final class EditorView extends View {
      * rend au retour d'onglet. */
     private Object hostDocument;
 
+    /** L'écouteur du CHANGEMENT de document (A4) : la façade du
+     * serveur de langage y apprend que le document qu'elle sert a
+     * changé SOUS elle (l'hôte a ouvert un autre document sans passer
+     * par elle) — ses réponses en vol se périment, personne n'en
+     * ouvrira de carte dans le document neuf. */
+    private Runnable documentChangeListener;
+
     /** Le balayeur aux bords (le composant du découpage — R1 : le
      * traîné tenu au bord y fait glisser la vue, échéance après
      * échéance). */
@@ -2329,6 +2336,17 @@ public final class EditorView extends View {
         // naissait d'une liste de fermeture qui oubliait une carte :
         // la complétion d'avant y restait vivante, invisible)
         popups.contextLost();
+        // le document change SOUS la façade du serveur (A4) : ses
+        // réponses en vol se périment — aucune carte ne s'ouvrira du
+        // document d'avant dans le texte neuf. Les vues du serveur
+        // (surlignages, indices, plis, jetons) parlaient de l'ancien
+        // texte : elles se rangent ici — PAS à la réouverture du même
+        // (le texte n'a pas bougé, les plans cuits y restent)
+        tellDocumentChanged();
+        setServerHighlights(List.of());
+        setInlayHints(List.of());
+        setServerFoldRegions(null);
+        setServerSemantics(List.of());
         quickActionsRevision = -1;
         quickActions = List.of();
         // autre document : l'histoire locale du précédent n'y désigne
@@ -2385,6 +2403,7 @@ public final class EditorView extends View {
         // gestionnaire range TOUT (la popup d'info d'avant, la carte
         // d'usages ancrée au caret d'avant — le fantôme y mourait)
         popups.contextLost();
+        tellDocumentChanged();
         undoStack.clear();
         folds.clear();
         rebuildFoldLayout();
@@ -2497,6 +2516,26 @@ public final class EditorView extends View {
      */
     public void setHostDocument(Object identity) {
         hostDocument = identity;
+    }
+
+    /**
+     * Pose l'écouteur du CHANGEMENT de document (A4) : il court à
+     * toute ouverture — l'autre texte comme la réouverture du même
+     * (les deux perdent le contexte). La façade du serveur de
+     * langage y branche la péremption de ses réponses en vol.
+     *
+     * @param listener l'écouteur, null pour le ranger
+     */
+    public void setDocumentChangeListener(Runnable listener) {
+        documentChangeListener = listener;
+    }
+
+    /** Le document vient de changer : l'écouteur y court (nul s'il
+     * n'en vit pas). */
+    private void tellDocumentChanged() {
+        if (documentChangeListener != null) {
+            documentChangeListener.run();
+        }
     }
 
     /**

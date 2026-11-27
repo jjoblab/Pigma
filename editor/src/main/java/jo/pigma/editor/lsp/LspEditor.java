@@ -326,6 +326,19 @@ public final class LspEditor {
      */
     private final AtomicLong signatureGeneration = new AtomicLong();
 
+    /**
+     * LA GÉNÉRATION DE CHANGEMENT DE DOCUMENT (A4) : elle avance à
+     * chaque fois que le document servi change — le branchement, le
+     * débranchement, le passage d'onglet, l'ouverture d'un autre
+     * document par l'hôte — et SEULEMENT là (les édition courantes
+     * ne la touchent pas : les réponses de la frappe doivent
+     * survivre). Les réponses PONCTUELLES en vol (survol, correctifs,
+     * renommage, formatage, aller-à, usages, symboles) s'y gardent :
+     * une réponse qui arrive après son changement se JETTE — aucune
+     * carte ne s'ouvre du document d'avant dans le texte neuf.
+     */
+    private final AtomicLong documentChangeGeneration = new AtomicLong();
+
     /** Le curseur de la dernière demande de signature (la clef du cache). */
     private volatile int signatureCaret = -1;
 
@@ -545,6 +558,10 @@ public final class LspEditor {
     private LspEditor(EditorView view) {
         this.view = view;
         view.getBuffer().addListener(textListener);
+        // le document change sous la façade (A4 — l'hôte ouvre un
+        // autre document sans passer par elle) : tout ce qui parlait
+        // de l'ancien se périme
+        view.setDocumentChangeListener(this::onViewDocumentChanged);
         // le fournisseur du SERVEUR sur l'ampoule : les fonctions du
         // protocole s'y lisent APRÈS les intentions de l'hôte (le
         // second slot — la place de l'hôte demeure)
@@ -678,6 +695,9 @@ public final class LspEditor {
         if (this.session != null) {
             disconnect();
         }
+        // le document servi CHANGE (un branchement neuf) : les
+        // réponses d'une liaison d'avant se périment
+        documentChangeGeneration.incrementAndGet();
         this.session = liaison;
         this.uri = uri;
         resetProviders();
@@ -758,6 +778,9 @@ public final class LspEditor {
         if (session == null) {
             return;
         }
+        // le document servi CHANGE (la liaison meurt) : les réponses
+        // en vol se périment
+        documentChangeGeneration.incrementAndGet();
         // la voie du registre : la façade s'y détache (le dernier
         // parti ferme le serveur — les autres éditeurs du registre
         // vivent), la voie directe garde la fermeture directe
@@ -863,6 +886,9 @@ public final class LspEditor {
         // doit pas partir sous l'URI neuve
         view.removeCallbacks(documentSync);
         view.removeCallbacks(highlightSync);
+        // le document servi CHANGE : les réponses ponctuelles en vol
+        // de l'ancien se périment
+        documentChangeGeneration.incrementAndGet();
         // les réponses en vol de l'ancien se périment, ses vues se
         // rangent (les positions ne valent plus)
         documentViewsGeneration.incrementAndGet();
@@ -914,6 +940,28 @@ public final class LspEditor {
         refreshDocumentViews();
         scheduleHighlightSync();
         view.post(view::invalidate);
+    }
+
+    /**
+     * LE DOCUMENT A CHANGÉ SOUS LA FAÇADE (A4 — l'hôte a ouvert un
+     * autre document par la vue, sans passer par le passage
+     * d'onglet) : tout ce qui parlait de l'ancien se périme — les
+     * générations avancent (aucune réponse en vol n'ouvrira de
+     * carte, les réponses ponctuelles comme celles de la frappe),
+     * les caches se rangent, la pompe de synchronisation s'arrête
+     * (l'hôte décide de la suite : le passage d'onglet y rouvrira,
+     * le débranchement y rangera). Les vues du serveur, la vue les
+     * range elle-même au vrai changement d'Autre texte (la
+     * réouverture du MÊME n'y touche pas : ses plans cuits restent).
+     */
+    private void onViewDocumentChanged() {
+        documentChangeGeneration.incrementAndGet();
+        documentViewsGeneration.incrementAndGet();
+        signatureGeneration.incrementAndGet();
+        highlightGeneration.incrementAndGet();
+        resetProviders();
+        view.removeCallbacks(documentSync);
+        view.removeCallbacks(highlightSync);
     }
 
     /**
@@ -1058,9 +1106,16 @@ public final class LspEditor {
             return;
         }
         LspPosition position = caretPosition();
+        final long change = documentChangeGeneration.get();
         session.definition(uri, position).whenComplete((places, failure) ->
-                view.post(() -> navigateTo(places, view.wordAtCaret(),
-                        "définition")));
+                view.post(() -> {
+                    if (change != documentChangeGeneration.get()) {
+                        // le document a changé pendant le vol : le saut
+                        // parlerait de l'ancien texte
+                        return;
+                    }
+                    navigateTo(places, view.wordAtCaret(), "définition");
+                }));
     }
 
     /**
@@ -1080,8 +1135,16 @@ public final class LspEditor {
         }
         String symbol = view.wordAtCaret();
         LspPosition position = caretPosition();
+        final long change = documentChangeGeneration.get();
         session.definition(uri, position).whenComplete((places, failure) ->
-                view.post(() -> showDefinitionPreview(places, symbol)));
+                view.post(() -> {
+                    if (change != documentChangeGeneration.get()) {
+                        // le document a changé pendant le vol : l'aperçu
+                        // parlerait de l'ancien texte
+                        return;
+                    }
+                    showDefinitionPreview(places, symbol);
+                }));
     }
 
     /**
@@ -1136,8 +1199,14 @@ public final class LspEditor {
         if (session == null || !capabilities.workspaceSymbol()) {
             return;
         }
+        final long change = documentChangeGeneration.get();
         session.workspaceSymbol("").whenComplete((answer, failure) ->
                 view.post(() -> {
+                    if (change != documentChangeGeneration.get()) {
+                        // le document a changé pendant le vol : les
+                        // rangées parléraient de l'ancien texte
+                        return;
+                    }
                     if (failure != null || answer == null || answer.isEmpty()) {
                         return;
                     }
@@ -1206,8 +1275,15 @@ public final class LspEditor {
             return;
         }
         LspPosition position = new LspPosition(line, column);
+        final long change = documentChangeGeneration.get();
         session.references(uri, position, true).whenComplete((places, failure) ->
                 view.post(() -> {
+                    if (change != documentChangeGeneration.get()) {
+                        // le document a changé pendant le vol : les
+                        // usages parleraient de l'ancien texte
+                        answer.answer(null);
+                        return;
+                    }
                     if (places == null || places.isEmpty()) {
                         answer.answer(null);
                         return;
@@ -1300,8 +1376,14 @@ public final class LspEditor {
         }
         LspPosition position = caretPosition();
         if (capabilities.prepareRename()) {
+            final long change = documentChangeGeneration.get();
             session.prepareRename(uri, position).whenComplete((range, failure) ->
                     view.post(() -> {
+                        if (change != documentChangeGeneration.get()) {
+                            // le document a changé pendant le vol : la
+                            // carte parlerait de l'ancien texte
+                            return;
+                        }
                         if (range == null) {
                             sayAtCaret("le symbole ne se renomme pas (dit le serveur)");
                             return;
@@ -1322,8 +1404,15 @@ public final class LspEditor {
         if (session == null || !capabilities.formatting()) {
             return;
         }
+        final long change = documentChangeGeneration.get();
         session.formatting(uri, view.tabSize(), true).whenComplete((edits, failure) ->
                 view.post(() -> {
+                    if (change != documentChangeGeneration.get()) {
+                        // le document a changé pendant le vol : les
+                        // remplacements parleraient de l'ancien texte —
+                        // les POSER corromprait le neuf
+                        return;
+                    }
                     if (!view.applyTextEdits(edits)) {
                         sayAtCaret("rien à formater (dit le serveur)");
                     }
@@ -1468,8 +1557,15 @@ public final class LspEditor {
             return false;
         }
         LspPosition position = caretPosition();
+        final long change = documentChangeGeneration.get();
         session.rename(uri, position, newName).whenComplete((edits, failure) ->
                 view.post(() -> {
+                    if (change != documentChangeGeneration.get()) {
+                        // le document a changé pendant le vol : les
+                        // remplacements parleraient de l'ancien texte —
+                        // l'aperçu mentirait, les POSER corromprait
+                        return;
+                    }
                     if (edits == null || edits.isEmpty()) {
                         sayAtCaret("le renommage ne pose rien (dit le serveur)");
                         return;
@@ -1597,8 +1693,12 @@ public final class LspEditor {
     private void askCodeActions(int line) {
         final int asked = line;
         LspRange range = lineRange(asked);
+        final long change = documentChangeGeneration.get();
         session.codeActions(uri, range, diagnosticsOf(asked))
                 .whenComplete((answer, failure) -> view.post(() -> {
+                    if (change != documentChangeGeneration.get()) {
+                        return; // le document a changé : la réponse parle de l'ancien
+                    }
                     if (asked != codeActionsLine) {
                         return; // la ligne a bougé : la réponse ne vaut plus
                     }
@@ -2112,8 +2212,15 @@ public final class LspEditor {
     private void askDiagnosticFixes(int line, String cacheKey) {
         diagnosticFixCache.put(cacheKey, List.of());
         LspRange range = lineRange(line);
+        final long change = documentChangeGeneration.get();
         session.codeActions(uri, range, diagnosticsOf(line))
                 .whenComplete((answer, failure) -> view.post(() -> {
+                    if (change != documentChangeGeneration.get()) {
+                        // le document a changé pendant le vol : les
+                        // correctifs parleraient de l'ancien texte, la
+                        // carte ne se rouvre pas
+                        return;
+                    }
                     if (failure != null || answer == null) {
                         return;
                     }
