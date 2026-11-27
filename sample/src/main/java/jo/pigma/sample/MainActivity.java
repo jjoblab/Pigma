@@ -24,6 +24,7 @@ import java.util.Locale;
 
 import jo.pigma.editor.EditorThemes;
 import jo.pigma.editor.EditorView;
+import jo.pigma.editor.ai.AiAssistant;
 import jo.pigma.editor.lsp.LspEditor;
 import jo.pigma.lsp.LspWorkspace;
 import jo.pigma.editor.popups.PopupStyle;
@@ -137,6 +138,15 @@ public final class MainActivity extends Activity {
     private com.google.android.material.appbar.MaterialToolbar toolbar;
     private androidx.drawerlayout.widget.DrawerLayout drawerLayout;
     private LinearLayout drawerMenu;
+
+    /** LE MOTEUR DE DÉMONSTRATION (B6) : l'« IA de démonstration » —
+     * jamais un fournisseur, déterministe, sans réseau. */
+    private FakeAiBackend demoBackend;
+
+    /** La façade de l'IA de démonstration (null : éteinte — aucune
+     * action d'IA ne se propose, la preuve du « désactivé par
+     * défaut »). */
+    private AiAssistant demoAssistant;
     /** La colonne du contenu (le second éditeur du Duo s'y pose). */
     private LinearLayout contentColumn;
     private BottomSheetBehavior<LinearLayout> sheetBehavior;
@@ -478,6 +488,24 @@ public final class MainActivity extends Activity {
         }
     }
 
+    /** ALLUME OU ÉTEINT l'IA de démonstration (le harnais y passe —
+     * le bouton du menu prend le même chemin). */
+    void harnessToggleDemoAi() {
+        toggleDemoAi();
+    }
+
+    /** Le moteur de démonstration (null : éteint — le harnais le
+     * lit). */
+    FakeAiBackend harnessDemoBackend() {
+        return demoBackend;
+    }
+
+    /** La façade de l'IA de démonstration (null : éteinte — le
+     * harnais la lit). */
+    AiAssistant harnessDemoAssistant() {
+        return demoAssistant;
+    }
+
     /**
      * Ouvre le document de démonstration d'un langage — le document
      * D'ONGLET : l'état de l'onglet qu'on quitte se garde, celui de
@@ -526,6 +554,12 @@ public final class MainActivity extends Activity {
             } else {
                 detachLsp();
             }
+        }
+        // L'IA DE DÉMONSTRATION suit l'onglet pareillement (le nom et
+        // le langage voyagent dans chaque demande, la politique s'y
+        // éprouve)
+        if (demoAssistant != null) {
+            demoAssistant.setDocument(name + " (démo)", languageIdOf(name));
         }
         currentTab = name;
         currentScenario = name + " (démo)";
@@ -698,6 +732,10 @@ public final class MainActivity extends Activity {
         menuColumn.addView(row(margin, lspButton, lspLuaButton));
         menuColumn.addView(row(margin, duoButton()));
         menuColumn.addView(row(margin, journalButton()));
+        // L'IA DE DÉMONSTRATION (B6) : l'interrupteur (éteinte par
+        // défaut — aucune action d'IA ne se propose sans lui) et les
+        // états joués (les phrases de panne s'y éprouvent)
+        menuColumn.addView(row(margin, demoAiButton(), demoAiModeButton()));
 
         // le drawer : le contenu et la feuille dessous, le menu par-
         // dessus depuis la gauche (le cadre porte le voile, le geste
@@ -738,6 +776,91 @@ public final class MainActivity extends Activity {
             row.addView(button, params);
         }
         return row;
+    }
+
+    /**
+     * L'INTERRUPTEUR DE L'IA DE DÉMONSTRATION (B6) : éteinte par
+     * défaut — aucune action d'IA ne se propose sans lui (la preuve
+     * du « désactivé par défaut » du plan) ; allumée, le moteur de
+     * démonstration se branche (déterministe, sans réseau, jamais un
+     * fournisseur) : les entrées naissent des tâches qu'il déclare,
+     * le test écrit se rend à l'hôte (un toast le dit — lui seul
+     * sait où créer un fichier), la complétion en ligne s'arme.
+     *
+     * @return le bouton, posé au menu
+     */
+    private Button demoAiButton() {
+        Button button = new Button(this);
+        button.setText("IA de démo : éteinte");
+        button.setOnClickListener(view -> {
+            toggleDemoAi();
+            button.setText(demoAssistant == null
+                    ? "IA de démo : éteinte" : "IA de démo : allumée");
+        });
+        return button;
+    }
+
+    /**
+     * LA BASCULE de l'IA de démonstration : allumée, le moteur faux
+     * se branche (les entrées naissent des tâches qu'il déclare, le
+     * test écrit se rend à l'hôte — un toast le dit, lui seul sait
+     * où créer le fichier —, la complétion en ligne s'arme, le
+     * budget généreux de la démonstration lit les extraits entiers) ;
+     * éteinte, tout se range (la preuve du « désactivé par défaut »).
+     */
+    private void toggleDemoAi() {
+        if (demoAssistant == null) {
+            demoBackend = new FakeAiBackend();
+            demoAssistant = new AiAssistant(editorView, demoBackend,
+                    new jo.pigma.ai.ContextBuilder(null, null));
+            // le budget généreux de la démonstration : les extraits
+            // de démo se lisent entiers (le moteur faux ne paie
+            // rien — la vraie économie vit chez l'hôte)
+            demoAssistant.setContextBudget(200_000);
+            demoAssistant.setTestListener(test -> Toast.makeText(this,
+                    "Le test écrit (" + test.length()
+                            + " caractères) se rend à l'hôte — "
+                            + "lui seul crée le fichier",
+                    Toast.LENGTH_LONG).show());
+            demoAssistant.setInlineCompletionEnabled(true);
+            demoAssistant.setDocument(
+                    currentTab + " (démo)", languageIdOf(currentTab));
+            Toast.makeText(this,
+                    "IA de démonstration — jamais un fournisseur : "
+                            + "les réponses se devinent du code même",
+                    Toast.LENGTH_LONG).show();
+        } else {
+            demoAssistant.detach();
+            demoAssistant = null;
+            demoBackend = null;
+        }
+    }
+
+    /**
+     * LES ÉTATS JOUÉS du moteur de démonstration (B6) : normale,
+     * indisponible, délai, refus, muette, démesurée — les phrases de
+     * panne de l'assistant s'y éprouvent au doigt (le bouton
+     * n'agit que moteur allumé ; la étiquette dit l'état courant).
+     *
+     * @return le bouton, posé au menu
+     */
+    private Button demoAiModeButton() {
+        Button button = new Button(this);
+        button.setText("Démo : normale");
+        button.setOnClickListener(view -> {
+            if (demoBackend == null) {
+                Toast.makeText(this,
+                        "Allumez l'IA de démo d'abord", Toast.LENGTH_SHORT)
+                        .show();
+                return;
+            }
+            FakeAiBackend.Mode[] played = FakeAiBackend.Mode.values();
+            FakeAiBackend.Mode next = played[
+                    (demoBackend.mode().ordinal() + 1) % played.length];
+            demoBackend.setMode(next);
+            button.setText("Démo : " + next.name().toLowerCase(Locale.ROOT));
+        });
+        return button;
     }
 
     /**
