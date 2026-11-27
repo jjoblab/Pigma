@@ -20,6 +20,12 @@ import java.util.List;
  * débordement ne survit jamais au choix ; la carte ne survit jamais à
  * sa barre.
  *
+ * <p>Chaque rangée porte SA NATURE AU TRAIT (le retour du terrain
+ * des icônes, la leçon de l'ampoule) : le glyphe se peint à la
+ * grille 24 par le peintre partagé {@code ActionGlyphs}, à l'encre
+ * secondaire du style de l'hôte — la rangée qui ne dit rien garde
+ * l'éclair (la boucle fermée au filet, le défaut honnête).</p>
+ *
  * <p>La carte ne prend jamais le focus ; le doigt sur une rangée
  * l'exécute, le titre d'un étage consomme sans agir, le reste de la
  * carte consomme sans agir, hors d'elle le geste poursuit sa vie vers
@@ -39,8 +45,31 @@ public final class OverflowCard {
     /** Le plafond de rangées visibles (la fenêtre défile au-delà). */
     private static final int MAX_VISIBLE_ROWS = 14;
 
-    /** Une action repliée : son libellé et ce qu'elle fait. */
-    public record Row(String label, Runnable action) {
+    /** La largeur d'une icône de rangée (dp). */
+    private static final int ICON_DP = 22;
+
+    /**
+     * Une action repliée : son libellé, ce qu'elle fait — et SA
+     * NATURE AU TRAIT (l'icône de la rangée se lit d'un coup d'œil,
+     * la façon de la carte d'actions rapides).
+     *
+     * @param label  le libellé de la rangée, jamais vide
+     * @param action ce qu'elle fait, jamais null
+     * @param glyph  la nature de l'action (son icône au trait)
+     */
+    public record Row(String label, Runnable action,
+            QuickActionCard.Glyph glyph) {
+
+        /**
+         * Une rangée SANS nature dite : l'éclair au trait la porte
+         * (le défaut honnête des rangées qui ne disent rien).
+         *
+         * @param label  le libellé de la rangée, jamais vide
+         * @param action ce qu'elle fait, jamais null
+         */
+        public Row(String label, Runnable action) {
+            this(label, action, QuickActionCard.Glyph.ACTION);
+        }
     }
 
     /**
@@ -85,6 +114,9 @@ public final class OverflowCard {
     private final Paint headerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint rulePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
+    /** Le pinceau des glyphes au trait (la nature de chaque rangée). */
+    private final Paint glyphPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
     /**
      * Une carte neuve, ses pinceaux propres au style par défaut.
      *
@@ -124,6 +156,13 @@ public final class OverflowCard {
         headerPaint.setTextSize(style.secondarySizeSp() * density);
         headerPaint.setFakeBoldText(true);
         rulePaint.setColor(style.borderArgb());
+        // LE TRAIT DES GLYPHES : le filet rond de la référence (la
+        // grille 24 y vit, la façon de SeverityIcon)
+        glyphPaint.setColor(style.secondaryArgb());
+        glyphPaint.setStyle(Paint.Style.STROKE);
+        glyphPaint.setStrokeWidth(1.6f * density);
+        glyphPaint.setStrokeCap(Paint.Cap.ROUND);
+        glyphPaint.setStrokeJoin(Paint.Join.ROUND);
     }
 
     /**
@@ -470,16 +509,26 @@ public final class OverflowCard {
                 poseX + cardW - dp(14), top + headerHeight() - dp(2), rulePaint);
     }
 
-    /** Une rangée : son libellé dans la hauteur respirée. */
+    /**
+     * Une rangée : SA NATURE au trait dans la hauteur respirée, puis
+     * son libellé — l'icône ouvre la marche (la façon de la carte
+     * d'actions rapides : le glyphe, l'écart, le texte).
+     */
     private void drawRowLabel(Canvas canvas, Row row, float top) {
         if (row == null) {
             return;
         }
-        canvas.drawText(row.label(), poseX + dp(18),
-                top + rowHeight() * 0.68f, textPaint);
+        float rowH = rowHeight();
+        float cy = top + rowH / 2.0f;
+        // le glyphe au trait : 22 dp au centre de la colonne
+        ActionGlyphs.draw(canvas, row.glyph(), glyphPaint,
+                poseX + dp(18) + dp(ICON_DP) / 2.0f, cy, dp(ICON_DP));
+        canvas.drawText(row.label(), poseX + dp(18) + dp(ICON_DP) + dp(8),
+                top + rowH * 0.68f, textPaint);
     }
 
-    /** La largeur qu'il faut pour le plus large libellé, respiré. */
+    /** La largeur qu'il faut pour l'icône, l'écart et le plus large
+     * libellé, respirés. */
     private float measuredWidth() {
         float widest = 0.0f;
         for (Section family : sections) {
@@ -487,7 +536,7 @@ public final class OverflowCard {
                 widest = Math.max(widest, textPaint.measureText(row.label()));
             }
         }
-        return widest + 2.0f * dp(18);
+        return widest + dp(ICON_DP) + dp(8) + 2.0f * dp(18);
     }
 
     private float dp(int value) {

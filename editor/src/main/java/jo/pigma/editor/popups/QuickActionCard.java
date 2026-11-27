@@ -47,7 +47,9 @@ public final class QuickActionCard {
      * Une action rapide : son libellé, ce qu'elle fait — et SON
      * GLYPHE AU TRAIT (la nature de l'action s'y lit d'un coup
      * d'œil : l'éditeur y met ses actions d'édition, l'hôte ses
-     * intentions, le serveur ses fonctions, l'assistant ses tâches).
+     * intentions, le serveur ses fonctions, l'assistant ses tâches —
+     * la carte de débordement y met les siennes : les six natures
+     * propres à ses rangées, les autres y voyagent du même peintre).
      *
      * @param label  le libellé, jamais vide
      * @param action ce qu'elle fait, jamais null
@@ -73,7 +75,10 @@ public final class QuickActionCard {
      * options ont toutes la même icône » — la carte agrégait cinq
      * familles sous un éclair unique). Chaque nature porte SON glyphe
      * dessiné à la main, à la grille 24 de la référence, le filet
-     * rond de 1,7/24 — la façon de {@code SeverityIcon}.
+     * rond de 1,7/24 — la façon de {@code SeverityIcon}. Le peintre
+     * vit à {@code ActionGlyphs} (l'encre chez le consommateur) ;
+     * vingt-cinq natures y vivent : dix-neuf pour la carte d'actions
+     * rapides, six de plus pour la carte de débordement.
      */
     public enum Glyph {
 
@@ -114,7 +119,19 @@ public final class QuickActionCard {
         /** La feuille documentée (documenter — l'assistant). */
         DOC,
         /** La coche cerclée (écrire le test — l'assistant). */
-        CHECK
+        CHECK,
+        /** Les ciseaux (couper — le débordement). */
+        CUT,
+        /** Le cadre pointé (tout sélectionner — le débordement). */
+        SELECT_ALL,
+        /** La croix (quitter la sélection — le débordement). */
+        CLOSE,
+        /** La planche à pince (le presse-papiers — le débordement). */
+        CLIPBOARD,
+        /** L'horloge (l'historique — le débordement). */
+        HISTORY,
+        /** Le triangle pointé (la liste des problèmes — le débordement). */
+        PROBLEM
     }
 
     /** Les actions vivantes de la ligne ancrée (vide : la carte se range). */
@@ -455,192 +472,11 @@ public final class QuickActionCard {
             drawBoltIcon(canvas, cx, cy);
             return;
         }
-        float u = side / 24.0f;
-        switch (glyph) {
-            case COMMENT -> {
-                // « // » : les deux barres du commentaire de fin de ligne
-                canvas.drawLine(cx - 4 * u, cy - 6 * u, cx - 1 * u, cy + 6 * u,
-                        glyphPaint);
-                canvas.drawLine(cx + 1 * u, cy - 6 * u, cx + 4 * u, cy + 6 * u,
-                        glyphPaint);
-            }
-            case UPPERCASE -> {
-                // la flèche haute : la tige et son chevron
-                canvas.drawLine(cx, cy + 6 * u, cx, cy - 6 * u, glyphPaint);
-                canvas.drawLine(cx - 4 * u, cy - 2 * u, cx, cy - 6 * u,
-                        glyphPaint);
-                canvas.drawLine(cx, cy - 6 * u, cx + 4 * u, cy - 2 * u,
-                        glyphPaint);
-            }
-            case LOWERCASE -> {
-                // la flèche basse
-                canvas.drawLine(cx, cy - 6 * u, cx, cy + 6 * u, glyphPaint);
-                canvas.drawLine(cx - 4 * u, cy + 2 * u, cx, cy + 6 * u,
-                        glyphPaint);
-                canvas.drawLine(cx, cy + 6 * u, cx + 4 * u, cy + 2 * u,
-                        glyphPaint);
-            }
-            case DUPLICATE -> {
-                // les deux feuilles superposées
-                canvas.drawRoundRect(cx - 8 * u, cy - 6 * u, cx + 2 * u,
-                        cy + 4 * u, 2 * u, 2 * u, glyphPaint);
-                canvas.drawRoundRect(cx - 2 * u, cy - 8 * u, cx + 8 * u,
-                        cy + 2 * u, 2 * u, 2 * u, glyphPaint);
-            }
-            case TRASH -> {
-                // la poubelle : le couvercle, l'anse, le corps
-                canvas.drawLine(cx - 6 * u, cy - 5 * u, cx + 6 * u, cy - 5 * u,
-                        glyphPaint);
-                canvas.drawLine(cx - 2 * u, cy - 8 * u, cx + 2 * u, cy - 8 * u,
-                        glyphPaint);
-                canvas.drawLine(cx - 2 * u, cy - 8 * u, cx - 2 * u, cy - 5 * u,
-                        glyphPaint);
-                canvas.drawLine(cx + 2 * u, cy - 8 * u, cx + 2 * u, cy - 5 * u,
-                        glyphPaint);
-                canvas.drawLine(cx - 5 * u, cy - 3 * u, cx - 4 * u, cy + 8 * u,
-                        glyphPaint);
-                canvas.drawLine(cx + 5 * u, cy - 3 * u, cx + 4 * u, cy + 8 * u,
-                        glyphPaint);
-                canvas.drawLine(cx - 4 * u, cy + 8 * u, cx + 4 * u, cy + 8 * u,
-                        glyphPaint);
-            }
-            case SURROUND -> {
-                // les crochets : ouvrir à gauche, fermer à droite
-                android.graphics.Path brackets = new android.graphics.Path();
-                brackets.moveTo(cx - 5 * u, cy - 7 * u);
-                brackets.lineTo(cx - 9 * u, cy - 7 * u);
-                brackets.lineTo(cx - 9 * u, cy + 7 * u);
-                brackets.lineTo(cx - 5 * u, cy + 7 * u);
-                brackets.moveTo(cx + 5 * u, cy - 7 * u);
-                brackets.lineTo(cx + 9 * u, cy - 7 * u);
-                brackets.lineTo(cx + 9 * u, cy + 7 * u);
-                brackets.lineTo(cx + 5 * u, cy + 7 * u);
-                canvas.drawPath(brackets, glyphPaint);
-            }
-            case SNIPPET -> {
-                // la feuille au coin plié (la façon des récents)
-                android.graphics.Path sheet = new android.graphics.Path();
-                sheet.moveTo(cx - 7 * u, cy - 9 * u);
-                sheet.lineTo(cx + 2 * u, cy - 9 * u);
-                sheet.lineTo(cx + 7 * u, cy - 4 * u);
-                sheet.lineTo(cx + 7 * u, cy + 9 * u);
-                sheet.lineTo(cx - 7 * u, cy + 9 * u);
-                sheet.close();
-                canvas.drawPath(sheet, glyphPaint);
-                canvas.drawLine(cx + 2 * u, cy - 9 * u, cx + 2 * u, cy - 4 * u,
-                        glyphPaint);
-                canvas.drawLine(cx + 2 * u, cy - 4 * u, cx + 7 * u, cy - 4 * u,
-                        glyphPaint);
-            }
-            case CALENDAR -> {
-                // le calendrier : le corps, les deux pattes, la tête
-                canvas.drawRoundRect(cx - 7 * u, cy - 4 * u, cx + 7 * u,
-                        cy + 8 * u, 2 * u, 2 * u, glyphPaint);
-                canvas.drawLine(cx - 3 * u, cy - 8 * u, cx - 3 * u, cy - 2 * u,
-                        glyphPaint);
-                canvas.drawLine(cx + 3 * u, cy - 8 * u, cx + 3 * u, cy - 2 * u,
-                        glyphPaint);
-                canvas.drawLine(cx - 7 * u, cy, cx + 7 * u, cy, glyphPaint);
-            }
-            case SEARCH -> {
-                // la loupe : le cercle et sa poignée
-                canvas.drawCircle(cx - 2 * u, cy - 2 * u, 5.5f * u, glyphPaint);
-                canvas.drawLine(cx + 2 * u, cy + 2 * u, cx + 7 * u, cy + 7 * u,
-                        glyphPaint);
-            }
-            case GOTO -> {
-                // la flèche à la barre : l'aller-y de la définition
-                canvas.drawLine(cx - 8 * u, cy, cx + 4 * u, cy, glyphPaint);
-                canvas.drawLine(cx, cy - 4 * u, cx + 4 * u, cy, glyphPaint);
-                canvas.drawLine(cx + 4 * u, cy, cx, cy + 4 * u, glyphPaint);
-                canvas.drawLine(cx + 7 * u, cy - 6 * u, cx + 7 * u, cy + 6 * u,
-                        glyphPaint);
-            }
-            case EYE -> {
-                // l'œil : l'ovale et sa pupille
-                canvas.drawOval(cx - 8 * u, cy - 4 * u, cx + 8 * u, cy + 4 * u,
-                        glyphPaint);
-                canvas.drawPoint(cx, cy, glyphPaint);
-            }
-            case QUOTES -> {
-                // les guillemets : deux points et leurs queues
-                canvas.drawPoint(cx - 4 * u, cy - 4 * u, glyphPaint);
-                canvas.drawPoint(cx + 3 * u, cy - 4 * u, glyphPaint);
-                canvas.drawLine(cx - 4 * u, cy - 4 * u, cx - 6 * u, cy + 3 * u,
-                        glyphPaint);
-                canvas.drawLine(cx + 3 * u, cy - 4 * u, cx + 1 * u, cy + 3 * u,
-                        glyphPaint);
-            }
-            case PENCIL -> {
-                // le crayon : la diagonale et sa pointe
-                canvas.drawLine(cx - 5 * u, cy + 5 * u, cx + 6 * u, cy - 6 * u,
-                        glyphPaint);
-                canvas.drawLine(cx - 8 * u, cy + 4 * u, cx - 4 * u, cy + 8 * u,
-                        glyphPaint);
-                canvas.drawLine(cx - 5 * u, cy + 5 * u, cx - 8 * u, cy + 8 * u,
-                        glyphPaint);
-            }
-            case ALIGN -> {
-                // les lignes alignées : le formatage du document
-                canvas.drawLine(cx - 8 * u, cy - 5 * u, cx + 8 * u, cy - 5 * u,
-                        glyphPaint);
-                canvas.drawLine(cx - 8 * u, cy, cx + 4 * u, cy, glyphPaint);
-                canvas.drawLine(cx - 8 * u, cy + 5 * u, cx + 8 * u, cy + 5 * u,
-                        glyphPaint);
-            }
-            case TREE -> {
-                // l'arbre des symboles : la racine, la tige, ses fils
-                canvas.drawLine(cx - 7 * u, cy - 6 * u, cx - 1 * u, cy - 6 * u,
-                        glyphPaint);
-                canvas.drawLine(cx - 1 * u, cy - 6 * u, cx - 1 * u, cy + 7 * u,
-                        glyphPaint);
-                canvas.drawLine(cx - 1 * u, cy - 2 * u, cx + 6 * u, cy - 2 * u,
-                        glyphPaint);
-                canvas.drawLine(cx - 1 * u, cy + 4 * u, cx + 6 * u, cy + 4 * u,
-                        glyphPaint);
-                canvas.drawPoint(cx - 8 * u, cy - 6 * u, glyphPaint);
-                canvas.drawPoint(cx + 7 * u, cy - 2 * u, glyphPaint);
-                canvas.drawPoint(cx + 7 * u, cy + 4 * u, glyphPaint);
-            }
-            case CHAT -> {
-                // la bulle de parole : le corps, la queue, deux lignes
-                canvas.drawRoundRect(cx - 8 * u, cy - 7 * u, cx + 8 * u,
-                        cy + 3 * u, 3 * u, 3 * u, glyphPaint);
-                canvas.drawLine(cx - 3 * u, cy + 3 * u, cx - 6 * u, cy + 7 * u,
-                        glyphPaint);
-                canvas.drawLine(cx - 4 * u, cy - 3 * u, cx + 4 * u, cy - 3 * u,
-                        glyphPaint);
-                canvas.drawLine(cx - 4 * u, cy + 1 * u, cx + 2 * u, cy + 1 * u,
-                        glyphPaint);
-            }
-            case DOC -> {
-                // la feuille documentée : le coin plié et sa ligne
-                android.graphics.Path page = new android.graphics.Path();
-                page.moveTo(cx - 6 * u, cy - 9 * u);
-                page.lineTo(cx + 2 * u, cy - 9 * u);
-                page.lineTo(cx + 7 * u, cy - 4 * u);
-                page.lineTo(cx + 7 * u, cy + 9 * u);
-                page.lineTo(cx - 6 * u, cy + 9 * u);
-                page.close();
-                canvas.drawPath(page, glyphPaint);
-                canvas.drawLine(cx + 2 * u, cy - 9 * u, cx + 2 * u, cy - 4 * u,
-                        glyphPaint);
-                canvas.drawLine(cx + 2 * u, cy - 4 * u, cx + 7 * u, cy - 4 * u,
-                        glyphPaint);
-                canvas.drawLine(cx - 3 * u, cy, cx + 4 * u, cy, glyphPaint);
-                canvas.drawLine(cx - 3 * u, cy + 4 * u, cx + 4 * u, cy + 4 * u,
-                        glyphPaint);
-            }
-            case CHECK -> {
-                // la coche cerclée : le test qui passe
-                canvas.drawCircle(cx, cy, 8 * u, glyphPaint);
-                canvas.drawLine(cx - 4 * u, cy, cx - 1 * u, cy + 3 * u,
-                        glyphPaint);
-                canvas.drawLine(cx - 1 * u, cy + 3 * u, cx + 5 * u, cy - 3 * u,
-                        glyphPaint);
-            }
-            default -> drawBoltIcon(canvas, cx, cy);
-        }
+        // LE PEINTRE PARTAGÉ : les glyphes au trait y vivent une
+        // seule fois (l'ampoule et le débordement y peignent à la
+        // même main) ; l'encre et le filet vivent ici (la carte
+        // pose son style, le peintre ne connaît que le glyphe)
+        ActionGlyphs.draw(canvas, glyph, glyphPaint, cx, cy, side);
     }
 
     /**
