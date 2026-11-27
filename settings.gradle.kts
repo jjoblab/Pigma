@@ -26,14 +26,17 @@ rootProject.name = "pigma"
 // Un module par fonctionnalité ; aucun module vide n'est créé pour l'avenir.
 // Chaque module arrive avec la fonctionnalité qui le justifie : le cœur du
 // modèle de texte (:core), le moteur de coloration (:syntax), l'annotateur
-// sémantique (:analysis), la bibliothèque d'édition (:editor — la vue et la
-// façade du serveur de langage, l'hôte n'a qu'elle à déclarer : elle expose
-// le reste en api), le client de serveur de langage (:lsp, le client seul
-// — l'hôte qui câble sans façade y va) et l'application de démonstration
-// (:sample).
+// sémantique (:analysis), la couche d'intégration de l'IA (:ai — les types
+// et les interfaces que l'HÔTE implémente : Pigma n'y connaît aucune
+// intelligence artificielle, ni fournisseur, ni modèle, ni réseau), la
+// bibliothèque d'édition (:editor — la vue et la façade du serveur de
+// langage, l'hôte n'a qu'elle à déclarer : elle expose le reste en api),
+// le client de serveur de langage (:lsp, le client seul — l'hôte qui
+// câble sans façade y va) et l'application de démonstration (:sample).
 include(":core")
 include(":syntax")
 include(":analysis")
+include(":ai")
 include(":editor")
 include(":lsp")
 include(":sample")
