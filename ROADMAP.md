@@ -91,7 +91,7 @@ popups manquantes `M*` — la table suit son §9.
 
 | 95 | L'INTÉGRATION FACILE (le retour du terrain : « trop de méthodes dans le sample qui devraient être dans l'éditeur — l'intégration doit être facile ») : `openDocument` d'UN TRAIT (langage + texte + extraits standard + récents), `connectEmmyLua` d'UN TRAIT (espace de travail + document + processus + liaison — `lastEmmyLuaError` pour le toast) ; MainActivity 1329 → 1250 lignes, le mode d'emploi porte les deux traits | — | **fait** | `docs/chantiers/95.md` | `6213b8c` |
 
-| 96 | LA PAPIERASSE RATTRAPE LE CODE (« va pour D16, D19/D20 » — et « les READMEs doivent refléter réellement le code, le mode d'utilisation md aussi ») : D16 réglé (ARCHITECTURE.md porte l'arbre RÉEL du module :access —accessibilité, les vingt-neuf cartes, lsp, internal), D19/D20 réglé (la coquille MEMORRY_ANCHOR_INTERVAL meurt, l'historique mort du 95 part avec son code), les README reflètent le code (editor/README : la rangée popups/ complète + openDocument ; INTEGRATION.md : les deux traits du 95) | D16, D19/D20 | **fait** | `docs/chantiers/96.md` | `4efe625` |
+| 96 | LA PAPIERASSE RATTRAPE LE CODE (« va pour D16, D19/D20 » — et « les READMEs doivent refléter réellement le code, le mode d'utilisation md aussi ») : D16 réglé (ARCHITECTURE.md porte l'arbre RÉEL du module éditeur — l'accessibilité, les vingt-neuf cartes, lsp, internal), D19/D20 réglé (la coquille MEMORRY_ANCHOR_INTERVAL meurt, l'historique mort du 95 part avec son code), les README reflètent le code (editor/README : la rangée popups/ complète + openDocument ; INTEGRATION.md : les deux traits du 95) | D16, D19/D20 | **fait** | `docs/chantiers/96.md` | `09171be` |
 
 ## Journal des mises à jour
 
