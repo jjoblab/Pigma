@@ -7382,6 +7382,30 @@ public final class EditorView extends View {
     }
 
     /**
+     * LA LIGNE DE LA DÉCLARATION qui enserre une ligne (B5 — le
+     * commentaire de documentation se pose AU-DESSUS d'elle) : la
+     * dernière déclaration déclarée à cette ligne ou avant (la plus
+     * interne gagne — la méthode devant sa classe) ; la ligne seule
+     * sans déclaration connue (l'index doit avoir rattrapé la
+     * révision).
+     *
+     * @param line l'indice de la ligne (celle du curseur d'ordinaire)
+     * @return l'indice de la ligne de la déclaration englobante
+     */
+    public int declarationLineAt(int line) {
+        if (symbolIndex == null) {
+            return line;
+        }
+        int best = -1;
+        for (SymbolIndex.Symbol symbol : symbolIndex.symbols()) {
+            if (symbol.line() <= line && symbol.line() > best) {
+                best = symbol.line();
+            }
+        }
+        return best >= 0 ? best : line;
+    }
+
+    /**
      * La carte de débordement de la barre de sélection (le harnais la
      * lit) : les actions repliées.
      *

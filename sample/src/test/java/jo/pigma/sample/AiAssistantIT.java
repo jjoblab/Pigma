@@ -675,6 +675,105 @@ public final class AiAssistantIT {
     }
 
     /**
+     * B5 — LE COMMENTAIRE DE DOCUMENTATION se pose AU-DESSUS DE LA
+     * DÉCLARATION : le moteur rend le texte, la STRUCTURE dit le
+     * point de pose (la déclaration qui enserre le curseur — la plus
+     * interne, la méthode devant sa classe) ; l'aperçu le propose,
+     * l'acceptation le pose par UNE unité d'annulation.
+     */
+    @Test
+    public void theDocumentLandsAboveTheDeclaration() {
+        String base = "class A {\n"
+                + "    int total() {\n"
+                + "        return 1;\n"
+                + "    }\n"
+                + "}\n";
+        editor.setLanguage(Languages.JAVA, base);
+        settle();
+        // le curseur DANS la méthode (la ligne 2) : la déclaration qui
+        // l'enserre vit à la ligne 1
+        editor.caretTo(base.indexOf("return"));
+        backend.capabilities = new AiCapabilities(
+                java.util.Set.of(AiTask.DOCUMENT), false);
+        QuickActionCard.Entry document = labelOf(
+                editor.quickActionsOfLine(2), "Documenter");
+        assertNotNull("la documentation se propose", document);
+        document.action().run();
+        idle();
+        assertEquals("la tâche de documentation voyage", AiTask.DOCUMENT,
+                backend.lastRequest.task());
+        // le moteur rend un texte qui visait le CARET : la façade le
+        // ré-ancre À LA DÉCLARATION
+        backend.pending.get().onComplete(new AiResult.Insertion(
+                base.indexOf("return"), "/** Le total rendu. */\n"));
+        idle();
+        frame();
+        assertTrue("l'aperçu de l'insertion vit",
+                editor.aiDiffCard() != null && editor.aiDiffCard().isShown());
+        assertEquals("l'aperçu porte l'AVANT vide (une insertion)", "",
+                editor.aiDiffCard().beforeText());
+        assertEquals("l'aperçu porte l'APRÈS (le commentaire)",
+                "/** Le total rendu. */\n",
+                editor.aiDiffCard().afterText());
+        // L'ACCEPTATION pose le commentaire AU-DESSUS de la déclaration
+        tap(editor.aiDiffCard().verdictCenterX(0),
+                editor.aiDiffCard().verdictCenterY());
+        idle();
+        String expected = "class A {\n"
+                + "/** Le total rendu. */\n"
+                + "    int total() {\n"
+                + "        return 1;\n"
+                + "    }\n"
+                + "}\n";
+        assertEquals("le commentaire se pose au-dessus de la déclaration",
+                expected, editor.getBuffer().toString());
+        editor.undo();
+        assertEquals("la pose vaut UNE unité d'annulation", base,
+                editor.getBuffer().toString());
+        // un commentaire ne née aucune erreur : aucune phrase
+        pause();
+        frame();
+        idle();
+        assertFalse("aucune erreur née n'est signalée",
+                editor.infoPopupText() != null
+                && editor.infoPopupText().contains("erreurs"));
+    }
+
+    /**
+     * B5 — LE TEST ÉCRIT se rend À L'HÔTE (lui seul sait où créer un
+     * fichier — Pigma n'en crée jamais) ET se lit à la popup (balisé
+     * tel quel : l'aperçu du texte qui se lit).
+     */
+    @Test
+    public void theWrittenTestIsRenderedToTheHost() {
+        editor.setLanguage(Languages.JAVA, "class A {\n}\n");
+        settle();
+        backend.capabilities = new AiCapabilities(
+                java.util.Set.of(AiTask.WRITE_TEST), false);
+        java.util.List<String> received = new java.util.ArrayList<>();
+        assistant.setTestListener(received::add);
+        QuickActionCard.Entry writeTest = labelOf(
+                editor.quickActionsOfLine(0), "Écrire le test");
+        assertNotNull("l'écriture du test se propose", writeTest);
+        writeTest.action().run();
+        idle();
+        assertEquals("la tâche du test voyage", AiTask.WRITE_TEST,
+                backend.lastRequest.task());
+        String test = "public class ATest {\n"
+                + "    @Test public void total() {\n"
+                + "        assertEquals(1, new A().total());\n"
+                + "    }\n"
+                + "}\n";
+        backend.pending.get().onComplete(new AiResult.Text(test));
+        idle();
+        assertEquals("le test se rend à l'hôte (une fois)", 1, received.size());
+        assertEquals("le texte rendu est le texte du moteur", test,
+                received.get(0));
+        assertEquals("le test se lit à la popup (balisé tel quel)", test,
+                editor.infoPopupText());
+    }
+
+    /**
      * La panne dit SA phrase (une par famille — le détail du moteur
      * ne se montre pas) ; la réponse muette dit la sienne.
      */

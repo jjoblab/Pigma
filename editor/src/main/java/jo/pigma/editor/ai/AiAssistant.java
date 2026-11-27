@@ -989,10 +989,21 @@ public final class AiAssistant implements EditorView.AssistantProvider,
                         replace(strings.aiStale(), false);
                         return;
                     }
+                    int at = insert.offset();
+                    if (task == AiTask.DOCUMENT) {
+                        // AU-DESSUS DE LA DÉCLARATION (B5) : le moteur
+                        // rend le TEXTE, la STRUCTURE dit le point de
+                        // pose — la déclaration qui enserre le curseur
+                        // du départ (la plus interne : la méthode devant
+                        // sa classe), le commentaire se pose à sa ligne
+                        int declLine = view.declarationLineAt(anchorLine);
+                        at = view.getBuffer().getLineStart(
+                                Math.min(declLine,
+                                        view.getBuffer().getLineCount() - 1));
+                    }
                     view.dismissInfoPopup();
-                    propose(task, instruction, insert.offset(),
-                            insert.offset(), insert.text(), revision,
-                            anchorLine, anchorColumn);
+                    propose(task, instruction, at, at, insert.text(),
+                            revision, anchorLine, anchorColumn);
                 }
             });
         }
